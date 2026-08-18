@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\rferr\\\\dualia-mvp\" -Depth 3 | Where-Object { -not $_.FullName.Contains\\(\"node_modules\"\\) } | Select-Object FullName, PSIsContainer | Format-Table -AutoSize)",
+      "WebFetch(domain:docs.expo.dev)",
+      "PowerShell(npm install *)"
+    ]
+  }
+}
