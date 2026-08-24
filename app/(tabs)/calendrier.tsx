@@ -280,7 +280,14 @@ export default function CalendrierScreen() {
                         { backgroundColor: parents[ev.parentId]?.couleur ?? OR },
                       ]}
                     />
-                    <Text style={styles.modalTexte}>{ev.titre}</Text>
+                    <Text style={styles.modalTexte}>
+                      {ev.titre}
+                      {(() => {
+                        const d = parseISO(ev.date);
+                        const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
+                        return aUneHeure ? ` — ${format(d, 'HH:mm')}` : '';
+                      })()}
+                    </Text>
                   </View>
                 ))
               : null}
@@ -308,6 +315,11 @@ export default function CalendrierScreen() {
                     <Text style={styles.evParent}>{parent.nom}</Text>
                     <Text style={styles.evDate}>
                       {format(ev.date, 'EEEE d MMM', { locale: dateLocale })}
+                      {(() => {
+                        if (ev.kind !== 'evenement') return '';
+                        const aUneHeure = ev.date.getHours() !== 0 || ev.date.getMinutes() !== 0;
+                        return aUneHeure ? ` · ${format(ev.date, 'HH:mm')}` : '';
+                      })()}
                     </Text>
                     <Text style={styles.evType}>
                       {ev.kind === 'garde' ? (t.typesGarde[ev.type] ?? ev.type.replace(/_/g, ' ')) : ev.titre}
