@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Alert,
   Dimensions,
-  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useMemo } from 'react';
@@ -247,6 +246,51 @@ export default function CalendrierScreen() {
           </View>
         </View>
 
+        {jourSelectionne && (
+          <View style={styles.panneauJour}>
+            <View style={styles.panneauJourHeader}>
+              <Text style={styles.panneauJourTitre}>
+                {format(jourSelectionne, 'EEEE d MMMM yyyy', { locale: dateLocale })}
+              </Text>
+              <TouchableOpacity onPress={() => setJourSelectionne(null)} hitSlop={8}>
+                <Ionicons name="close" size={18} color={COLORS.ardoise} />
+              </TouchableOpacity>
+            </View>
+
+            {elementsJour.garde ? (
+              <View style={styles.modalLigne}>
+                <View
+                  style={[
+                    styles.modalPuce,
+                    { backgroundColor: parents[elementsJour.garde.parentId].couleur },
+                  ]}
+                />
+                <Text style={styles.modalTexte}>
+                  {t.garde} — {parents[elementsJour.garde.parentId].nom}
+                </Text>
+              </View>
+            ) : null}
+
+            {elementsJour.evenements.length > 0
+              ? elementsJour.evenements.map((ev) => (
+                  <View key={ev.id} style={styles.modalLigne}>
+                    <View
+                      style={[
+                        styles.modalPuce,
+                        { backgroundColor: parents[ev.parentId]?.couleur ?? OR },
+                      ]}
+                    />
+                    <Text style={styles.modalTexte}>{ev.titre}</Text>
+                  </View>
+                ))
+              : null}
+
+            {!elementsJour.garde && elementsJour.evenements.length === 0 ? (
+              <Text style={styles.videTxt}>{t.aucunEvenement}</Text>
+            ) : null}
+          </View>
+        )}
+
         <View style={styles.section}>
           <View style={styles.sectionTitreLigne}>
             <Text style={styles.sectionTitre}>{t.semaineEnCours}</Text>
@@ -278,78 +322,17 @@ export default function CalendrierScreen() {
           )}
         </View>
 
-        <View style={{ height: SPACING.xxxl + 40 }} />
+        <View style={{ height: SPACING.xxxl + 70 }} />
       </ScrollView>
 
-      <View style={styles.fabZone}>
-        <TouchableOpacity
-          style={styles.btnGarde}
-          onPress={handleSaisirGarde}
-          activeOpacity={0.85}
-        >
-          <Ionicons name="add-circle-outline" size={16} color={COLORS.blanc} />
-          <Text style={styles.btnGardeTxt}>{t.ajouter.replace('+ ', '')}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <Modal
-        visible={!!jourSelectionne}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setJourSelectionne(null)}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={handleSaisirGarde}
+        activeOpacity={0.85}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCarte}>
-            <View style={styles.modalPoignee} />
-            {jourSelectionne && (
-              <>
-                <Text style={styles.modalTitre}>
-                  {format(jourSelectionne, 'EEEE d MMMM yyyy', { locale: dateLocale })}
-                </Text>
-
-                {elementsJour.garde ? (
-                  <View style={styles.modalLigne}>
-                    <View
-                      style={[
-                        styles.modalPuce,
-                        { backgroundColor: parents[elementsJour.garde.parentId].couleur },
-                      ]}
-                    />
-                    <Text style={styles.modalTexte}>
-                      {t.garde} — {parents[elementsJour.garde.parentId].nom}
-                    </Text>
-                  </View>
-                ) : null}
-
-                {elementsJour.evenements.length > 0
-                  ? elementsJour.evenements.map((ev) => (
-                      <View key={ev.id} style={styles.modalLigne}>
-                        <View
-                          style={[
-                            styles.modalPuce,
-                            { backgroundColor: parents[ev.parentId]?.couleur ?? OR },
-                          ]}
-                        />
-                        <Text style={styles.modalTexte}>{ev.titre}</Text>
-                      </View>
-                    ))
-                  : null}
-
-                {!elementsJour.garde && elementsJour.evenements.length === 0 ? (
-                  <Text style={styles.videTxt}>{t.aucunEvenement}</Text>
-                ) : null}
-
-                <TouchableOpacity
-                  style={styles.modalFermerBtn}
-                  onPress={() => setJourSelectionne(null)}
-                >
-                  <Text style={styles.modalFermerTxt}>{t.fermer}</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
+        <Ionicons name="add" size={22} color={COLORS.blanc} />
+        <Text style={styles.fabTxt}>{t.ajouter.replace('+ ', '')}</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
@@ -466,23 +449,47 @@ const styles = StyleSheet.create({
     marginRight: SPACING.md, backgroundColor: 'rgba(201,168,76,0.12)',
   },
 
-  fabZone: { position: 'absolute', bottom: SPACING.xl, left: SPACING.lg, right: SPACING.lg },
-  btnGarde: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs,
-    backgroundColor: COLORS.vertProfond, borderRadius: RADIUS.md, paddingVertical: SPACING.sm + 2,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 6, elevation: 3,
+  fab: {
+    position: 'absolute',
+    bottom: SPACING.xl,
+    right: SPACING.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: COLORS.vert,
+    borderRadius: RADIUS.lg,
+    paddingVertical: 14,
+    paddingHorizontal: SPACING.lg,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
   },
-  btnGardeTxt: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.semibold, color: COLORS.blanc, letterSpacing: 0.2 },
+  fabTxt: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.semibold, color: COLORS.blanc },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(28,43,37,0.5)', justifyContent: 'flex-end' },
-  modalCarte: {
-    backgroundColor: COLORS.ivoire, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
-    padding: SPACING.xl, paddingBottom: SPACING.xxxl,
+  panneauJour: {
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    backgroundColor: COLORS.blanc,
+    borderRadius: RADIUS.lg,
+    borderWidth: 1,
+    borderColor: COLORS.bordure,
+    padding: SPACING.lg,
   },
-  modalPoignee: { width: 36, height: 4, backgroundColor: COLORS.bordure, borderRadius: RADIUS.full, alignSelf: 'center', marginBottom: SPACING.lg },
-  modalTitre: {
-    fontSize: TYPOGRAPHY.lg, fontWeight: TYPOGRAPHY.semibold, color: COLORS.vertProfond,
-    textTransform: 'capitalize', marginBottom: SPACING.lg,
+  panneauJourHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  panneauJourTitre: {
+    fontSize: TYPOGRAPHY.md,
+    fontWeight: TYPOGRAPHY.semibold,
+    color: COLORS.vertProfond,
+    textTransform: 'capitalize',
+    flex: 1,
+    paddingRight: SPACING.sm,
   },
   modalLigne: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: SPACING.sm,
