@@ -1,412 +1,396 @@
-import { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
-import { format, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { useStore } from '../../store/useStore';
-import { JournalEntry } from '../../types';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
+﻿// app/(tabs)/journal.tsx
 
-const EMOJIS_PHOTOS = ['📸', '🌟', '🎉', '🌳', '🏊', '🎂', '🚲', '🎒', '🌺', '⭐', '🎨', '🏖️'];
+import React, { useState, useMemo } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert } from 'react-native';
+import { useStore } from '../../store/useStore';
+import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
+import { LockIcon, HeartIcon } from '../../components/icons';
+import DatePickerField from '../../components/DatePickerField';
+import { EnfantTag } from '../../types';
+import { TRADUCTIONS } from '../../constants/i18n';
+
+const EMOJIS = ['📸', '🎒', '🎂', '🌳', '🚲', '💌', '⚽', '🎨', '🏖️', '🎓', '🎄', '🌟'];
+
+function formatDate(isoDate: string, langue: 'fr' | 'pt') {
+  const d = new Date(isoDate);
+  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
 
 export default function JournalScreen() {
-  const { journalEntries, parentActif, parents, ajouterJournal, likerEntree } = useStore();
+  const entries = useStore((s) => s.journalEntries);
+  const parents = useStore((s) => s.parents);
+  const parentActif = useStore((s) => s.parentActif);
+  const ajouterJournal = useStore((s) => s.ajouterJournal);
+  const likerEntree = useStore((s) => s.likerEntree);
+  const ajouterRecitCroise = useStore((s) => s.ajouterRecitCroise);
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].journal;
 
+  const FILTRES: { key: 'tous' | EnfantTag | 'capsules'; label: string }[] = [
+    { key: 'tous', label: t.filtreTous },
+    { key: 'Emma', label: 'Emma' },
+    { key: 'Léo', label: 'Léo' },
+    { key: 'capsules', label: t.filtreCapsules },
+  ];
+
+  const [filtre, setFiltre] = useState<'tous' | EnfantTag | 'capsules'>('tous');
   const [modalVisible, setModalVisible] = useState(false);
-  const [titre, setTitre] = useState('');
-  const [description, setDescription] = useState('');
-  const [emojiChoisi, setEmojiChoisi] = useState('📸');
+  const [formTitre, setFormTitre] = useState('');
+  const [formDescription, setFormDescription] = useState('');
+  const [formEmoji, setFormEmoji] = useState(EMOJIS[0]);
+  const [formEnfant, setFormEnfant] = useState<EnfantTag>('Tous');
+  const [formCapsule, setFormCapsule] = useState(false);
+  const [formDateRevelation, setFormDateRevelation] = useState<Date | null>(null);
 
-  const parent = parents[parentActif];
+  const [recitModalId, setRecitModalId] = useState<string | null>(null);
+  const [recitTexte, setRecitTexte] = useState('');
 
-  const soumettre = () => {
-    if (!titre.trim()) return;
-    const entry: JournalEntry = {
+  const maintenant = new Date();
+
+  const filtered = useMemo(() => {
+    if (filtre === 'tous') return entries;
+    if (filtre === 'capsules') return entries.filter((e) => !!e.dateRevelation);
+    return entries.filter((e) => e.enfant === filtre);
+  }, [entries, filtre]);
+
+  const openModal = () => {
+    setFormTitre('');
+    setFormDescription('');
+    setFormEmoji(EMOJIS[0]);
+    setFormEnfant('Tous');
+    setFormCapsule(false);
+    setFormDateRevelation(null);
+    setModalVisible(true);
+  };
+
+  const submitEntry = () => {
+    if (!formTitre.trim()) {
+      Alert.alert(t.titreRequisTitre, t.titreRequisMsg);
+      return;
+    }
+    if (formCapsule && !formDateRevelation) {
+      Alert.alert(t.dateRequiseTitre, t.dateRequiseMsg);
+      return;
+    }
+    ajouterJournal({
       id: `j-${Date.now()}`,
-      titre: titre.trim(),
-      description: description.trim(),
-      emoji: emojiChoisi,
+      titre: formTitre.trim(),
+      description: formDescription.trim(),
+      emoji: formEmoji,
       auteurId: parentActif,
       date: new Date().toISOString(),
       liked: false,
-    };
-    ajouterJournal(entry);
-    setTitre('');
-    setDescription('');
-    setEmojiChoisi('📸');
+      enfant: formEnfant,
+      dateRevelation: formCapsule && formDateRevelation ? formDateRevelation.toISOString() : undefined,
+    });
     setModalVisible(false);
   };
 
-  const entreesSortées = [...journalEntries].sort(
-    (a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime()
-  );
+  const openRecitModal = (id: string) => {
+    setRecitTexte('');
+    setRecitModalId(id);
+  };
+
+  const submitRecit = () => {
+    if (!recitTexte.trim() || !recitModalId) return;
+    ajouterRecitCroise(recitModalId, recitTexte.trim());
+    setRecitModalId(null);
+  };
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
-      <LinearGradient colors={[COLORS.vert, '#3D8B6A']} style={styles.header}>
-        <View>
-          <Text style={styles.headerTitre}>Journal de famille</Text>
-          <Text style={styles.headerSous}>Vos souvenirs partagés</Text>
+    <View style={styles.screen}>
+      <View style={styles.topbar}>
+        <View style={styles.topbarRow}>
+          <View>
+            <Text style={styles.title}>{t.titre}</Text>
+            <Text style={styles.subtitle}>{t.sousTitre}</Text>
+          </View>
+          <Pressable style={styles.newBtn} onPress={openModal}>
+            <Text style={styles.newBtnText}>{t.nouveau}</Text>
+          </Pressable>
         </View>
-        <View style={[styles.parentBadge, { backgroundColor: parent.couleur }]}>
-          <Text style={styles.parentBadgeTxt}>
-            {parent.nom.split(' ')[0][0]}
-          </Text>
-        </View>
-      </LinearGradient>
 
-      <ScrollView
-        style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {entreesSortées.map((entry) => {
-          const auteur = parents[entry.auteurId];
-          return (
-            <View key={entry.id} style={styles.carte}>
-              <View style={[styles.photoSimulee, { backgroundColor: auteur.couleur + '18' }]}>
-                <Text style={styles.photoEmoji}>{entry.emoji}</Text>
-              </View>
-              <View style={styles.contenu}>
-                <View style={styles.metaRow}>
-                  <View style={[styles.auteurDot, { backgroundColor: auteur.couleur }]} />
-                  <Text style={styles.auteurNom}>{auteur.nom.split(' ')[0]}</Text>
-                  <Text style={styles.dateText}>
-                    {format(parseISO(entry.date), 'd MMM yyyy', { locale: fr })}
-                  </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={styles.filterRowContent}>
+          {FILTRES.map((f) => {
+            const active = filtre === f.key;
+            return (
+              <Pressable key={f.key} onPress={() => setFiltre(f.key)} style={[styles.filterPill, active && styles.filterPillActive]}>
+                <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{f.label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {filtered.length === 0 ? (
+          <Text style={styles.emptyText}>{t.vide}</Text>
+        ) : null}
+
+        {filtered.map((entry) => {
+          const author = parents[entry.auteurId]?.nom.split(' ')[0] ?? entry.auteurId;
+          const isLocked = !!entry.dateRevelation && new Date(entry.dateRevelation) > maintenant;
+
+          if (isLocked) {
+            return (
+              <View key={entry.id} style={[styles.card, styles.cardLocked]}>
+                <View style={styles.lockedIconWrap}>
+                  <LockIcon size={20} color={COLORS.ardoise} strokeWidth={1.8} />
                 </View>
-                <Text style={styles.entreTitre}>{entry.titre}</Text>
-                {entry.description ? (
-                  <Text style={styles.entreDesc}>{entry.description}</Text>
+                <Text style={styles.lockedTitle}>{t.capsuleTitre}</Text>
+                <Text style={styles.lockedText}>
+                  {t.capsuleAttente(author, formatDate(entry.dateRevelation!, langue))}
+                </Text>
+              </View>
+            );
+          }
+
+          return (
+            <View key={entry.id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.emojiWrap}>
+                  <Text style={styles.emoji}>{entry.emoji}</Text>
+                </View>
+                <View style={styles.cardHeaderText}>
+                  <Text style={styles.cardTitle}>{entry.titre}</Text>
+                  <Text style={styles.cardMeta}>{author} . {formatDate(entry.date, langue)}</Text>
+                </View>
+                {entry.enfant ? (
+                  <View style={styles.enfantPill}>
+                    <Text style={styles.enfantPillText}>{entry.enfant}</Text>
+                  </View>
                 ) : null}
-                <TouchableOpacity
-                  style={styles.likeBtn}
-                  onPress={() => likerEntree(entry.id)}
-                  activeOpacity={0.7}
-                >
-                  <Ionicons
-                    name={entry.liked ? 'heart' : 'heart-outline'}
-                    size={16}
-                    color={entry.liked ? '#E74C3C' : COLORS.ardoise}
-                  />
-                  <Text style={[styles.likeTxt, entry.liked && styles.likeTxtActif]}>
-                    {entry.liked ? 'Aimé' : 'Aimer'}
+              </View>
+
+              {entry.description ? (
+                <Text style={styles.cardDescription}>{entry.description}</Text>
+              ) : null}
+
+              {entry.recitCroise ? (
+                <View style={styles.recitBox}>
+                  <Text style={styles.recitLabel}>{t.regardCroise}</Text>
+                  <Text style={styles.recitText}>{entry.recitCroise}</Text>
+                </View>
+              ) : (
+                <Pressable style={styles.recitBtn} onPress={() => openRecitModal(entry.id)}>
+                  <Text style={styles.recitBtnText}>{t.ajouterRegard}</Text>
+                </Pressable>
+              )}
+
+              <View style={styles.cardFoot}>
+                <Pressable style={styles.likeBtn} onPress={() => likerEntree(entry.id)}>
+                  <HeartIcon size={16} color={entry.liked ? COLORS.terracotta : COLORS.ardoise} filled={entry.liked} strokeWidth={1.8} />
+                  <Text style={[styles.likeText, entry.liked && { color: COLORS.terracotta }]}>
+                    {entry.liked ? t.jaime : t.aimer}
                   </Text>
-                </TouchableOpacity>
+                </Pressable>
+                {entry.dateRevelation ? (
+                  <Text style={styles.wasCapsuleText}>{t.capsuleOuverte(formatDate(entry.dateRevelation, langue))}</Text>
+                ) : null}
               </View>
             </View>
           );
         })}
-        <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Bouton flottant */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setModalVisible(true)}
-        activeOpacity={0.85}
-      >
-        <LinearGradient colors={[COLORS.vert, '#3D8B6A']} style={styles.fabGradient}>
-          <Ionicons name="add" size={22} color={COLORS.blanc} />
-          <Text style={styles.fabTxt}>Ajouter un souvenir</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitle}>{t.modalTitre}</Text>
 
-      {/* Modal ajout */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.overlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalPoignee} />
-            <Text style={styles.modalTitre}>Nouveau souvenir</Text>
+              <Text style={styles.fieldLabel}>{t.champTitre}</Text>
+              <TextInput
+                value={formTitre}
+                onChangeText={setFormTitre}
+                placeholder={t.placeholderTitre}
+                placeholderTextColor={COLORS.ardoise}
+                style={styles.input}
+              />
 
-            <Text style={styles.label}>Photo (emoji)</Text>
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.emojiRow}
-            >
-              {EMOJIS_PHOTOS.map((emoji) => (
-                <TouchableOpacity
-                  key={emoji}
-                  style={[styles.emojiOpt, emojiChoisi === emoji && styles.emojiActif]}
-                  onPress={() => setEmojiChoisi(emoji)}
-                >
-                  <Text style={styles.emojiOptTxt}>{emoji}</Text>
-                </TouchableOpacity>
-              ))}
+              <Text style={styles.fieldLabel}>{t.champDescription}</Text>
+              <TextInput
+                value={formDescription}
+                onChangeText={setFormDescription}
+                placeholder={t.placeholderDescription}
+                placeholderTextColor={COLORS.ardoise}
+                style={[styles.input, styles.inputMultiline]}
+                multiline
+                numberOfLines={4}
+              />
+
+              <Text style={styles.fieldLabel}>{t.emoji}</Text>
+              <View style={styles.emojiGrid}>
+                {EMOJIS.map((e) => {
+                  const active = formEmoji === e;
+                  return (
+                    <Pressable key={e} onPress={() => setFormEmoji(e)} style={[styles.emojiOption, active && styles.emojiOptionActive]}>
+                      <Text style={styles.emojiOptionText}>{e}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.fieldLabel}>{t.concerne}</Text>
+              <View style={styles.pillRow}>
+                {(['Tous', 'Emma', 'Léo'] as EnfantTag[]).map((tag) => {
+                  const active = formEnfant === tag;
+                  return (
+                    <Pressable key={tag} onPress={() => setFormEnfant(tag)} style={[styles.pill, active && styles.pillActive]}>
+                      <Text style={[styles.pillText, active && styles.pillTextActive]}>{tag}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Pressable style={styles.capsuleToggle} onPress={() => setFormCapsule((v) => !v)}>
+                <View style={[styles.checkbox, formCapsule && styles.checkboxActive]}>
+                  {formCapsule ? <Text style={styles.checkboxMark}>✓</Text> : null}
+                </View>
+                <Text style={styles.capsuleToggleText}>{t.capsuleToggle}</Text>
+              </Pressable>
+
+              {formCapsule ? (
+                <DatePickerField label={t.dateRevelation} value={formDateRevelation} onChange={setFormDateRevelation} minDate={new Date()} />
+              ) : null}
+
+              <View style={styles.modalActions}>
+                <Pressable style={[styles.modalBtn, styles.modalBtnCancel]} onPress={() => setModalVisible(false)}>
+                  <Text style={styles.modalBtnCancelText}>{t.annuler}</Text>
+                </Pressable>
+                <Pressable style={[styles.modalBtn, styles.modalBtnSubmit]} onPress={submitEntry}>
+                  <Text style={styles.modalBtnSubmitText}>{t.publier}</Text>
+                </Pressable>
+              </View>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
-            <Text style={styles.label}>Titre</Text>
+      <Modal visible={!!recitModalId} animationType="fade" transparent onRequestClose={() => setRecitModalId(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t.recitModalTitre}</Text>
+            <Text style={styles.recitHint}>{t.recitHint}</Text>
             <TextInput
-              style={styles.input}
-              value={titre}
-              onChangeText={setTitre}
-              placeholder="Ex : Premier jour d'école Emma"
+              value={recitTexte}
+              onChangeText={setRecitTexte}
+              placeholder={t.recitPlaceholder}
               placeholderTextColor={COLORS.ardoise}
-            />
-
-            <Text style={styles.label}>Description</Text>
-            <TextInput
-              style={[styles.input, styles.inputMulti]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Décrivez ce beau moment..."
-              placeholderTextColor={COLORS.ardoise}
+              style={[styles.input, styles.inputMultiline]}
               multiline
-              numberOfLines={3}
+              numberOfLines={4}
             />
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={styles.btnAnnuler}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.btnAnnulerTxt}>Annuler</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btnValider, !titre.trim() && styles.btnDisabled]}
-                onPress={soumettre}
-                disabled={!titre.trim()}
-              >
-                <Text style={styles.btnValiderTxt}>Ajouter</Text>
-              </TouchableOpacity>
+            <View style={styles.modalActions}>
+              <Pressable style={[styles.modalBtn, styles.modalBtnCancel]} onPress={() => setRecitModalId(null)}>
+                <Text style={styles.modalBtnCancelText}>{t.annuler}</Text>
+              </Pressable>
+              <Pressable style={[styles.modalBtn, styles.modalBtnSubmit]} onPress={submitRecit}>
+                <Text style={styles.modalBtnSubmitText}>{t.ajouter}</Text>
+              </Pressable>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  conteneur: { flex: 1, backgroundColor: COLORS.ivoire },
-
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.xxl,
+  screen: { flex: 1, backgroundColor: COLORS.ivoire },
+  topbar: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.xl, paddingBottom: SPACING.md },
+  topbarRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  title: { fontFamily: FONTS.display, fontSize: 24, color: COLORS.vertProfond },
+  subtitle: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise, marginTop: 3 },
+  newBtn: { backgroundColor: COLORS.vertProfond, paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.full },
+  newBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ivoire },
+  filterRow: { marginTop: SPACING.md },
+  filterRowContent: { gap: SPACING.sm, paddingRight: SPACING.xl },
+  filterPill: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full,
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
   },
-  headerTitre: {
-    fontSize: TYPOGRAPHY.xl,
-    fontWeight: TYPOGRAPHY.bold,
-    color: COLORS.blanc,
+  filterPillActive: { backgroundColor: COLORS.vertProfond, borderColor: COLORS.vertProfond },
+  filterPillText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ardoise },
+  filterPillTextActive: { color: COLORS.ivoire },
+  content: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xxxl * 2 },
+  emptyText: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise, marginTop: SPACING.xl, textAlign: 'center' },
+  card: {
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
+    borderRadius: RADIUS.lg, padding: SPACING.lg + 1, marginTop: SPACING.md,
   },
-  headerSous: {
-    fontSize: TYPOGRAPHY.sm,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: SPACING.xs,
+  cardLocked: { alignItems: 'center', paddingVertical: SPACING.xl, backgroundColor: 'rgba(107,127,122,0.06)' },
+  lockedIconWrap: {
+    width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.blanc,
+    alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm,
+    borderWidth: 1, borderColor: COLORS.bordure,
   },
-  parentBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
+  lockedTitle: { fontFamily: FONTS.display, fontSize: 15, color: COLORS.ardoise },
+  lockedText: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, textAlign: 'center', marginTop: 4, paddingHorizontal: SPACING.lg },
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start' },
+  emojiWrap: {
+    width: 42, height: 42, borderRadius: 12, backgroundColor: 'rgba(201,168,76,0.14)',
+    alignItems: 'center', justifyContent: 'center', marginRight: SPACING.sm,
   },
-  parentBadgeTxt: {
-    fontSize: TYPOGRAPHY.md,
-    fontWeight: TYPOGRAPHY.bold,
-    color: COLORS.blanc,
+  emoji: { fontSize: 21 },
+  cardHeaderText: { flex: 1 },
+  cardTitle: { fontFamily: FONTS.display, fontSize: 15.5, color: COLORS.vertProfond },
+  cardMeta: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, marginTop: 2 },
+  enfantPill: { backgroundColor: 'rgba(45,106,79,0.1)', paddingHorizontal: 9, paddingVertical: 3, borderRadius: RADIUS.full },
+  enfantPillText: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.vert },
+  cardDescription: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.vertProfond, marginTop: SPACING.sm, lineHeight: 19 },
+  recitBox: {
+    marginTop: SPACING.md, padding: SPACING.md, backgroundColor: 'rgba(181,146,124,0.1)', borderRadius: RADIUS.md,
+    borderLeftWidth: 3, borderLeftColor: COLORS.terracotta,
   },
-
-  scroll: { flex: 1 },
-  scrollContent: { padding: SPACING.lg },
-
-  carte: {
-    backgroundColor: COLORS.blanc,
-    borderRadius: RADIUS.xl,
-    marginBottom: SPACING.lg,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 4,
+  recitLabel: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.terracotta, textTransform: 'uppercase', letterSpacing: 0.4 },
+  recitText: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, marginTop: 4, fontStyle: 'italic', lineHeight: 18 },
+  recitBtn: { marginTop: SPACING.md },
+  recitBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.vert },
+  cardFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.md },
+  likeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  likeText: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise },
+  wasCapsuleText: { fontFamily: FONTS.body, fontSize: 10.5, color: COLORS.or },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(28,43,37,0.5)', justifyContent: 'flex-end' },
+  modalCard: {
+    backgroundColor: COLORS.ivoire, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
+    padding: SPACING.xl, paddingBottom: SPACING.xxxl, maxHeight: '85%',
   },
-  photoSimulee: {
-    height: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  photoEmoji: { fontSize: 52 },
-  contenu: { padding: SPACING.lg },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    marginBottom: SPACING.sm,
-  },
-  auteurDot: { width: 8, height: 8, borderRadius: RADIUS.full },
-  auteurNom: {
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.texte,
-  },
-  dateText: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    marginLeft: 'auto',
-  },
-  entreTitre: {
-    fontSize: TYPOGRAPHY.md,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.texte,
-    marginBottom: SPACING.xs,
-  },
-  entreDesc: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.texteMuted,
-    lineHeight: 20,
-  },
-  likeBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    marginTop: SPACING.md,
-    alignSelf: 'flex-end',
-  },
-  likeTxt: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-  },
-  likeTxtActif: { color: '#E74C3C' },
-
-  fab: {
-    position: 'absolute',
-    bottom: SPACING.xl,
-    left: SPACING.xl,
-    right: SPACING.xl,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    shadowColor: COLORS.vert,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  fabGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.lg,
-  },
-  fabTxt: {
-    fontSize: TYPOGRAPHY.md,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.blanc,
-  },
-
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  modal: {
-    backgroundColor: COLORS.blanc,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    paddingBottom: SPACING.xxxl,
-  },
-  modalPoignee: {
-    width: 36,
-    height: 4,
-    backgroundColor: COLORS.bordure,
-    borderRadius: RADIUS.full,
-    alignSelf: 'center',
-    marginBottom: SPACING.xl,
-  },
-  modalTitre: {
-    fontSize: TYPOGRAPHY.xl,
-    fontWeight: TYPOGRAPHY.bold,
-    color: COLORS.texte,
-    marginBottom: SPACING.lg,
-  },
-  label: {
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.ardoise,
-    letterSpacing: 1,
-    marginBottom: SPACING.sm,
-    textTransform: 'uppercase',
-  },
-  emojiRow: { marginBottom: SPACING.lg },
-  emojiOpt: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.ivoireFonce,
-    marginRight: SPACING.sm,
-  },
-  emojiActif: {
-    backgroundColor: COLORS.vert + '22',
-    borderWidth: 2,
-    borderColor: COLORS.vert,
-  },
-  emojiOptTxt: { fontSize: 24 },
+  modalTitle: { fontFamily: FONTS.display, fontSize: 19, color: COLORS.vertProfond },
+  recitHint: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, marginTop: 4 },
+  fieldLabel: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise, marginTop: SPACING.lg, marginBottom: 6 },
   input: {
-    backgroundColor: COLORS.ivoireFonce,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.texte,
-    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: RADIUS.md,
+    paddingHorizontal: 12, paddingVertical: 10, fontFamily: FONTS.body, fontSize: 14, color: COLORS.vertProfond,
   },
-  inputMulti: { minHeight: 80, textAlignVertical: 'top' },
-  actions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.xs,
+  inputMultiline: { minHeight: 80, textAlignVertical: 'top' },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  emojiOption: {
+    width: 44, height: 44, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
   },
-  btnAnnuler: {
-    flex: 1,
-    padding: SPACING.lg,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.ivoireFonce,
-    alignItems: 'center',
+  emojiOptionActive: { borderColor: COLORS.vert, borderWidth: 2, backgroundColor: 'rgba(45,106,79,0.08)' },
+  emojiOptionText: { fontSize: 20 },
+  pillRow: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
+  pill: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: RADIUS.full,
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
   },
-  btnAnnulerTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.ardoise,
-    fontWeight: TYPOGRAPHY.medium,
+  pillActive: { backgroundColor: COLORS.vertProfond, borderColor: COLORS.vertProfond },
+  pillText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ardoise },
+  pillTextActive: { color: COLORS.ivoire },
+  capsuleToggle: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.lg },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 5, borderWidth: 1.5, borderColor: COLORS.bordure,
+    alignItems: 'center', justifyContent: 'center',
   },
-  btnValider: {
-    flex: 2,
-    padding: SPACING.lg,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.vert,
-    alignItems: 'center',
-  },
-  btnDisabled: { opacity: 0.45 },
-  btnValiderTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.blanc,
-    fontWeight: TYPOGRAPHY.semibold,
-  },
+  checkboxActive: { backgroundColor: COLORS.vert, borderColor: COLORS.vert },
+  checkboxMark: { color: COLORS.blanc, fontSize: 12, fontFamily: FONTS.bodyBold },
+  capsuleToggleText: { fontFamily: FONTS.bodyMedium, fontSize: 13, color: COLORS.vertProfond },
+  modalActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl },
+  modalBtn: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: RADIUS.md },
+  modalBtnCancel: { borderWidth: 1, borderColor: COLORS.bordure },
+  modalBtnCancelText: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.ardoise },
+  modalBtnSubmit: { backgroundColor: COLORS.vert },
+  modalBtnSubmitText: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.blanc },
 });

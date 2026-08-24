@@ -1,17 +1,23 @@
-export type ParentRole = 'A' | 'B';
-
+﻿export type ParentRole = 'A' | 'B';
 export interface Parent {
   id: ParentRole;
   nom: string;
   email: string;
   couleur: string;
 }
-
 export type TypeGarde =
   | 'résidence_principale'
   | 'résidence_alternée'
   | 'droit_de_visite'
   | 'vacances';
+export interface EvenementCalendrier {
+  id: string;
+  titre: string;
+  date: string;
+  parentId: ParentRole;
+  enfant?: string;
+  sourceMessageId?: string;
+}
 
 export interface EvenementGarde {
   id: string;
@@ -21,13 +27,11 @@ export interface EvenementGarde {
   type: TypeGarde;
   notes?: string;
 }
-
 export type StatutDecision =
   | 'proposée'
   | 'acceptée'
   | 'refusée'
   | 'en_attente';
-
 export interface Decision {
   id: string;
   titre: string;
@@ -38,9 +42,7 @@ export interface Decision {
   horodatageEIDAS?: string;
   signatureToken?: string;
 }
-
 export type StatutMessage = 'envoyé' | 'lu';
-
 export interface Message {
   id: string;
   expediteurId: ParentRole;
@@ -48,7 +50,7 @@ export interface Message {
   dateEnvoi: string;
   statut: StatutMessage;
 }
-
+export type EnfantTag = 'Emma' | 'Léo' | 'Tous';
 export interface JournalEntry {
   id: string;
   titre: string;
@@ -57,10 +59,11 @@ export interface JournalEntry {
   auteurId: ParentRole;
   date: string;
   liked: boolean;
+  enfant?: EnfantTag;
+  dateRevelation?: string;
+  recitCroise?: string;
 }
-
-export type CategorieDepense = 'sante' | 'ecole' | 'activites' | 'quotidien' | 'vacances';
-
+export type CategorieDepense = 'sante' | 'ecole' | 'activites' | 'quotidien' | 'vacances' | 'alimentaire' | 'beaute' | 'vetements' | 'transport' | 'maison' | 'autre';
 export interface Depense {
   id: string;
   categorie: CategorieDepense;
@@ -69,10 +72,13 @@ export interface Depense {
   auteurId: ParentRole;
   date: string;
   rembourse: boolean;
+  partA?: number;
+  partB?: number;
+  photoUri?: string;
+  commercant?: string;
+  lignesDetail?: { libelle: string; montant: number }[];
 }
-
 export type CategorieDocument = 'administratif' | 'sante' | 'ecole' | 'juridique';
-
 export interface DocumentItem {
   id: string;
   nom: string;

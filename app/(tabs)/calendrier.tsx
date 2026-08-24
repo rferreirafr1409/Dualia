@@ -1,4 +1,4 @@
-import {
+﻿import {
   View,
   Text,
   StyleSheet,
@@ -19,6 +19,7 @@ import {
   subMonths,
   parseISO,
   getDay,
+  startOfWeek,
 } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -29,6 +30,9 @@ import { EvenementGarde, ParentRole } from '../../types';
 const JOURS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
 const { width } = Dimensions.get('window');
 const CELL = Math.floor((width - SPACING.lg * 2) / 7);
+
+// Accent premium — or ponctuel, jamais dominant
+const OR = COLORS.or ?? '#C9A84C';
 
 function jourFR(date: Date): number {
   const d = getDay(date);
@@ -45,7 +49,7 @@ function parentDuJour(date: Date, evs: EvenementGarde[]): ParentRole | null {
 }
 
 export default function CalendrierScreen() {
-  const { evenements, parents } = useStore();
+  const { evenements, parents, evenementsCalendrier } = useStore();
   const [mois, setMois] = useState(new Date());
 
   const jours = useMemo(
@@ -55,6 +59,30 @@ export default function CalendrierScreen() {
 
   const decalage = useMemo(() => jourFR(startOfMonth(mois)), [mois]);
 
+  const prochainsElements = useMemo(() => {
+    const gardes = evenements
+      .filter((ev) => parseISO(ev.dateFin) >= new Date())
+      .map((ev) => ({
+        id: ev.id,
+        kind: 'garde' as const,
+        date: parseISO(ev.dateDebut),
+        dateFin: parseISO(ev.dateFin),
+        parentId: ev.parentId,
+        type: ev.type,
+      }));
+    const evs = evenementsCalendrier
+      .filter((ev) => parseISO(ev.date) >= new Date())
+      .map((ev) => ({
+        id: ev.id,
+        kind: 'evenement' as const,
+        date: parseISO(ev.date),
+        titre: ev.titre,
+        enfant: ev.enfant,
+        parentId: ev.parentId,
+      }));
+    return [...gardes, ...evs].sort((a, b) => a.date.getTime() - b.date.getTime());
+  }, [evenements, evenementsCalendrier]);
+
   const evsMois = useMemo(
     () =>
       evenements.filter((ev) => {
@@ -63,15 +91,6 @@ export default function CalendrierScreen() {
         return debut <= endOfMonth(mois) && fin >= startOfMonth(mois);
       }),
     [evenements, mois]
-  );
-
-  const prochainsEvs = useMemo(
-    () =>
-      [...evenements]
-        .filter((ev) => parseISO(ev.dateFin) >= new Date())
-        .sort((a, b) => parseISO(a.dateDebut).getTime() - parseISO(b.dateDebut).getTime())
-        .slice(0, 5),
-    [evenements]
   );
 
   const recapMois = useMemo(() => {
@@ -116,41 +135,38 @@ export default function CalendrierScreen() {
             style={styles.navBtn}
             accessibilityLabel="Mois précédent"
           >
-            <Ionicons name="chevron-back" size={20} color={COLORS.blanc} />
+            <Ionicons name="chevron-back" size={18} color={COLORS.ardoise} />
           </TouchableOpacity>
-          <Text style={styles.titreMois}>
-            {format(mois, 'MMMM yyyy', { locale: fr })}
-          </Text>
+          <View style={styles.titreMoisWrap}>
+            <Text style={styles.titreMois}>
+              {format(mois, 'MMMM yyyy', { locale: fr })}
+            </Text>
+            <View style={styles.titreMoisTrait} />
+          </View>
           <TouchableOpacity
             onPress={() => setMois((m) => addMonths(m, 1))}
             style={styles.navBtn}
             accessibilityLabel="Mois suivant"
           >
-            <Ionicons name="chevron-forward" size={20} color={COLORS.blanc} />
+            <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
           </TouchableOpacity>
         </View>
 
         {/* Récapitulatif du mois */}
         <View style={styles.recapMois}>
-          <Text style={styles.recapTxt}>
-            <Text style={[styles.recapNom, { color: parents.A.couleur }]}>
-              {parents.A.nom.split(' ')[0]}
-            </Text>
-            <Text style={styles.recapSep}> : </Text>
-            <Text style={[styles.recapNb, { color: parents.A.couleur }]}>{recapMois.A ?? 0}j</Text>
-            <Text style={styles.recapSep}>   /   </Text>
-            <Text style={[styles.recapNom, { color: parents.B.couleur }]}>
-              {parents.B.nom.split(' ')[0]}
-            </Text>
-            <Text style={styles.recapSep}> : </Text>
-            <Text style={[styles.recapNb, { color: parents.B.couleur }]}>{recapMois.B ?? 0}j</Text>
-            <Text style={styles.recapSep}> ce mois</Text>
+          <Text style={[styles.recapNom, { color: parents.A.couleur }]}>
+            {parents.A.nom.split(' ')[0]}
           </Text>
+          <Text style={[styles.recapNb, { color: COLORS.texte }]}>{recapMois.A ?? 0}j</Text>
+          <View style={styles.recapPuceOr} />
+          <Text style={[styles.recapNom, { color: parents.B.couleur }]}>
+            {parents.B.nom.split(' ')[0]}
+          </Text>
+          <Text style={[styles.recapNb, { color: COLORS.texte }]}>{recapMois.B ?? 0}j</Text>
         </View>
 
         {/* Grille */}
         <View style={styles.grilleWrap}>
-          {/* En-têtes jours */}
           <View style={styles.grilleLigne}>
             {JOURS.map((j, i) => (
               <View key={i} style={[styles.cellule, styles.celluleHeader]}>
@@ -159,7 +175,6 @@ export default function CalendrierScreen() {
             ))}
           </View>
 
-          {/* Cellules */}
           <View style={styles.grille}>
             {Array.from({ length: decalage }).map((_, i) => (
               <View key={`v-${i}`} style={styles.cellule} />
@@ -171,30 +186,27 @@ export default function CalendrierScreen() {
               const estAujourdhui = isToday(jour);
 
               return (
-                <View
-                  key={jour.toISOString()}
-                  style={[
-                    styles.cellule,
-                    couleur ? { backgroundColor: couleur } : null,
-                  ]}
-                >
+                <View key={jour.toISOString()} style={styles.cellule}>
                   <View
                     style={[
                       styles.numeroCercle,
-                      estAujourdhui && !couleur && styles.numeroCercleAujourdhui,
-                      estAujourdhui && couleur && styles.numeroCercleAujourdhuiGarde,
+                      estAujourdhui && styles.numeroCercleAujourdhui,
                     ]}
                   >
                     <Text
                       style={[
                         styles.numeroJour,
                         estAujourdhui && styles.numeroJourAujourdhui,
-                        couleur && !estAujourdhui && styles.numeroJourGarde,
                       ]}
                     >
                       {format(jour, 'd')}
                     </Text>
                   </View>
+                  {couleur ? (
+                    <View style={[styles.pointParent, { backgroundColor: couleur }]} />
+                  ) : (
+                    <View style={styles.pointParentVide} />
+                  )}
                 </View>
               );
             })}
@@ -203,8 +215,11 @@ export default function CalendrierScreen() {
 
         {/* Prochaines périodes */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitre}>Prochaines périodes</Text>
-          {prochainsEvs.map((ev) => {
+          <View style={styles.sectionTitreLigne}>
+            <Text style={styles.sectionTitre}>Prochaines périodes</Text>
+            <View style={styles.sectionTitreTrait} />
+          </View>
+          {prochainsElements.map((ev) => {
             const parent = parents[ev.parentId];
             return (
               <View key={ev.id} style={styles.carteEv}>
@@ -212,16 +227,15 @@ export default function CalendrierScreen() {
                 <View style={styles.contenuEv}>
                   <Text style={styles.evParent}>{parent.nom}</Text>
                   <Text style={styles.evDate}>
-                    {format(parseISO(ev.dateDebut), 'd MMM', { locale: fr })}
-                    {'  →  '}
-                    {format(parseISO(ev.dateFin), 'd MMM yyyy', { locale: fr })}
+                    {format(ev.date, 'd MMM', { locale: fr })}
+                    {ev.kind === 'garde' ? '  →  ' + format(ev.dateFin, 'd MMM yyyy', { locale: fr }) : ''}
                   </Text>
                   <Text style={styles.evType}>
-                    {ev.type.replace(/_/g, ' ')}
+                    {ev.kind === 'garde' ? ev.type.replace(/_/g, ' ') : ev.titre}
                   </Text>
                 </View>
-                <View style={[styles.evDot, { backgroundColor: parent.couleur + '20' }]}>
-                  <Ionicons name="home-outline" size={14} color={parent.couleur} />
+                <View style={styles.evDot}>
+                  <Ionicons name="home-outline" size={14} color={OR} />
                 </View>
               </View>
             );
@@ -258,8 +272,8 @@ const styles = StyleSheet.create({
   },
   legendeItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
   legendePuce: {
-    width: 12,
-    height: 12,
+    width: 10,
+    height: 10,
     borderRadius: RADIUS.sm,
   },
   legendeTxt: {
@@ -274,22 +288,31 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
-    backgroundColor: COLORS.vertProfond,
+    backgroundColor: COLORS.blanc,
     borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.bordure,
+    paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.sm,
   },
   navBtn: {
     padding: SPACING.sm,
     borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.10)',
   },
+  titreMoisWrap: { alignItems: 'center' },
   titreMois: {
     fontSize: TYPOGRAPHY.lg,
     fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.blanc,
+    color: COLORS.vertProfond,
     textTransform: 'capitalize',
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
+  },
+  titreMoisTrait: {
+    width: 28,
+    height: 2,
+    backgroundColor: OR,
+    borderRadius: 1,
+    marginTop: 4,
   },
 
   grilleWrap: {
@@ -307,12 +330,14 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.bordure,
+    backgroundColor: COLORS.blanc,
   },
   cellule: {
     width: CELL,
-    height: 38,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 3,
   },
   celluleHeader: {
     height: 28,
@@ -332,63 +357,71 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   numeroCercleAujourdhui: {
-    backgroundColor: COLORS.vert,
-  },
-  numeroCercleAujourdhuiGarde: {
-    backgroundColor: 'rgba(255,255,255,0.28)',
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.55)',
+    borderColor: OR,
   },
   numeroJour: {
     fontSize: TYPOGRAPHY.sm,
-    fontWeight: TYPOGRAPHY.bold,
+    fontWeight: TYPOGRAPHY.medium,
     color: COLORS.texte,
   },
   numeroJourAujourdhui: {
-    color: COLORS.blanc,
+    color: COLORS.vertProfond,
     fontWeight: TYPOGRAPHY.bold,
   },
-  numeroJourGarde: {
-    color: COLORS.blanc,
-    fontWeight: TYPOGRAPHY.bold,
+  pointParent: {
+    width: 5,
+    height: 5,
+    borderRadius: RADIUS.full,
+  },
+  pointParentVide: {
+    width: 5,
+    height: 5,
   },
 
   recapMois: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
-    backgroundColor: COLORS.blanc,
-    borderRadius: RADIUS.md,
     paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-    alignItems: 'center',
-  },
-  recapTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.texte,
   },
   recapNom: {
+    fontSize: TYPOGRAPHY.sm,
     fontWeight: TYPOGRAPHY.semibold,
   },
   recapNb: {
-    fontWeight: TYPOGRAPHY.bold,
+    fontSize: TYPOGRAPHY.sm,
+    fontWeight: TYPOGRAPHY.medium,
   },
-  recapSep: {
-    color: COLORS.ardoise,
+  recapPuceOr: {
+    width: 4,
+    height: 4,
+    borderRadius: RADIUS.full,
+    backgroundColor: OR,
+    marginHorizontal: SPACING.sm,
   },
 
   section: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md },
+  sectionTitreLigne: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
   sectionTitre: {
     fontSize: TYPOGRAPHY.xs,
     fontWeight: TYPOGRAPHY.semibold,
     color: COLORS.ardoise,
     textTransform: 'uppercase',
     letterSpacing: 1.2,
-    marginBottom: SPACING.md,
+  },
+  sectionTitreTrait: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.bordure,
   },
   carteEv: {
     flexDirection: 'row',
@@ -396,14 +429,11 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.blanc,
     borderRadius: RADIUS.md,
     marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.bordure,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 2,
   },
-  barreEv: { width: 4, alignSelf: 'stretch' },
+  barreEv: { width: 3, alignSelf: 'stretch' },
   contenuEv: { flex: 1, paddingHorizontal: SPACING.md, paddingVertical: SPACING.md },
   evParent: {
     fontSize: TYPOGRAPHY.md,
@@ -417,17 +447,18 @@ const styles = StyleSheet.create({
   },
   evType: {
     fontSize: TYPOGRAPHY.xs,
-    color: COLORS.vert,
+    color: COLORS.vertProfond,
     marginTop: 4,
     textTransform: 'capitalize',
   },
   evDot: {
-    width: 36,
-    height: 36,
+    width: 34,
+    height: 34,
     borderRadius: RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: SPACING.md,
+    backgroundColor: 'rgba(201,168,76,0.12)',
   },
 
   fabZone: {
@@ -441,14 +472,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: SPACING.sm,
-    backgroundColor: COLORS.vert,
+    backgroundColor: COLORS.vertProfond,
     borderRadius: RADIUS.lg,
     paddingVertical: SPACING.lg,
-    shadowColor: COLORS.vert,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    elevation: 4,
   },
   btnGardeTxt: {
     fontSize: TYPOGRAPHY.md,

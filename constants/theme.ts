@@ -18,7 +18,6 @@ export const COLORS = {
   succes: '#16A34A',
   avertissement: '#D97706',
 } as const;
-
 export const TYPOGRAPHY = {
   xs: 11,
   sm: 13,
@@ -32,7 +31,14 @@ export const TYPOGRAPHY = {
   medium: '500' as const,
   regular: '400' as const,
 };
-
+export const FONTS = {
+  display: 'Fraunces_500Medium',
+  displaySemibold: 'Fraunces_600SemiBold',
+  body: 'Inter_400Regular',
+  bodyMedium: 'Inter_500Medium',
+  bodySemibold: 'Inter_600SemiBold',
+  bodyBold: 'Inter_700Bold',
+} as const;
 export const SPACING = {
   xs: 4,
   sm: 8,
@@ -42,7 +48,6 @@ export const SPACING = {
   xxl: 24,
   xxxl: 32,
 };
-
 export const RADIUS = {
   sm: 6,
   md: 10,

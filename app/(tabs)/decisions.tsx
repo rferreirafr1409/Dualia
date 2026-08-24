@@ -1,599 +1,298 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Modal,
-  Alert,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState } from 'react';
-import { format, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import Ionicons from '@expo/vector-icons/Ionicons';
+﻿// app/(tabs)/decisions.tsx
+
+import React, { useState, useEffect } from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert } from 'react-native';
 import { useStore } from '../../store/useStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
+import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
+import { ShieldIcon, ExportIcon } from '../../components/icons';
 import { StatutDecision } from '../../types';
+import { TRADUCTIONS } from '../../constants/i18n';
 
-const STATUT_CONFIG: Record<
-  StatutDecision,
-  { label: string; couleur: string; fond: string }
-> = {
-  proposée: { label: 'Proposée', couleur: COLORS.or, fond: '#FBF3DF' },
-  acceptée: { label: 'Acceptée', couleur: '#1A8A4A', fond: '#E8F7EE' },
-  refusée: { label: 'Refusée', couleur: COLORS.erreur, fond: '#FEF2F2' },
-  en_attente: { label: 'En attente', couleur: COLORS.ardoise, fond: COLORS.ivoireFonce },
-};
+function formatDate(isoDate: string, langue: 'fr' | 'pt') {
+  const d = new Date(isoDate);
+  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'short' });
+}
 
-const MONO = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
+function formatDateTime(isoDate: string, langue: 'fr' | 'pt') {
+  const d = new Date(isoDate);
+  const date = d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  const time = d.toLocaleTimeString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { hour: '2-digit', minute: '2-digit' });
+  return `${date} . ${time}`;
+}
 
 export default function DecisionsScreen() {
-  const { decisions, parents, parentActif, ajouterDecision, mettreAJourDecision, horodaterDecision } =
-    useStore();
+  const decisions = useStore((s) => s.decisions);
+  const parents = useStore((s) => s.parents);
+  const parentActif = useStore((s) => s.parentActif);
+  const ajouterDecision = useStore((s) => s.ajouterDecision);
+  const mettreAJourDecision = useStore((s) => s.mettreAJourDecision);
+  const horodaterDecision = useStore((s) => s.horodaterDecision);
+  const draft = useStore((s) => s.nouvelleDecisionDraft);
+  const setDraft = useStore((s) => s.setNouvelleDecisionDraft);
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].decisions;
 
+  const STATUS_LABEL: Record<StatutDecision, string> = {
+    'proposée': t.filtreToutes === 'Toutes' ? 'Proposée' : 'Proposta',
+    'en_attente': t.filtreAttente,
+    'acceptée': t.filtreAcceptees.replace(/s$/, ''),
+    'refusée': t.filtreRefusees.replace(/s$/, ''),
+  };
+
+  const STATUS_COLOR: Record<StatutDecision, string> = {
+    'proposée': COLORS.terracotta,
+    'en_attente': COLORS.terracotta,
+    'acceptée': COLORS.vert,
+    'refusée': COLORS.ardoise,
+  };
+
+  const FILTERS: { key: 'toutes' | StatutDecision; label: string }[] = [
+    { key: 'toutes', label: t.filtreToutes },
+    { key: 'en_attente', label: t.filtreAttente },
+    { key: 'acceptée', label: t.filtreAcceptees },
+    { key: 'refusée', label: t.filtreRefusees },
+  ];
+
+  const [filter, setFilter] = useState<'toutes' | StatutDecision>('toutes');
   const [modalVisible, setModalVisible] = useState(false);
-  const [titre, setTitre] = useState('');
-  const [description, setDescription] = useState('');
-  const [exportEnCours, setExportEnCours] = useState(false);
+  const [formTitre, setFormTitre] = useState('');
+  const [formDescription, setFormDescription] = useState('');
 
-  const handleAjouter = () => {
-    if (!titre.trim() || !description.trim()) {
-      Alert.alert('Champs requis', 'Veuillez remplir le titre et la description.');
+  useEffect(() => {
+    if (draft) {
+      setFormDescription(draft);
+      setFormTitre('');
+      setModalVisible(true);
+    }
+  }, [draft]);
+
+  const openNewDecision = () => {
+    setFormTitre('');
+    setFormDescription('');
+    setModalVisible(true);
+  };
+
+  const closeModal = () => {
+    setModalVisible(false);
+    setDraft(null);
+    setFormTitre('');
+    setFormDescription('');
+  };
+
+  const submitDecision = () => {
+    if (!formTitre.trim()) {
+      Alert.alert(t.titreRequisTitre, t.titreRequisMsg);
       return;
     }
     ajouterDecision({
       id: `d-${Date.now()}`,
-      titre: titre.trim(),
-      description: description.trim(),
+      titre: formTitre.trim(),
+      description: formDescription.trim(),
       dateCreation: new Date().toISOString(),
       auteurId: parentActif,
       statut: 'proposée',
     });
-    setTitre('');
-    setDescription('');
-    setModalVisible(false);
+    closeModal();
   };
 
-  const handleHorodater = (id: string) => {
-    Alert.alert(
-      'Horodatage eIDAS',
-      'Apposer un horodatage qualifié eIDAS sur cette décision ? Elle sera marquée comme acceptée.',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Confirmer', onPress: () => horodaterDecision(id) },
-      ]
-    );
-  };
-
-  const handleExportJAF = async () => {
-    setExportEnCours(true);
-    try {
-      const lignes = decisions
-        .map(
-          (d) => `
-          <tr>
-            <td><strong>${d.titre}</strong><br/><span style="color:#78716C;font-size:11px">${d.description}</span></td>
-            <td>${parents[d.auteurId].nom}</td>
-            <td>${format(parseISO(d.dateCreation), 'd MMM yyyy', { locale: fr })}</td>
-            <td style="color:${STATUT_CONFIG[d.statut].couleur}">${STATUT_CONFIG[d.statut].label}</td>
-            <td style="font-size:11px">${d.horodatageEIDAS ? format(parseISO(d.horodatageEIDAS), "d MMM yyyy 'à' HH:mm", { locale: fr }) : '—'}</td>
-            <td style="font-size:10px;font-family:monospace;color:#6B7F7A">${d.signatureToken ?? '—'}</td>
-          </tr>`
-        )
-        .join('');
-
-      const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
-        <style>
-          body{font-family:Arial,sans-serif;padding:24px;color:#1C1917;font-size:13px}
-          h1{color:#1C2B25;margin-bottom:4px}
-          .subtitle{color:#78716C;margin-bottom:24px;font-size:12px}
-          table{width:100%;border-collapse:collapse;margin-top:16px}
-          th{background:#1C2B25;color:#fff;padding:8px;text-align:left;font-size:11px}
-          td{padding:8px;border-bottom:1px solid #E7E5E4;vertical-align:top}
-          tr:nth-child(even) td{background:#F8F6F2}
-          .footer{margin-top:32px;font-size:10px;color:#78716C;text-align:center;border-top:1px solid #E7E5E4;padding-top:12px}
-        </style></head><body>
-        <h1>Dualia — Registre des décisions coparentales</h1>
-        <p class="subtitle">
-          ${parents['A'].nom} &amp; ${parents['B'].nom}<br/>
-          Généré le ${format(new Date(), "d MMMM yyyy 'à' HH:mm", { locale: fr })} — Document confidentiel JAF
-        </p>
-        <table>
-          <thead><tr>
-            <th>Décision</th><th>Proposé par</th><th>Date</th>
-            <th>Statut</th><th>Horodatage eIDAS</th><th>Jeton de signature</th>
-          </tr></thead>
-          <tbody>${lignes}</tbody>
-        </table>
-        <p class="footer">Document certifié Dualia • Horodatages conformes au Règlement eIDAS (UE) n°910/2014<br/>
-        Destiné exclusivement au Juge aux Affaires Familiales</p>
-        </body></html>`;
-
-      const { uri } = await Print.printToFileAsync({ html });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Export JAF — Décisions Dualia',
-        });
-      }
-    } catch {
-      Alert.alert('Erreur export', 'La génération du PDF a échoué. Réessayez.');
-    } finally {
-      setExportEnCours(false);
-    }
-  };
+  const filtered = filter === 'toutes' ? decisions : decisions.filter((d) => d.statut === filter);
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
-      {/* Bandeau eIDAS */}
-      <View style={styles.bandeauEidas}>
-        <Ionicons name="lock-closed" size={13} color={COLORS.orClair} />
-        <Text style={styles.bandeauEidasTxt}>
-          Horodatage eIDAS certifié — Règlement (UE) n°910/2014
-        </Text>
+    <View style={styles.screen}>
+      <View style={styles.topbar}>
+        <View style={styles.topbarRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>{t.titre}</Text>
+            <Text style={styles.subtitle}>{t.sousTitre}</Text>
+          </View>
+          <Pressable style={styles.newBtn} onPress={openNewDecision}>
+            <Text style={styles.newBtnText}>{t.nouvelle}</Text>
+          </Pressable>
+        </View>
+
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={styles.filterRowContent}>
+          {FILTERS.map((f) => {
+            const active = filter === f.key;
+            return (
+              <Pressable
+                key={f.key}
+                onPress={() => setFilter(f.key)}
+                style={[styles.filterPill, active && styles.filterPillActive]}
+              >
+                <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{f.label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
-      {/* Barre actions */}
-      <View style={styles.barreActions}>
-        <Text style={styles.compteur}>
-          {decisions.length} décision{decisions.length !== 1 ? 's' : ''}
-        </Text>
-        <TouchableOpacity
-          style={styles.btnExport}
-          onPress={handleExportJAF}
-          disabled={exportEnCours}
-          accessibilityLabel="Exporter pour le JAF"
-        >
-          {exportEnCours ? (
-            <ActivityIndicator size="small" color={COLORS.vertProfond} />
-          ) : (
-            <Ionicons name="download-outline" size={16} color={COLORS.vertProfond} />
-          )}
-          <Text style={styles.btnExportTxt}>Export JAF</Text>
-        </TouchableOpacity>
-      </View>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {filtered.length === 0 ? (
+          <Text style={styles.emptyText}>{t.vide}</Text>
+        ) : null}
 
-      <ScrollView contentContainerStyle={styles.liste} showsVerticalScrollIndicator={false}>
-        {decisions.map((d) => {
-          const cfg = STATUT_CONFIG[d.statut];
-          const auteur = parents[d.auteurId];
-          const peutRepondre =
-            (d.statut === 'proposée' || d.statut === 'en_attente') &&
-            d.auteurId !== parentActif;
+        {filtered.map((decision) => {
+          const needsAction = decision.statut === 'en_attente' || decision.statut === 'proposée';
+          const canExport = decision.statut === 'acceptée';
+          const author = parents[decision.auteurId]?.nom ?? decision.auteurId;
 
           return (
-            <View key={d.id} style={styles.carte}>
-              {/* En-tête */}
-              <View style={styles.carteEntete}>
-                <Text style={styles.carteTitre} numberOfLines={2}>
-                  {d.titre}
+            <View key={decision.id} style={styles.card}>
+              <View style={styles.cardTop}>
+                <Text style={[styles.statusText, { color: STATUS_COLOR[decision.statut] }]}>
+                  {STATUS_LABEL[decision.statut]}
                 </Text>
-                <View style={[styles.badge, { backgroundColor: cfg.fond }]}>
-                  <Text style={[styles.badgeTxt, { color: cfg.couleur }]}>
-                    {cfg.label}
-                  </Text>
-                </View>
               </View>
 
-              {/* Description */}
-              <Text style={styles.carteDesc} numberOfLines={3}>
-                {d.description}
-              </Text>
+              <Text style={styles.cardTitle}>{decision.titre}</Text>
+              {decision.description ? (
+                <Text style={styles.cardDescription}>{decision.description}</Text>
+              ) : null}
 
-              {/* Méta */}
-              <View style={styles.carteMeta}>
-                <View style={styles.metaItem}>
-                  <View
-                    style={[
-                      styles.metaDot,
-                      { backgroundColor: parents[d.auteurId].couleur },
-                    ]}
-                  />
-                  <Text style={styles.metaTxt}>{auteur.nom}</Text>
-                </View>
-                <View style={styles.metaItem}>
-                  <Ionicons name="calendar-outline" size={12} color={COLORS.ardoise} />
-                  <Text style={styles.metaTxt}>
-                    {format(parseISO(d.dateCreation), 'd MMM yyyy', { locale: fr })}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Horodatage eIDAS ou bouton */}
-              {d.horodatageEIDAS ? (
-                <View style={styles.eidasConfirme}>
-                  <Ionicons name="shield-checkmark" size={13} color="#1A8A4A" />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.eidasConfirmeTxt}>
-                      eIDAS — {format(parseISO(d.horodatageEIDAS), "d MMM yyyy 'à' HH:mm", { locale: fr })}
-                    </Text>
-                    {d.signatureToken && (
-                      <Text style={[styles.tokenTxt, { fontFamily: MONO }]}>
-                        {d.signatureToken}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.btnHorodater}
-                  onPress={() => handleHorodater(d.id)}
-                >
-                  <Ionicons name="time-outline" size={13} color={COLORS.or} />
-                  <Text style={styles.btnHorodaterTxt}>
-                    Apposer horodatage eIDAS
-                  </Text>
-                </TouchableOpacity>
-              )}
-
-              {/* Actions */}
-              {peutRepondre && (
+              {needsAction ? (
                 <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={styles.btnAccepter}
-                    onPress={() => mettreAJourDecision(d.id, { statut: 'acceptée' })}
+                  <Pressable style={[styles.btn, styles.btnAccept]} onPress={() => horodaterDecision(decision.id)}>
+                    <Text style={styles.btnAcceptéext}>{t.accepter}</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.btn, styles.btnRefuse]}
+                    onPress={() => mettreAJourDecision(decision.id, { statut: 'refusée' })}
                   >
-                    <Ionicons name="checkmark" size={16} color={COLORS.blanc} />
-                    <Text style={styles.btnAccepterTxt}>Accepter</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.btnRefuser}
-                    onPress={() => mettreAJourDecision(d.id, { statut: 'refusée' })}
-                  >
-                    <Ionicons name="close" size={16} color={COLORS.erreur} />
-                    <Text style={styles.btnRefuserTxt}>Refuser</Text>
-                  </TouchableOpacity>
+                    <Text style={styles.btnRefuseText}>{t.refuser}</Text>
+                  </Pressable>
                 </View>
-              )}
+              ) : null}
+
+              <View style={styles.cardFoot}>
+                <View style={styles.sealRow}>
+                  <ShieldIcon size={12} color={decision.horodatageEIDAS ? COLORS.or : COLORS.ardoise} strokeWidth={2} />
+                  <Text style={[styles.sealText, { color: decision.horodatageEIDAS ? COLORS.or : COLORS.ardoise }]}>
+                    {decision.horodatageEIDAS ? formatDateTime(decision.horodatageEIDAS, langue) : `${t.creeLe} ${formatDate(decision.dateCreation, langue)}`}
+                  </Text>
+                </View>
+                <Text style={styles.authorText}>{author}</Text>
+              </View>
+
+              {canExport ? (
+                <Pressable
+                  style={styles.exportBtn}
+                  onPress={() => Alert.alert(t.exportTitre, t.exportMsg)}
+                >
+                  <ExportIcon size={13} color={COLORS.vert} strokeWidth={2} />
+                  <Text style={styles.exportBtnText}>{t.exporterPdf}</Text>
+                </Pressable>
+              ) : null}
             </View>
           );
         })}
-        <View style={{ height: SPACING.xxxl + 40 }} />
       </ScrollView>
 
-      {/* FAB */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setModalVisible(true)}
-        accessibilityLabel="Ajouter une décision"
-      >
-        <Ionicons name="add" size={28} color={COLORS.blanc} />
-      </TouchableOpacity>
-
-      {/* Modal nouvelle décision */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
+      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContenu}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalEntete}>
-              <Text style={styles.modalTitre}>Nouvelle décision</Text>
-              <TouchableOpacity
-                onPress={() => setModalVisible(false)}
-                accessibilityLabel="Fermer"
-                style={styles.modalClose}
-              >
-                <Ionicons name="close" size={20} color={COLORS.ardoise} />
-              </TouchableOpacity>
-            </View>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{t.modalTitre}</Text>
+            {draft ? (
+              <Text style={styles.modalHint}>{t.modalHint}</Text>
+            ) : null}
 
-            <Text style={styles.label}>Titre *</Text>
+            <Text style={styles.fieldLabel}>{t.champTitre}</Text>
             <TextInput
-              style={styles.input}
-              value={titre}
-              onChangeText={setTitre}
-              placeholder="Ex : Inscription cours de sport"
+              value={formTitre}
+              onChangeText={setFormTitre}
+              placeholder={t.placeholderTitre}
               placeholderTextColor={COLORS.ardoise}
-              maxLength={120}
+              style={styles.input}
             />
 
-            <Text style={styles.label}>Description *</Text>
+            <Text style={styles.fieldLabel}>{t.champDescription}</Text>
             <TextInput
-              style={[styles.input, styles.inputMulti]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Décrivez la décision à soumettre…"
+              value={formDescription}
+              onChangeText={setFormDescription}
+              placeholder={t.placeholderDescription}
               placeholderTextColor={COLORS.ardoise}
+              style={[styles.input, styles.inputMultiline]}
               multiline
               numberOfLines={4}
-              textAlignVertical="top"
-              maxLength={500}
             />
 
-            <View style={styles.auteurRow}>
-              <View
-                style={[
-                  styles.auteurDot,
-                  { backgroundColor: parents[parentActif].couleur },
-                ]}
-              />
-              <Text style={styles.auteurTxt}>
-                Proposé par {parents[parentActif].nom}
-              </Text>
+            <View style={styles.modalActions}>
+              <Pressable style={[styles.modalBtn, styles.modalBtnCancel]} onPress={closeModal}>
+                <Text style={styles.modalBtnCancelText}>{t.annuler}</Text>
+              </Pressable>
+              <Pressable style={[styles.modalBtn, styles.modalBtnSubmit]} onPress={submitDecision}>
+                <Text style={styles.modalBtnSubmitText}>{t.proposer}</Text>
+              </Pressable>
             </View>
-
-            <TouchableOpacity style={styles.btnSoumettre} onPress={handleAjouter}>
-              <Text style={styles.btnSoumettreTexte}>Soumettre la décision</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  conteneur: { flex: 1, backgroundColor: COLORS.ivoire },
-
-  bandeauEidas: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: COLORS.vertProfond,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm + 2,
+  screen: { flex: 1, backgroundColor: COLORS.ivoire },
+  topbar: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.xl, paddingBottom: SPACING.md },
+  topbarRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 },
+  title: { fontFamily: FONTS.display, fontSize: 24, color: COLORS.vertProfond },
+  subtitle: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise, marginTop: 3 },
+  newBtn: { backgroundColor: COLORS.vertProfond, paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.full, flexShrink: 0 },
+  newBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ivoire },
+  filterRow: { marginTop: SPACING.md },
+  filterRowContent: { gap: SPACING.sm, paddingRight: SPACING.xl },
+  filterPill: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full,
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
   },
-  bandeauEidasTxt: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.orClair,
-    fontWeight: TYPOGRAPHY.medium,
-    letterSpacing: 0.2,
+  filterPillActive: { backgroundColor: COLORS.vertProfond, borderColor: COLORS.vertProfond },
+  filterPillText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ardoise },
+  filterPillTextActive: { color: COLORS.ivoire },
+  content: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xxxl * 2 },
+  emptyText: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise, marginTop: SPACING.xl, textAlign: 'center' },
+  card: {
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
+    borderRadius: RADIUS.lg, padding: SPACING.lg + 1, marginTop: SPACING.md,
   },
-
-  barreActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.bordure,
+  cardTop: { flexDirection: 'row', justifyContent: 'flex-end' },
+  statusText: { fontFamily: FONTS.bodySemibold, fontSize: 11 },
+  cardTitle: { fontFamily: FONTS.display, fontSize: 15.5, color: COLORS.vertProfond, marginTop: 4 },
+  cardDescription: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, marginTop: 5, lineHeight: 18 },
+  actions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.md },
+  btn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 9 },
+  btnAccept: { backgroundColor: COLORS.vert },
+  btnAcceptéext: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.blanc },
+  btnRefuse: { borderWidth: 1, borderColor: COLORS.bordure },
+  btnRefuseText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ardoise },
+  cardFoot: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginTop: SPACING.md, paddingTop: SPACING.md, borderTopWidth: 1, borderTopColor: COLORS.bordure,
   },
-  compteur: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.ardoise,
-    fontWeight: TYPOGRAPHY.medium,
+  sealRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  sealText: { fontFamily: FONTS.bodySemibold, fontSize: 10.5 },
+  authorText: { fontFamily: FONTS.body, fontSize: 11, color: COLORS.ardoise },
+  exportBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: SPACING.sm, paddingVertical: 8, borderRadius: 9,
+    backgroundColor: 'rgba(45, 106, 79, 0.08)',
   },
-  btnExport: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.or,
+  exportBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.vert },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(28,43,37,0.5)', justifyContent: 'flex-end' },
+  modalCard: {
+    backgroundColor: COLORS.ivoire, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
+    padding: SPACING.xl, paddingBottom: SPACING.xxxl,
   },
-  btnExportTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.vertProfond,
-    fontWeight: TYPOGRAPHY.semibold,
-  },
-
-  liste: { padding: SPACING.lg },
-
-  carte: {
-    backgroundColor: COLORS.blanc,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  carteEntete: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: SPACING.sm,
-    marginBottom: SPACING.sm,
-  },
-  carteTitre: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.md,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.texte,
-    lineHeight: 22,
-  },
-  badge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: RADIUS.full,
-  },
-  badgeTxt: {
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: TYPOGRAPHY.semibold,
-  },
-  carteDesc: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.ardoise,
-    lineHeight: 20,
-  },
-  carteMeta: {
-    flexDirection: 'row',
-    gap: SPACING.lg,
-    marginTop: SPACING.md,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.bordure,
-  },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  metaDot: { width: 8, height: 8, borderRadius: RADIUS.full },
-  metaTxt: { fontSize: TYPOGRAPHY.xs, color: COLORS.ardoise },
-
-  eidasConfirme: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: SPACING.xs,
-    marginTop: SPACING.sm,
-    backgroundColor: '#E8F7EE',
-    borderRadius: RADIUS.sm,
-    padding: SPACING.sm,
-  },
-  eidasConfirmeTxt: {
-    fontSize: TYPOGRAPHY.xs,
-    color: '#1A8A4A',
-    fontWeight: TYPOGRAPHY.medium,
-  },
-  tokenTxt: {
-    fontSize: 10,
-    color: COLORS.ardoise,
-    marginTop: 2,
-    letterSpacing: 0.5,
-  },
-
-  btnHorodater: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    marginTop: SPACING.sm,
-  },
-  btnHorodaterTxt: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.or,
-    fontWeight: TYPOGRAPHY.medium,
-  },
-
-  actions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-  },
-  btnAccepter: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.vert,
-  },
-  btnAccepterTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.blanc,
-  },
-  btnRefuser: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    paddingVertical: SPACING.md,
-    borderRadius: RADIUS.md,
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: COLORS.erreur + '40',
-  },
-  btnRefuserTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.erreur,
-  },
-
-  fab: {
-    position: 'absolute',
-    bottom: SPACING.xxl,
-    right: SPACING.lg,
-    width: 56,
-    height: 56,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.vert,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.vert,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 10,
-    elevation: 6,
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.50)',
-    justifyContent: 'flex-end',
-  },
-  modalContenu: {
-    backgroundColor: COLORS.ivoire,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    paddingBottom: SPACING.xxxl,
-  },
-  modalHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.bordure,
-    alignSelf: 'center',
-    marginBottom: SPACING.lg,
-  },
-  modalEntete: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.xl,
-  },
-  modalTitre: {
-    fontSize: TYPOGRAPHY.xl,
-    fontWeight: TYPOGRAPHY.bold,
-    color: COLORS.texte,
-  },
-  modalClose: {
-    width: 32,
-    height: 32,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.ivoireFonce,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  label: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: TYPOGRAPHY.medium,
-    color: COLORS.texte,
-    marginBottom: SPACING.xs,
-    marginTop: SPACING.md,
-  },
+  modalTitle: { fontFamily: FONTS.display, fontSize: 19, color: COLORS.vertProfond },
+  modalHint: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.terracotta, marginTop: 4 },
+  fieldLabel: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise, marginTop: SPACING.lg, marginBottom: 6 },
   input: {
-    backgroundColor: COLORS.blanc,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.bordure,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.md,
-    color: COLORS.texte,
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: RADIUS.md,
+    paddingHorizontal: 12, paddingVertical: 10, fontFamily: FONTS.body, fontSize: 14, color: COLORS.vertProfond,
   },
-  inputMulti: { height: 100 },
-  auteurRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    marginTop: SPACING.lg,
-  },
-  auteurDot: { width: 8, height: 8, borderRadius: RADIUS.full },
-  auteurTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.ardoise,
-    fontStyle: 'italic',
-  },
-  btnSoumettre: {
-    backgroundColor: COLORS.vert,
-    borderRadius: RADIUS.md,
-    paddingVertical: SPACING.lg,
-    alignItems: 'center',
-    marginTop: SPACING.xl,
-  },
-  btnSoumettreTexte: {
-    color: COLORS.blanc,
-    fontSize: TYPOGRAPHY.md,
-    fontWeight: TYPOGRAPHY.semibold,
-  },
+  inputMultiline: { minHeight: 90, textAlignVertical: 'top' },
+  modalActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl },
+  modalBtn: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: RADIUS.md },
+  modalBtnCancel: { borderWidth: 1, borderColor: COLORS.bordure },
+  modalBtnCancelText: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.ardoise },
+  modalBtnSubmit: { backgroundColor: COLORS.vert },
+  modalBtnSubmitText: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.blanc },
 });

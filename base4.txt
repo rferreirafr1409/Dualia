@@ -1,0 +1,61 @@
+﻿          </View>
+        </View>
+
+        {/* Prochaines pÃ©riodes */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitre}>Prochaines pÃ©riodes</Text>
+          {prochainsElements.map((ev) => {
+            const parent = parents[ev.parentId];
+            return (
+              <View key={ev.id} style={styles.carteEv}>
+                <View style={[styles.barreEv, { backgroundColor: parent.couleur }]} />
+                <View style={styles.contenuEv}>
+                  <Text style={styles.evParent}>{parent.nom}</Text>
+                  <Text style={styles.evDate}>
+                    {format(parseISO(ev.dateDebut), 'd MMM', { locale: fr })}
+                    {'  â†’  '}
+                    {format(parseISO(ev.dateFin), 'd MMM yyyy', { locale: fr })}
+                  </Text>
+                  <Text style={styles.evType}>
+                    {ev.type.replace(/_/g, ' ')}
+                  </Text>
+                </View>
+                <View style={[styles.evDot, { backgroundColor: parent.couleur + '20' }]}>
+                  <Ionicons name="home-outline" size={14} color={parent.couleur} />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={{ height: SPACING.xxxl + 40 }} />
+      </ScrollView>
+
+      {/* Bouton saisir garde */}
+      <View style={styles.fabZone}>
+        <TouchableOpacity
+          style={styles.btnGarde}
+          onPress={handleSaisirGarde}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="add-circle-outline" size={20} color={COLORS.blanc} />
+          <Text style={styles.btnGardeTxt}>Saisir ma garde</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  conteneur: { flex: 1, backgroundColor: COLORS.ivoire },
+
+  legende: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: SPACING.xxl,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+  },
+  legendeItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+  legendePuce: {
+    width: 12,

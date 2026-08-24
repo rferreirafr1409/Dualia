@@ -1,0 +1,31 @@
+﻿        .filter((ev) => parseISO(ev.dateFin) >= new Date())
+        .sort((a, b) => parseISO(a.dateDebut).getTime() - parseISO(b.dateDebut).getTime())
+        .slice(0, 5),
+    [evenements]
+  );
+
+  const recapMois = useMemo(() => {
+    const compteur: Partial<Record<ParentRole, number>> = {};
+    jours.forEach((jour) => {
+      const parentId = parentDuJour(jour, evsMois);
+      if (parentId) {
+        compteur[parentId] = (compteur[parentId] ?? 0) + 1;
+      }
+    });
+    return compteur;
+  }, [jours, evsMois]);
+
+  const handleSaisirGarde = () => {
+    Alert.alert(
+      'Saisir ma garde',
+      'DÃ©clarez une nouvelle pÃ©riode de rÃ©sidence pour votre enfant.',
+      [{ text: 'Compris', style: 'default' }]
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+
+        {/* LÃ©gende parents */}
+        <View style={styles.legende}>

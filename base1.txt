@@ -1,0 +1,51 @@
+﻿import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Dimensions,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useState, useMemo } from 'react';
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isToday,
+  addMonths,
+  subMonths,
+  parseISO,
+  getDay,
+} from 'date-fns';
+import { fr } from 'date-fns/locale';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useStore } from '../../store/useStore';
+import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
+import { EvenementGarde, ParentRole } from '../../types';
+
+const JOURS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const { width } = Dimensions.get('window');
+const CELL = Math.floor((width - SPACING.lg * 2) / 7);
+
+function jourFR(date: Date): number {
+  const d = getDay(date);
+  return d === 0 ? 6 : d - 1;
+}
+
+function parentDuJour(date: Date, evs: EvenementGarde[]): ParentRole | null {
+  for (const ev of evs) {
+    const debut = parseISO(ev.dateDebut);
+    const fin = parseISO(ev.dateFin);
+    if (date >= debut && date <= fin) return ev.parentId;
+  }
+  return null;
+}
+
+export default function CalendrierScreen() {
+  const { evenements, parents } = useStore();
+  const [mois, setMois] = useState(new Date());
+
+  const jours = useMemo(
