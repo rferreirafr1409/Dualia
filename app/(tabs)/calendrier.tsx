@@ -21,15 +21,18 @@ import {
   getDay,
   startOfWeek,
 } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { fr, pt } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../../store/useStore';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { EvenementGarde, ParentRole } from '../../types';
+import { TRADUCTIONS } from '../../constants/i18n';
 
-const JOURS = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+const LOCALES = { fr, pt };
 const { width } = Dimensions.get('window');
-const CELL = Math.floor((width - SPACING.lg * 2) / 7);
+// -2 = compense la bordure de 1px de chaque côté de la grille (styles.grille),
+// sinon la 7e case déborde de la ligne et décale toutes les dates suivantes.
+const CELL = Math.floor((width - SPACING.lg * 2 - 2) / 7);
 
 // Accent premium — or ponctuel, jamais dominant
 const OR = COLORS.or ?? '#C9A84C';
@@ -49,7 +52,10 @@ function parentDuJour(date: Date, evs: EvenementGarde[]): ParentRole | null {
 }
 
 export default function CalendrierScreen() {
-  const { evenements, parents, evenementsCalendrier } = useStore();
+  const { evenements, parents, evenementsCalendrier, langue } = useStore();
+  const t = TRADUCTIONS[langue].calendrier;
+  const dateLocale = LOCALES[langue];
+  const JOURS = t.jours;
   const [mois, setMois] = useState(new Date());
 
   const jours = useMemo(
@@ -106,8 +112,8 @@ export default function CalendrierScreen() {
 
   const handleSaisirGarde = () => {
     Alert.alert(
-      'Saisir ma garde',
-      'Déclarez une nouvelle période de résidence pour votre enfant.',
+      t.ajouter.replace('+ ', ''),
+      t.modalTitre,
       [{ text: 'Compris', style: 'default' }]
     );
   };
@@ -133,20 +139,20 @@ export default function CalendrierScreen() {
           <TouchableOpacity
             onPress={() => setMois((m) => subMonths(m, 1))}
             style={styles.navBtn}
-            accessibilityLabel="Mois précédent"
+            accessibilityLabel={langue === 'pt' ? 'Mês anterior' : 'Mois précédent'}
           >
             <Ionicons name="chevron-back" size={18} color={COLORS.ardoise} />
           </TouchableOpacity>
           <View style={styles.titreMoisWrap}>
             <Text style={styles.titreMois}>
-              {format(mois, 'MMMM yyyy', { locale: fr })}
+              {format(mois, 'MMMM yyyy', { locale: dateLocale })}
             </Text>
             <View style={styles.titreMoisTrait} />
           </View>
           <TouchableOpacity
             onPress={() => setMois((m) => addMonths(m, 1))}
             style={styles.navBtn}
-            accessibilityLabel="Mois suivant"
+            accessibilityLabel={langue === 'pt' ? 'Mês seguinte' : 'Mois suivant'}
           >
             <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
           </TouchableOpacity>
@@ -216,7 +222,7 @@ export default function CalendrierScreen() {
         {/* Prochaines périodes */}
         <View style={styles.section}>
           <View style={styles.sectionTitreLigne}>
-            <Text style={styles.sectionTitre}>Prochaines périodes</Text>
+            <Text style={styles.sectionTitre}>{t.prochainesPeriodes}</Text>
             <View style={styles.sectionTitreTrait} />
           </View>
           {prochainsElements.map((ev) => {
@@ -227,11 +233,11 @@ export default function CalendrierScreen() {
                 <View style={styles.contenuEv}>
                   <Text style={styles.evParent}>{parent.nom}</Text>
                   <Text style={styles.evDate}>
-                    {format(ev.date, 'd MMM', { locale: fr })}
-                    {ev.kind === 'garde' ? '  →  ' + format(ev.dateFin, 'd MMM yyyy', { locale: fr }) : ''}
+                    {format(ev.date, 'd MMM', { locale: dateLocale })}
+                    {ev.kind === 'garde' ? '  →  ' + format(ev.dateFin, 'd MMM yyyy', { locale: dateLocale }) : ''}
                   </Text>
                   <Text style={styles.evType}>
-                    {ev.kind === 'garde' ? ev.type.replace(/_/g, ' ') : ev.titre}
+                    {ev.kind === 'garde' ? (t.typesGarde[ev.type] ?? ev.type.replace(/_/g, ' ')) : ev.titre}
                   </Text>
                 </View>
                 <View style={styles.evDot}>
@@ -253,7 +259,7 @@ export default function CalendrierScreen() {
           activeOpacity={0.85}
         >
           <Ionicons name="add-circle-outline" size={20} color={COLORS.blanc} />
-          <Text style={styles.btnGardeTxt}>Saisir ma garde</Text>
+          <Text style={styles.btnGardeTxt}>{t.ajouter.replace('+ ', '')}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
