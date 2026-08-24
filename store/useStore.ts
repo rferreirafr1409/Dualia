@@ -1,4 +1,4 @@
-﻿import { create } from 'zustand';
+import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
@@ -368,9 +368,36 @@ interface DualiaStore {
   setLangue: (langue: Langue) => void;
 }
 
-const dualiaStorage = Platform.OS === 'web'
-  ? createJSONStorage(() => localStorage)
-  : createJSONStorage(() => AsyncStorage);
+const rawStorage = Platform.OS === 'web' ? localStorage : AsyncStorage;
+
+// Enveloppe le storage pour ne jamais échouer silencieusement : si l'écriture
+// dépasse le quota (ex. localStorage plein), on log une erreur explicite au
+// lieu de perdre les données sans que personne ne le sache.
+const storageAvecAlerte = {
+  getItem: (name: string) => rawStorage.getItem(name),
+  removeItem: (name: string) => rawStorage.removeItem(name),
+  setItem: (name: string, value: string) => {
+    try {
+      const resultat = rawStorage.setItem(name, value);
+      // AsyncStorage.setItem renvoie une Promise ; localStorage.setItem est synchrone.
+      if (resultat && typeof (resultat as any).catch === 'function') {
+        (resultat as Promise<void>).catch((e) => {
+          console.error('[Dualia] Échec sauvegarde (AsyncStorage) :', e);
+        });
+      }
+      return resultat;
+    } catch (e) {
+      console.error('[Dualia] Échec sauvegarde — données non enregistrées :', e);
+      if (Platform.OS === 'web') {
+        window.alert(
+          "Attention : l'espace de stockage du navigateur est plein, cet ajout n'a pas pu être sauvegardé. Essaie de libérer de l'espace ou contacte le support."
+        );
+      }
+    }
+  },
+};
+
+const dualiaStorage = createJSONStorage(() => storageAvecAlerte as any);
 
 export const useStore = create<DualiaStore>()(
   persist(
@@ -498,10 +525,18 @@ export const useStore = create<DualiaStore>()(
         decisions: state.decisions,
         messages: state.messages,
         journalEntries: state.journalEntries,
-        depenses: state.depenses,
+        // On retire photoUri avant de persister : ce sont des images en
+        // base64 (souvent 1-3 Mo chacune) qui saturent le quota de
+        // localStorage (~5-10 Mo). Une fois le quota dépassé, l'écriture
+        // échoue silencieusement et plus AUCUNE dépense n'est sauvegardée
+        // (ce qui explique pourquoi seuls les derniers ajouts disparaissent).
+        depenses: state.depenses.map(({ photoUri, ...rest }) => rest),
         documents: state.documents,
         parentActif: state.parentActif,
         langue: state.langue,
+        evenements: state.evenements,
+        evenementsCalendrier: state.evenementsCalendrier,
+        messagesAnalyses: state.messagesAnalyses,
       }),
     }
   )
