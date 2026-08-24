@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, Alert, ActivityIndicator,
 } from 'react-native';
@@ -25,6 +25,48 @@ import { TRADUCTIONS } from '../../constants/i18n';
 import ErrorBoundary from '../../components/ErrorBoundary';
 
 const BACKEND_URL = 'https://dualia-backend.vercel.app/api/scan-ticket';
+
+// Taille max (en pixels, côté le plus long) et qualité JPEG appliquées avant
+// l'envoi d'une photo au serveur. Sans ça, une photo Android haute résolution
+// (souvent plusieurs Mo une fois en base64) peut dépasser la limite de taille
+// des fonctions serverless Vercel (~4,5 Mo), arriver tronquée côté serveur,
+// et faire échouer la lecture détaillée du ticket (un seul article détecté
+// au lieu du détail ligne par ligne). La version native compressait déjà
+// (quality: 0.6) ; le chemin web ne le faisait pas — corrigé ici.
+const PHOTO_MAX_DIMENSION = 1600;
+const PHOTO_JPEG_QUALITY = 0.7;
+
+function compresserImageWeb(dataUrl: string): Promise<{ dataUrl: string; base64: string; mediaType: string }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > PHOTO_MAX_DIMENSION || height > PHOTO_MAX_DIMENSION) {
+        if (width >= height) {
+          height = Math.round((height * PHOTO_MAX_DIMENSION) / width);
+          width = PHOTO_MAX_DIMENSION;
+        } else {
+          width = Math.round((width * PHOTO_MAX_DIMENSION) / height);
+          height = PHOTO_MAX_DIMENSION;
+        }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        reject(new Error('canvas_unavailable'));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      const compresse = canvas.toDataURL('image/jpeg', PHOTO_JPEG_QUALITY);
+      const base64 = compresse.split(',')[1];
+      resolve({ dataUrl: compresse, base64, mediaType: 'image/jpeg' });
+    };
+    img.onerror = () => reject(new Error('image_load_failed'));
+    img.src = dataUrl;
+  });
+}
 
 const fetchAvecRetry = async (url: string, options: RequestInit, tentatives = 2): Promise<Response> => {
   for (let i = 0; i < tentatives; i++) {
@@ -152,7 +194,7 @@ function FinancesScreenInner() {
     setScanLoading(true);
 
     try {
-      const response = await fetch(BACKEND_URL, {
+      const response = await fetchAvecRetry(BACKEND_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: asset.base64, mediaType: asset.mimeType || 'image/jpeg' }),
@@ -187,15 +229,19 @@ function FinancesScreenInner() {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = async () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(',')[1];
-      setFormPhotoUri(dataUrl);
+      const dataUrlOriginal = reader.result as string;
       setScanLoading(true);
       try {
-        const response = await fetch(BACKEND_URL, {
+        // Compression systématique avant envoi : uniformise le format en
+        // JPEG et réduit la taille, quelle que soit la résolution d'origine
+        // de la photo (les photos Android peuvent être très volumineuses).
+        const { dataUrl, base64, mediaType } = await compresserImageWeb(dataUrlOriginal);
+        setFormPhotoUri(dataUrl);
+
+        const response = await fetchAvecRetry(BACKEND_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ image: base64, mediaType: dataUrl.substring(5, dataUrl.indexOf(';')) || 'image/jpeg' }),
+          body: JSON.stringify({ image: base64, mediaType }),
         });
         if (!response.ok) throw new Error('scan_failed');
         const data = await response.json();
