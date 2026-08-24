@@ -10,6 +10,8 @@ import { useStore } from '../../store/useStore';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
+// Libellés des onglets (barre du bas ET titre du bandeau en haut).
+// Utilisé pour les deux afin de garantir qu'ils restent toujours synchronisés.
 const TAB_LABELS: Record<string, { fr: string; pt: string }> = {
   accueil: { fr: 'Accueil', pt: 'Início' },
   calendrier: { fr: 'Calendrier', pt: 'Calendário' },
@@ -99,6 +101,13 @@ function ScrollableTabBar({ state, descriptors, navigation }: BottomTabBarProps)
 }
 
 export default function TabLayout() {
+  // Langue active : pilote le titre du bandeau en haut de chaque écran.
+  // Avant ce fix, chaque Tabs.Screen avait un `title` français figé en dur,
+  // donc le bandeau restait en français même quand le contenu de la page
+  // passait en portugais.
+  const langue = useStore((state) => state.langue);
+  const titre = (key: keyof typeof TAB_LABELS) => TAB_LABELS[key][langue];
+
   return (
     <Tabs
       tabBar={(props) => <ScrollableTabBar {...props} />}
@@ -124,7 +133,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="accueil"
         options={{
-          title: 'Accueil',
+          title: titre('accueil'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
@@ -138,7 +147,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="calendrier"
         options={{
-          title: 'Calendrier',
+          title: titre('calendrier'),
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
               name={focused ? 'calendar' : ('calendar-outline' as IoniconName)}
@@ -151,7 +160,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="decisions"
         options={{
-          title: 'Décisions',
+          title: titre('decisions'),
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
               name={
@@ -168,7 +177,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="messagerie"
         options={{
-          title: 'Messagerie',
+          title: titre('messagerie'),
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
               name={
@@ -183,7 +192,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="journal"
         options={{
-          title: 'Journal',
+          title: titre('journal'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
@@ -197,7 +206,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="finances"
         options={{
-          title: 'Finances',
+          title: titre('finances'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
@@ -211,7 +220,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="documents"
         options={{
-          title: 'Documents',
+          title: titre('documents'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
@@ -225,7 +234,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="caf"
         options={{
-          title: 'CAF',
+          title: titre('caf'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
