@@ -6,9 +6,11 @@ import {
   EvenementGarde, Decision, Message, Parent, ParentRole,
   EvenementCalendrier,
   JournalEntry, Depense, DocumentItem,
+  CadreFamilial, ReglePartage, PropositionRepartition,
 } from '../types';
 import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
+import { supabase } from '../constants/supabase';
 
 const iso = (d: Date) => d.toISOString();
 
@@ -366,9 +368,51 @@ interface DualiaStore {
   ajouterDocument: (doc: DocumentItem) => void;
   setNouvelleDecisionDraft: (texte: string | null) => void;
   setLangue: (langue: Langue) => void;
+
+  // Cadre familial — règles financières issues de la convention.
+  // null tant qu'aucune convention n'a été importée/validée.
+  cadreFamilial: CadreFamilial | null;
+  setCadreFamilial: (cadre: CadreFamilial) => void;
+  validerRegle: (regleId: string, validePar?: string) => void;
+  rejeterRegle: (regleId: string) => void;
+  ajouterRegleManuelle: (regle: ReglePartage) => void;
+  modifierRegle: (regleId: string, updates: { partA: number; partB: number }) => void;
+  finaliserCadreFamilial: () => void;
+
+  // Propositions de répartition, une par dépense passée dans le moteur de règles.
+  // Ne remplace jamais Depense.rembourse / partA / partB existants : c'est une
+  // couche de traçabilité en plus, pas une nouvelle source de vérité financière.
+  propositionsRepartition: PropositionRepartition[];
+  creerProposition: (proposition: PropositionRepartition) => void;
+  confirmerProposition: (id: string, confirmePar?: string) => void;
+  modifierProposition: (
+    id: string,
+    repartitionFinale: { partA: number; partB: number; montantPartA: number; montantPartB: number },
+    confirmePar?: string
+  ) => void;
+  refuserProposition: (id: string) => void;
+
+  // ---------- Session réelle (Supabase) ----------
+  // familleId et chargementInitial ne sont pas persistés dans le
+  // localStorage : ils sont reconstruits à chaque démarrage depuis la
+  // vraie base, pour ne jamais afficher une donnée périmée.
+  familleId: string | null;
+  chargementInitial: boolean;
+  initialiserSession: () => Promise<void>;
 }
 
-const rawStorage = Platform.OS === 'web' ? localStorage : AsyncStorage;
+// Sur le web, localStorage n'existe que dans un vrai navigateur — pas
+// pendant le pré-rendu côté serveur (web.output "static" dans app.json).
+// On utilise donc un storage factice tant que `window` n'est pas défini,
+// pour ne jamais planter le build.
+const rawStorage =
+  Platform.OS === 'web'
+    ? (typeof window !== 'undefined' ? localStorage : {
+        getItem: () => null,
+        setItem: () => {},
+        removeItem: () => {},
+      })
+    : AsyncStorage;
 
 // Enveloppe le storage pour ne jamais échouer silencieusement : si l'écriture
 // dépasse le quota (ex. localStorage plein), on log une erreur explicite au
@@ -517,6 +561,162 @@ export const useStore = create<DualiaStore>()(
         d.id === id ? { ...d, rembourse: true } : d
       ),
     })),
+
+  // ---------- Cadre familial ----------
+  cadreFamilial: null,
+
+  setCadreFamilial: (cadre) => set({ cadreFamilial: cadre }),
+
+  validerRegle: (regleId, validePar) =>
+    set((state) => {
+      if (!state.cadreFamilial) return state;
+      return {
+        cadreFamilial: {
+          ...state.cadreFamilial,
+          regles: state.cadreFamilial.regles.map((r) =>
+            r.id === regleId
+              ? { ...r, validation: { statut: 'validee' as const, valideLe: new Date().toISOString(), validePar } }
+              : r
+          ),
+        },
+      };
+    }),
+
+  rejeterRegle: (regleId) =>
+    set((state) => {
+      if (!state.cadreFamilial) return state;
+      return {
+        cadreFamilial: {
+          ...state.cadreFamilial,
+          regles: state.cadreFamilial.regles.map((r) =>
+            r.id === regleId ? { ...r, validation: { ...r.validation, statut: 'rejetee' as const } } : r
+          ),
+        },
+      };
+    }),
+
+  ajouterRegleManuelle: (regle) =>
+    set((state) => {
+      const base: CadreFamilial = state.cadreFamilial ?? { regles: [], statut: 'a_verifier' };
+      return { cadreFamilial: { ...base, regles: [...base.regles, regle] } };
+    }),
+
+  modifierRegle: (regleId, updates) =>
+    set((state) => {
+      if (!state.cadreFamilial) return state;
+      return {
+        cadreFamilial: {
+          ...state.cadreFamilial,
+          regles: state.cadreFamilial.regles.map((r) =>
+            r.id === regleId ? { ...r, partA: updates.partA, partB: updates.partB } : r
+          ),
+        },
+      };
+    }),
+
+  finaliserCadreFamilial: () =>
+    set((state) => {
+      if (!state.cadreFamilial) return state;
+      return {
+        cadreFamilial: {
+          ...state.cadreFamilial,
+          statut: 'valide',
+          valideLe: new Date().toISOString(),
+        },
+      };
+    }),
+
+  // ---------- Propositions de répartition ----------
+  propositionsRepartition: [],
+
+  creerProposition: (proposition) =>
+    set((state) => ({ propositionsRepartition: [proposition, ...state.propositionsRepartition] })),
+
+  confirmerProposition: (id, confirmePar) =>
+    set((state) => ({
+      propositionsRepartition: state.propositionsRepartition.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              statut: 'confirmee' as const,
+              repartitionFinale: { ...p.propositionInitiale },
+              confirmeLe: new Date().toISOString(),
+              confirmePar,
+            }
+          : p
+      ),
+    })),
+
+  modifierProposition: (id, repartitionFinale, confirmePar) =>
+    set((state) => ({
+      propositionsRepartition: state.propositionsRepartition.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              statut: 'modifiee' as const,
+              repartitionFinale,
+              confirmeLe: new Date().toISOString(),
+              confirmePar,
+            }
+          : p
+      ),
+    })),
+
+  refuserProposition: (id) =>
+    set((state) => ({
+      propositionsRepartition: state.propositionsRepartition.map((p) =>
+        p.id === id ? { ...p, statut: 'refusee' as const } : p
+      ),
+    })),
+
+  // ---------- Session réelle (Supabase) ----------
+  familleId: null,
+  chargementInitial: true,
+
+  initialiserSession: async () => {
+    const { data: userData } = await supabase.auth.getUser();
+    const user = userData.user;
+    if (!user) {
+      set({ chargementInitial: false });
+      return;
+    }
+
+    const { data: moi, error: erreurMoi } = await supabase
+      .from('parents')
+      .select('id, famille_id, nom, role, couleur')
+      .eq('id', user.id)
+      .single();
+
+    if (erreurMoi || !moi) {
+      console.error('[Dualia] Impossible de charger le profil parent :', erreurMoi);
+      set({ chargementInitial: false });
+      return;
+    }
+
+    const { data: tousLesParents } = await supabase
+      .from('parents')
+      .select('id, nom, role, couleur')
+      .eq('famille_id', moi.famille_id);
+
+    const parentsMap: Record<ParentRole, Parent> = { ...PARENTS };
+    (tousLesParents ?? []).forEach((p: any) => {
+      const role = p.role as ParentRole;
+      parentsMap[role] = {
+        id: role,
+        nom: p.nom,
+        email: '',
+        couleur: p.couleur ?? PARENTS[role].couleur,
+        uuid: p.id,
+      };
+    });
+
+    set({
+      familleId: moi.famille_id,
+      parentActif: moi.role as ParentRole,
+      parents: parentsMap,
+      chargementInitial: false,
+    });
+  },
 }),
     {
       name: 'dualia-storage',
@@ -537,6 +737,8 @@ export const useStore = create<DualiaStore>()(
         evenements: state.evenements,
         evenementsCalendrier: state.evenementsCalendrier,
         messagesAnalyses: state.messagesAnalyses,
+        cadreFamilial: state.cadreFamilial,
+        propositionsRepartition: state.propositionsRepartition,
       }),
     }
   )

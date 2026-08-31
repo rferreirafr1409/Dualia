@@ -1,4 +1,11 @@
-﻿  const prochainsEvs = useMemo(
+const prochainsEvs = useMemo(
+  () =>
+    [...evenements]
+      .filter((ev) => parseISO(ev.dateFin) >= new Date())
+      .sort((a, b) => parseISO(a.dateDebut).getTime() - parseISO(b.dateDebut).getTime())
+      .slice(0, 5),
+  [evenements]
+);  const prochainsEvs = useMemo(
     () =>
       [...evenements]
         .filter((ev) => parseISO(ev.dateFin) >= new Date())

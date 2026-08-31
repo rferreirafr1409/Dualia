@@ -4,6 +4,11 @@ export interface Parent {
   nom: string;
   email: string;
   couleur: string;
+  // Identifiant réel Supabase (auth.users.id), utilisé en interne par le
+  // store pour les écritures (clé étrangère auteur_id). N'est jamais
+  // affiché à l'écran — les composants continuent d'utiliser id: ParentRole
+  // comme avant.
+  uuid?: string;
 }
 export type TypeGarde =
   | 'résidence_principale'
@@ -87,4 +92,79 @@ export interface DocumentItem {
   date: string;
   certifie: boolean;
   note?: string;
+}
+
+// ---------- Cadre familial (règles financières issues de la convention) ----------
+
+export type CategorieRegle = 'fraisMedicaux' | 'fraisScolaires' | 'activitesExtra' | 'autre';
+export type NiveauConfiance = 'haute' | 'moyenne' | 'basse';
+export type StatutValidation = 'a_verifier' | 'validee' | 'rejetee';
+
+export interface ClauseSource {
+  reference?: string;
+  extrait?: string;
+  page?: number;
+}
+
+export interface ReglePartage {
+  id: string;
+  categorie: CategorieRegle;
+  partA: number; // %
+  partB: number; // %
+  clauseSource?: ClauseSource;
+  conditions?: {
+    accordPrealable?: boolean;
+    plafondMontant?: number;
+    justificatifObligatoire?: boolean;
+    remboursementAssuranceDeduit?: boolean;
+  };
+  detection: {
+    confiance: NiveauConfiance;
+    source: 'ia' | 'manuel';
+  };
+  validation: {
+    statut: StatutValidation;
+    valideLe?: string;
+    validePar?: string;
+  };
+}
+
+export interface CadreFamilial {
+  regles: ReglePartage[];
+  pension?: {
+    montant: number;
+    periodicite: 'mensuelle' | 'trimestrielle' | 'autre';
+    clauseSource?: ClauseSource;
+  };
+  documentSource?: {
+    id: string;
+    type: 'jugement' | 'convention';
+    date?: string;
+  };
+  statut: 'analyse_en_cours' | 'a_verifier' | 'valide';
+  valideLe?: string;
+}
+
+export interface PropositionRepartition {
+  id: string;
+  depenseId: string;
+  regleId?: string;
+  categorieProposee: CategorieRegle;
+  confianceClassification: NiveauConfiance;
+  montantTotal: number;
+  propositionInitiale: {
+    partA: number;
+    partB: number;
+    montantPartA: number;
+    montantPartB: number;
+  };
+  repartitionFinale?: {
+    partA: number;
+    partB: number;
+    montantPartA: number;
+    montantPartB: number;
+  };
+  statut: 'a_confirmer' | 'confirmee' | 'modifiee' | 'refusee';
+  confirmeLe?: string;
+  confirmePar?: string;
 }

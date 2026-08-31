@@ -23,9 +23,12 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
+    "web": {
+      "output": "static"
+    },
     "experiments": {
-  "baseUrl": "/Dualia"
-},
+      "baseUrl": "/Dualia"
+    },
     "plugins": [
       "expo-router",
       "expo-font"

@@ -1,58 +1,53 @@
-﻿import { Stack } from 'expo-router';
+﻿import { useEffect } from 'react';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { View, ActivityIndicator } from 'react-native';
-import { useFonts } from 'expo-font';
-import {
-  Fraunces_500Medium,
-  Fraunces_600SemiBold,
-} from '@expo-google-fonts/fraunces';
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-} from '@expo-google-fonts/inter';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/theme';
-import ErrorBoundary from '../components/ErrorBoundary';
-import { Platform } from 'react-native';
-
-if (Platform.OS === 'web' && typeof window !== 'undefined') {
-  window.onerror = function (message, source, lineno, colno, error) {
-    window.alert('Erreur JS: ' + message + '\n' + source + ':' + lineno + ':' + colno + '\n' + (error && error.stack ? error.stack : ''));
-  };
-  window.onunhandledrejection = function (event) {
-    window.alert('Promesse rejetee: ' + (event.reason && event.reason.message ? event.reason.message : String(event.reason)));
-  };
-}
+import { useStore } from '../store/useStore';
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({
-    Fraunces_500Medium,
-    Fraunces_600SemiBold,
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-  });
+  const initialiserSession = useStore((s) => s.initialiserSession);
+  const chargementInitial = useStore((s) => s.chargementInitial);
 
-  if (!fontsLoaded) {
+  useEffect(() => {
+    initialiserSession();
+  }, []);
+
+  // Tant que la session n'est pas résolue, on n'affiche rien du contenu de
+  // l'app : ça évite un flash des données mockées par défaut (ex. "Bonjour
+  // Marie") avant que le vrai parent connecté ne soit chargé depuis Supabase.
+  if (chargementInitial) {
     return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.ivoire }}>
-        <ActivityIndicator color={COLORS.vert} />
-      </View>
+      <SafeAreaProvider>
+        <StatusBar style="light" backgroundColor={COLORS.vertProfond} />
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: COLORS.ivoire,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <ActivityIndicator size="large" color={COLORS.vert} />
+        </View>
+      </SafeAreaProvider>
     );
   }
 
   return (
-    <ErrorBoundary>
     <SafeAreaProvider>
       <StatusBar style="light" backgroundColor={COLORS.vertProfond} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="validation-cadre" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="creer-espace" />
+        <Stack.Screen name="rejoindre" />
+        <Stack.Screen name="connexion" />
+        <Stack.Screen name="mot-de-passe-oublie" />
+        <Stack.Screen name="reinitialiser-mot-de-passe" />
       </Stack>
     </SafeAreaProvider>
-    </ErrorBoundary>
   );
 }

@@ -17,9 +17,10 @@ function alertCompat(titre: string, message?: string) {
   }
 }
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
-import { Depense, CategorieDepense, ParentRole } from '../../types';
+import { Depense, CategorieDepense, ParentRole, CategorieRegle, ReglePartage } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
 import { TRADUCTIONS } from '../../constants/i18n';
 import ErrorBoundary from '../../components/ErrorBoundary';
@@ -35,6 +36,25 @@ const BACKEND_URL = 'https://dualia-backend.vercel.app/api/scan-ticket';
 // (quality: 0.6) ; le chemin web ne le faisait pas — corrigé ici.
 const PHOTO_MAX_DIMENSION = 1600;
 const PHOTO_JPEG_QUALITY = 0.7;
+
+// Correspondance entre les catégories de dépense (11 valeurs, granulaires)
+// et les catégories de règle du cadre familial (4 valeurs, issues de la
+// convention). Seules santé/école/activités ont un équivalent direct : les
+// autres catégories (quotidien, alimentaire...) restent des dépenses
+// courantes sans règle de répartition automatique, cohérent avec ce qu'on
+// a défini pour le module Finances.
+const CATEGORIE_VERS_REGLE: Partial<Record<CategorieDepense, CategorieRegle>> = {
+  sante: 'fraisMedicaux',
+  ecole: 'fraisScolaires',
+  activites: 'activitesExtra',
+};
+
+const LABELS_CATEGORIE_REGLE: Record<CategorieRegle, string> = {
+  fraisMedicaux: 'frais médicaux',
+  fraisScolaires: 'frais scolaires',
+  activitesExtra: 'activités extrascolaires',
+  autre: 'autre',
+};
 
 function compresserImageWeb(dataUrl: string): Promise<{ dataUrl: string; base64: string; mediaType: string }> {
   return new Promise((resolve, reject) => {
@@ -109,6 +129,42 @@ function formatDateCourt(isoDate: string, langue: 'fr' | 'pt') {
   return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'short' });
 }
 
+function formatDateLong(isoDate: string, langue: 'fr' | 'pt') {
+  const d = new Date(isoDate);
+  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// Sur les tickets complexes (remises par article, poids, taxes de dépôt...),
+// l'IA peut manquer des lignes ou se tromper sur certains montants — c'est
+// un scan visuel, jamais garanti à 100%. Plutôt que de compter sur le
+// prompt seul pour être exact, on vérifie ici que la somme des lignes
+// correspond bien au total imprimé sur le ticket (qui, lui, est un chiffre
+// unique et presque toujours lu correctement). Si un écart existe, on
+// ajoute une ligne d'ajustement pour que le montant total enregistré dans
+// Dualia soit TOUJOURS le vrai total du ticket, même si la répartition
+// par catégorie est imparfaite.
+function reconcilierLignes(
+  lignes: { libelle: string; montant: number; categorie: string }[],
+  montantTotal: number | null | undefined
+): { libelle: string; montant: number; categorie: string }[] {
+  if (!Array.isArray(lignes) || lignes.length === 0 || typeof montantTotal !== 'number') {
+    return lignes;
+  }
+  const somme = lignes.reduce((acc, l) => acc + (Number(l.montant) || 0), 0);
+  const ecart = Math.round((montantTotal - somme) * 100) / 100;
+  if (Math.abs(ecart) < 0.05) {
+    return lignes;
+  }
+  return [
+    ...lignes,
+    {
+      libelle: 'Ajustement (écart de lecture)',
+      montant: ecart,
+      categorie: 'autre',
+    },
+  ];
+}
+
 function FinancesScreenInner() {
   const depenses = useStore((s) => s.depenses);
   const parents = useStore((s) => s.parents);
@@ -116,6 +172,7 @@ function FinancesScreenInner() {
   const ajouterDepense = useStore((s) => s.ajouterDepense);
   const reglerDepense = useStore((s) => s.reglerDepense);
   const langue = useStore((s) => s.langue);
+  const cadreFamilial = useStore((s) => s.cadreFamilial);const router = useRouter();
   const t = TRADUCTIONS[langue].finances;
 
   const [modalVisible, setModalVisible] = useState(false);
@@ -127,7 +184,8 @@ function FinancesScreenInner() {
   const [formCategorie, setFormCategorie] = useState<CategorieDepense>('quotidien');
   const [formDate, setFormDate] = useState<Date | null>(new Date());
   const [formPhotoUri, setFormPhotoUri] = useState<string | undefined>(undefined);
-  const [formPartage, setFormPartage] = useState<'50/50' | 'total'>('50/50');
+  const [formPartage, setFormPartage] = useState<'50/50' | 'total' | 'regle'>('50/50');
+  const [whyOpen, setWhyOpen] = useState(false);
   const [scanLignes, setScanLignes] = useState<{ libelle: string; montant: number; categorie: string }[]>([]);
   const [scanRecapVisible, setScanRecapVisible] = useState(false);
   const [scanCommercant, setScanCommercant] = useState('');
@@ -135,6 +193,20 @@ function FinancesScreenInner() {
   const webGalleryInputRef = useRef<any>(null);
   const [detailDepense, setDetailDepense] = useState<Depense | null>(null);
   const [scanDate, setScanDate] = useState<Date | null>(null);
+
+  // Ne retrouve une règle que si le cadre familial dans son ensemble a été
+  // validé par l'utilisateur (statut 'valide'), et que la règle elle-même a
+  // le statut 'validee' — jamais une règle encore 'a_verifier' ou 'rejetee'.
+  const trouverRegleValidee = (categorie: CategorieDepense): ReglePartage | undefined => {
+    if (!cadreFamilial || cadreFamilial.statut !== 'valide') return undefined;
+    const categorieRegle = CATEGORIE_VERS_REGLE[categorie];
+    if (!categorieRegle) return undefined;
+    return cadreFamilial.regles.find(
+      (r) => r.categorie === categorieRegle && r.validation.statut === 'validee'
+    );
+  };
+
+  const regleActive = trouverRegleValidee(formCategorie);
 
   const soldes = useMemo(() => {
     let totalA = 0;
@@ -158,6 +230,17 @@ function FinancesScreenInner() {
     setFormDate(new Date());
     setFormPhotoUri(undefined);
     setFormPartage('50/50');
+    setWhyOpen(false);
+  };
+
+  // Quand la catégorie change, on propose automatiquement la règle du cadre
+  // familial si elle existe et a été validée — mais l'utilisateur reste
+  // libre de revenir sur 50/50 ou "j'avance tout" ensuite. Rien n'est imposé.
+  const selectionnerCategorie = (cat: CategorieDepense) => {
+    setFormCategorie(cat);
+    const regle = trouverRegleValidee(cat);
+    setFormPartage(regle ? 'regle' : '50/50');
+    setWhyOpen(false);
   };
 
   const ouvrirModal = () => {
@@ -210,7 +293,7 @@ function FinancesScreenInner() {
       if (data.date) setFormDate(new Date(data.date));
 
     if (Array.isArray(data.lignes) && data.lignes.length > 1) {
-      setScanLignes(data.lignes);
+      setScanLignes(reconcilierLignes(data.lignes, data.montant));
       setScanCommercant(data.commercant || '');
       setScanDate(data.date ? new Date(data.date) : new Date());
       setModalVisible(false);      setScanRecapVisible(true);
@@ -250,7 +333,7 @@ function FinancesScreenInner() {
         if (data.description) setFormDescription(data.description);
         if (data.date) setFormDate(new Date(data.date));
         if (Array.isArray(data.lignes) && data.lignes.length > 1) {
-          setScanLignes(data.lignes);
+          setScanLignes(reconcilierLignes(data.lignes, data.montant));
           setScanCommercant(data.commercant || '');
           setScanDate(data.date ? new Date(data.date) : new Date());
           setModalVisible(false);          setScanRecapVisible(true);
@@ -278,8 +361,18 @@ function FinancesScreenInner() {
       return;
     }
 
-    const partA = formPartage === '50/50' ? montant / 2 : (parentActif === 'A' ? montant : 0);
-    const partB = formPartage === '50/50' ? montant / 2 : (parentActif === 'B' ? montant : 0);
+    let partA: number;
+    let partB: number;
+    if (formPartage === 'regle' && regleActive) {
+      partA = montant * (regleActive.partA / 100);
+      partB = montant * (regleActive.partB / 100);
+    } else if (formPartage === '50/50') {
+      partA = montant / 2;
+      partB = montant / 2;
+    } else {
+      partA = parentActif === 'A' ? montant : 0;
+      partB = parentActif === 'B' ? montant : 0;
+    }
 
     const nouvelle: Depense = {
       id: `dep-${Date.now()}`,
@@ -310,8 +403,23 @@ function FinancesScreenInner() {
     const commercantFinal = scanCommercant || undefined;
 
     Object.entries(groupes).forEach(([cat, montantCat], index) => {
-      const partA = formPartage === '50/50' ? montantCat / 2 : (parentActif === 'A' ? montantCat : 0);
-      const partB = formPartage === '50/50' ? montantCat / 2 : (parentActif === 'B' ? montantCat : 0);
+      // Si le mode "selon votre cadre familial" est actif globalement et
+      // qu'une règle validée existe pour CETTE catégorie précise, on
+      // l'applique ; sinon on retombe sur 50/50 pour ce groupe-là plutôt
+      // que d'inventer une répartition.
+      const regleGroupe = formPartage === 'regle' ? trouverRegleValidee(cat as CategorieDepense) : undefined;
+      let partA: number;
+      let partB: number;
+      if (regleGroupe) {
+        partA = montantCat * (regleGroupe.partA / 100);
+        partB = montantCat * (regleGroupe.partB / 100);
+      } else if (formPartage === 'total') {
+        partA = parentActif === 'A' ? montantCat : 0;
+        partB = parentActif === 'B' ? montantCat : 0;
+      } else {
+        partA = montantCat / 2;
+        partB = montantCat / 2;
+      }
       const nouvelle: Depense = {
         id: `dep-${Date.now()}-${index}`,
         categorie: cat as CategorieDepense,
@@ -354,7 +462,26 @@ function FinancesScreenInner() {
           <Text style={styles.soldeMontantSecondaire}>{formatMontant(Math.abs(soldes.solde))}</Text>
         </View>
 
-        <Text style={styles.sectionTitre}>{t.depensesRecentes}</Text>
+        <Text style={styles.sectionTitre}>{t.depensesRecentes}</Text>        {cadreFamilial && (
+          <Pressable style={styles.cadreCard} onPress={() => router.push('/validation-cadre' as any)}>
+            <View style={styles.cadreCardGauche}>
+              <Ionicons
+                name={cadreFamilial.statut === 'valide' ? 'shield-checkmark' : 'alert-circle-outline'}
+                size={20}
+                color={cadreFamilial.statut === 'valide' ? COLORS.vert : COLORS.or}
+              />
+              <View>
+                <Text style={styles.cadreCardTitre}>Votre cadre familial</Text>
+                <Text style={styles.cadreCardSousTitre}>
+                  {cadreFamilial.statut === 'valide'
+                    ? 'Validé — règles actives'
+                    : `${cadreFamilial.regles.filter((r) => r.validation.statut !== 'a_verifier').length} / ${cadreFamilial.regles.length} règles vérifiées`}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
+          </Pressable>
+        )}
 
         {depenses.length === 0 && (
           <Text style={styles.videTexte}>{t.aucuneDepense}</Text>
@@ -363,7 +490,7 @@ function FinancesScreenInner() {
         {depenses.map((dep) => {
           const cat = CATEGORIES.find((c) => c.key === dep.categorie);
           return (
-            <Pressable key={dep.id} onPress={() => dep.lignesDetail && dep.lignesDetail.length > 0 && setDetailDepense(dep)} style={styles.depenseCard}>
+            <Pressable key={dep.id} onPress={() => setDetailDepense(dep)} style={styles.depenseCard}>
               <View style={styles.depenseIcone}>
                 <Ionicons name={cat?.icon ?? 'wallet-outline'} size={20} color={COLORS.vert} />
               </View>
@@ -379,7 +506,7 @@ function FinancesScreenInner() {
                 {dep.rembourse ? (
                   <Text style={styles.badgeRegle}>{t.regle}</Text>
                 ) : (
-                  <Pressable onPress={() => reglerDepense(dep.id)}>
+                  <Pressable onPress={(e: any) => { e.stopPropagation?.(); reglerDepense(dep.id); }}>
                     <Text style={styles.badgeEnAttente}>{t.marquerRegle}</Text>
                   </Pressable>
                 )}
@@ -467,7 +594,7 @@ function FinancesScreenInner() {
                   <Pressable
                     key={c.key}
                     style={[styles.categorieChip, formCategorie === c.key && styles.categorieChipActive]}
-                    onPress={() => setFormCategorie(c.key)}
+                    onPress={() => selectionnerCategorie(c.key)}
                   >
                     <Ionicons
                       name={c.icon}
@@ -483,6 +610,16 @@ function FinancesScreenInner() {
 
               <Text style={styles.label}>{t.repartition}</Text>
               <View style={styles.categorieRow}>
+                {regleActive ? (
+                  <Pressable
+                    style={[styles.categorieChip, formPartage === 'regle' && styles.categorieChipActive]}
+                    onPress={() => setFormPartage('regle')}
+                  >
+                    <Text style={[styles.categorieChipTexte, formPartage === 'regle' && styles.categorieChipTexteActive]}>
+                      Selon votre cadre familial ({regleActive.partA}/{regleActive.partB})
+                    </Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   style={[styles.categorieChip, formPartage === '50/50' && styles.categorieChipActive]}
                   onPress={() => setFormPartage('50/50')}
@@ -500,6 +637,32 @@ function FinancesScreenInner() {
                   </Text>
                 </Pressable>
               </View>
+
+              {formPartage === 'regle' && regleActive ? (
+                <>
+                  <Pressable style={styles.whyToggle} onPress={() => setWhyOpen(!whyOpen)}>
+                    <Text style={styles.whyToggleTexte}>Pourquoi cette répartition ?</Text>
+                    <Ionicons name={whyOpen ? 'chevron-up' : 'chevron-down'} size={14} color={COLORS.vert} />
+                  </Pressable>
+                  {whyOpen && (
+                    <View style={styles.whyBox}>
+                      <Text style={styles.whyBoxLigne}>
+                        Catégorie : {LABELS_CATEGORIE_REGLE[regleActive.categorie]}
+                      </Text>
+                      {regleActive.clauseSource?.reference && (
+                        <Text style={styles.whyBoxLigne}>Source : {regleActive.clauseSource.reference}</Text>
+                      )}
+                      {regleActive.clauseSource?.extrait && (
+                        <Text style={styles.whyBoxExtrait}>« {regleActive.clauseSource.extrait} »</Text>
+                      )}
+                      <Text style={styles.whyBoxNote}>
+                        Répartition proposée à titre indicatif à partir de votre cadre familial. Ne
+                        remplace pas un avis juridique.
+                      </Text>
+                    </View>
+                  )}
+                </>
+              ) : null}
 
               <Pressable style={styles.submitBtn} onPress={soumettre}>
                 <Text style={styles.submitBtnTexte}>{t.enregistrer}</Text>
@@ -535,11 +698,19 @@ function FinancesScreenInner() {
                   <>
                     {Object.entries(groupes).map(([cat, montantCat]) => {
                       const catDef = CATEGORIES.find((c) => c.key === cat);
+                      const regleGroupe = trouverRegleValidee(cat as CategorieDepense);
                       return (
                         <View key={cat} style={styles.recapLigne}>
                           <View style={styles.recapLigneGauche}>
                             <Ionicons name={catDef?.icon ?? 'ellipsis-horizontal-outline'} size={18} color={COLORS.vert} />
-                            <Text style={styles.recapLigneTexte}>{t.categories[cat as keyof typeof t.categories] ?? cat}</Text>
+                            <View>
+                              <Text style={styles.recapLigneTexte}>{t.categories[cat as keyof typeof t.categories] ?? cat}</Text>
+                              {regleGroupe && (
+                                <Text style={styles.recapLigneRegle}>
+                                  Cadre familial : {regleGroupe.partA}/{regleGroupe.partB}
+                                </Text>
+                              )}
+                            </View>
                           </View>
                           <Text style={styles.recapLigneMontant}>{formatMontant(montantCat)}</Text>
                         </View>
@@ -552,6 +723,34 @@ function FinancesScreenInner() {
                   </>
                 );
               })()}
+
+              <Text style={styles.label}>{t.repartition}</Text>
+              <View style={styles.categorieRow}>
+                <Pressable
+                  style={[styles.categorieChip, formPartage === 'regle' && styles.categorieChipActive]}
+                  onPress={() => setFormPartage('regle')}
+                >
+                  <Text style={[styles.categorieChipTexte, formPartage === 'regle' && styles.categorieChipTexteActive]}>
+                    Selon le cadre familial (par catégorie)
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.categorieChip, formPartage === '50/50' && styles.categorieChipActive]}
+                  onPress={() => setFormPartage('50/50')}
+                >
+                  <Text style={[styles.categorieChipTexte, formPartage === '50/50' && styles.categorieChipTexteActive]}>
+                    {t.partage5050}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.categorieChip, formPartage === 'total' && styles.categorieChipActive]}
+                  onPress={() => setFormPartage('total')}
+                >
+                  <Text style={[styles.categorieChipTexte, formPartage === 'total' && styles.categorieChipTexteActive]}>
+                    {t.jePaieTout}
+                  </Text>
+                </Pressable>
+              </View>
 
               <Pressable style={styles.submitBtn} onPress={soumettreLignesCategorisees}>
                 <Text style={styles.submitBtnTexte}>{t.recapEnregistrer}</Text>
@@ -571,19 +770,62 @@ function FinancesScreenInner() {
                   <Ionicons name="close" size={24} color={COLORS.vertProfond} />
                 </Pressable>
               </View>
+
+              {/* Infos de base, toujours affichées, même sans détail ligne par ligne */}
+              <View style={styles.recapLigne}>
+                <Text style={styles.recapLigneTexte}>{t.montant}</Text>
+                <Text style={styles.recapLigneMontant}>{detailDepense ? formatMontant(detailDepense.montant) : ''}</Text>
+              </View>
+              <View style={styles.recapLigne}>
+                <Text style={styles.recapLigneTexte}>{t.date}</Text>
+                <Text style={styles.recapLigneMontant}>{detailDepense ? formatDateLong(detailDepense.date, langue) : ''}</Text>
+              </View>
               {detailDepense?.commercant ? (
-                <Text style={styles.recapCommercant}>{detailDepense.commercant}</Text>
-              ) : null}
-              {detailDepense?.lignesDetail?.map((ligne, index) => (
-                <View key={index} style={styles.recapLigne}>
-                  <Text style={styles.recapLigneTexte}>{ligne.libelle}</Text>
-                  <Text style={styles.recapLigneMontant}>{formatMontant(ligne.montant)}</Text>
+                <View style={styles.recapLigne}>
+                  <Text style={styles.recapLigneTexte}>{t.commercant}</Text>
+                  <Text style={styles.recapLigneMontant}>{detailDepense.commercant}</Text>
                 </View>
-              ))}
+              ) : null}
+              <View style={styles.recapLigne}>
+                <Text style={styles.recapLigneTexte}>{t.categorie}</Text>
+                <Text style={styles.recapLigneMontant}>
+                  {detailDepense ? (t.categories[detailDepense.categorie as keyof typeof t.categories] ?? detailDepense.categorie) : ''}
+                </Text>
+              </View>
+              <View style={styles.recapLigne}>
+                <Text style={styles.recapLigneTexte}>{detailDepense ? parentNom(detailDepense.auteurId) : ''}</Text>
+                <Text style={styles.recapLigneMontant}>{detailDepense?.rembourse ? t.regle : t.marquerRegle}</Text>
+              </View>
+
+              {/* Détail ligne par ligne, uniquement s'il existe (ticket scanné multi-articles) */}
+              {detailDepense?.lignesDetail && detailDepense.lignesDetail.length > 0 ? (
+                <>
+                  <Text style={[styles.label, { marginTop: SPACING.md }]}>{t.recapTitre}</Text>
+                  {detailDepense.lignesDetail.map((ligne, index) => (
+                    <View key={index} style={styles.recapLigne}>
+                      <Text style={styles.recapLigneTexte}>{ligne.libelle}</Text>
+                      <Text style={styles.recapLigneMontant}>{formatMontant(ligne.montant)}</Text>
+                    </View>
+                  ))}
+                </>
+              ) : null}
+
               <View style={styles.recapTotalRow}>
                 <Text style={styles.recapTotalLabel}>{t.recapTotal}</Text>
                 <Text style={styles.recapTotalMontant}>{detailDepense ? formatMontant(detailDepense.montant) : ''}</Text>
               </View>
+
+              {detailDepense && !detailDepense.rembourse ? (
+                <Pressable
+                  style={styles.submitBtn}
+                  onPress={() => {
+                    reglerDepense(detailDepense.id);
+                    setDetailDepense(null);
+                  }}
+                >
+                  <Text style={styles.submitBtnTexte}>{t.marquerRegle}</Text>
+                </Pressable>
+              ) : null}
             </ScrollView>
           </View>
         </View>
@@ -603,7 +845,15 @@ const styles = StyleSheet.create({
   soldeLabel: { fontFamily: FONTS.body, fontSize: 12.5, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' },
   soldeMontant: { fontFamily: FONTS.display, fontSize: 30, color: COLORS.blanc, marginTop: 2, marginBottom: SPACING.sm },
   soldeSeparateur: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: SPACING.sm },
-  soldeMontantSecondaire: { fontFamily: FONTS.displaySemibold, fontSize: 20, color: COLORS.or, marginTop: 2 },
+  soldeMontantSecondaire: { fontFamily: FONTS.displaySemibold, fontSize: 20, color: COLORS.or, marginTop: 2 },  cadreCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: COLORS.blanc, borderRadius: RADIUS.md, padding: SPACING.md,
+    marginHorizontal: SPACING.lg, marginBottom: SPACING.lg,
+    borderWidth: 1, borderColor: COLORS.bordure,
+  },
+  cadreCardGauche: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  cadreCardTitre: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.vertProfond },
+  cadreCardSousTitre: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, marginTop: 2 },
   sectionTitre: {
     fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.ardoise, textTransform: 'uppercase',
     marginHorizontal: SPACING.lg, marginBottom: SPACING.sm,
@@ -665,6 +915,12 @@ const styles = StyleSheet.create({
   categorieChipActive: { backgroundColor: COLORS.vert, borderColor: COLORS.vert },
   categorieChipTexte: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond },
   categorieChipTexteActive: { color: COLORS.blanc },
+  whyToggle: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.sm },
+  whyToggleTexte: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vert },
+  whyBox: { backgroundColor: '#F3F1EC', borderRadius: 8, padding: 12, marginTop: 8 },
+  whyBoxLigne: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, marginBottom: 4 },
+  whyBoxExtrait: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, fontStyle: 'italic', marginTop: 2, marginBottom: 6, lineHeight: 17 },
+  whyBoxNote: { fontFamily: FONTS.body, fontSize: 11, color: COLORS.ardoise, lineHeight: 16 },
   submitBtn: {
     backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 14,
     alignItems: 'center', marginTop: SPACING.lg, marginBottom: SPACING.md,
@@ -673,6 +929,7 @@ const styles = StyleSheet.create({
   recapLigne: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#EEE' },
   recapLigneGauche: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   recapLigneTexte: { fontFamily: FONTS.body, fontSize: 14, color: COLORS.vertProfond },
+  recapLigneRegle: { fontFamily: FONTS.body, fontSize: 10.5, color: COLORS.vert, marginTop: 1 },
   recapLigneMontant: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.vertProfond },
   recapTotalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, marginTop: 8, borderTopWidth: 1.5, borderTopColor: COLORS.vertProfond },
   recapTotalLabel: { fontFamily: FONTS.displaySemibold, fontSize: 15, color: COLORS.vertProfond },

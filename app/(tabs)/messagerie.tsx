@@ -1,7 +1,7 @@
 // app/(tabs)/messagerie.tsx
 
 import React from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
@@ -92,28 +92,10 @@ export default function MessagerieScreen() {
   const confirmerSuggestion = (msgId: string) => {
     const sug = suggestions[msgId];
     if (!sug) return;
-
-    // Le serveur d'extraction peut renvoyer une date dans un format que
-    // new Date() accepte (utilisé pour l'affichage de la bannière) mais que
-    // parseISO() de date-fns (utilisé par le Calendrier) rejette
-    // silencieusement — l'événement était alors enregistré mais invisible.
-    // On normalise ici en ISO strict pour garantir qu'il s'affichera.
-    const dateParsee = new Date(sug.date);
-    if (isNaN(dateParsee.getTime())) {
-      Alert.alert(
-        langue === 'pt' ? 'Data inválida' : 'Date invalide',
-        langue === 'pt'
-          ? 'A data detetada não pôde ser interpretada. Tenta reformular a mensagem.'
-          : "La date détectée n'a pas pu être interprétée. Essaie de reformuler le message."
-      );
-      return;
-    }
-    const dateISO = dateParsee.toISOString();
-
     ajouterEvenementCalendrier({
       id: 'evt-' + Date.now(),
       titre: sug.titre,
-      date: dateISO,
+      date: sug.date,
       parentId: parentActif,
       enfant: sug.enfant || undefined,
       sourceMessageId: msgId,
@@ -186,7 +168,7 @@ export default function MessagerieScreen() {
                   </View>
                   </View>
                                 ) : null}
-              <Pressable
+                              code "app\(tabs)\calendrier.tsx"              <Pressable
                     style={[styles.formaliserBtn, fromMe && styles.formaliserBtnMe]}
                     onPress={() => formaliser(msg.contenu)}
                   >

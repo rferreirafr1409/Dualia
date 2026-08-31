@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { ShieldIcon, ExportIcon } from '../../components/icons';
 import { StatutDecision } from '../../types';
 import { TRADUCTIONS } from '../../constants/i18n';
+import JugementUpload from '../../components/JugementUpload';
 
 function formatDate(isoDate: string, langue: 'fr' | 'pt') {
   const d = new Date(isoDate);
@@ -21,6 +23,7 @@ function formatDateTime(isoDate: string, langue: 'fr' | 'pt') {
 }
 
 export default function DecisionsScreen() {
+  const router = useRouter();
   const decisions = useStore((s) => s.decisions);
   const parents = useStore((s) => s.parents);
   const parentActif = useStore((s) => s.parentActif);
@@ -32,11 +35,21 @@ export default function DecisionsScreen() {
   const langue = useStore((s) => s.langue);
   const t = TRADUCTIONS[langue].decisions;
 
+  // Catégories proposées pour l'ajout manuel d'une décision liée au jugement
+  // de divorce. Elles reprennent les capsules affichées par JugementUpload
+  // (garde, pension, réévaluation, divers) pour rester cohérent visuellement.
+  const CATEGORIES_JUGEMENT = [
+    { key: 'garde', label: t.categorieGarde },
+    { key: 'pension', label: t.categoriePension },
+    { key: 'reevaluation', label: t.categorieReevaluation },
+    { key: 'divers', label: t.categorieDivers },
+  ];
+
   const STATUS_LABEL: Record<StatutDecision, string> = {
-    'proposée': t.filtreToutes === 'Toutes' ? 'Proposée' : 'Proposta',
-    'en_attente': t.filtreAttente,
-    'acceptée': t.filtreAcceptees.replace(/s$/, ''),
-    'refusée': t.filtreRefusees.replace(/s$/, ''),
+    'proposée': t.statutPropose,
+    'en_attente': t.statutAttente,
+    'acceptée': t.statutAcceptee,
+    'refusée': t.statutRefusee,
   };
 
   const STATUS_COLOR: Record<StatutDecision, string> = {
@@ -55,6 +68,7 @@ export default function DecisionsScreen() {
 
   const [filter, setFilter] = useState<'toutes' | StatutDecision>('toutes');
   const [modalVisible, setModalVisible] = useState(false);
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [formTitre, setFormTitre] = useState('');
   const [formDescription, setFormDescription] = useState('');
 
@@ -68,6 +82,17 @@ export default function DecisionsScreen() {
 
   const openNewDecision = () => {
     setFormTitre('');
+    setFormDescription('');
+    setModalVisible(true);
+  };
+
+  const openCategoryPicker = () => {
+    setCategoryModalVisible(true);
+  };
+
+  const chooseCategory = (label: string) => {
+    setCategoryModalVisible(false);
+    setFormTitre(`${label} — `);
     setFormDescription('');
     setModalVisible(true);
   };
@@ -93,6 +118,12 @@ export default function DecisionsScreen() {
       statut: 'proposée',
     });
     closeModal();
+  };
+
+  // Renvoie vers la Messagerie pour discuter d'une décision avant de trancher,
+  // plutôt que de forcer un choix binaire Accepter / Refuser.
+  const discuterDecision = () => {
+    router.push('/messagerie' as any);
   };
 
   const filtered = filter === 'toutes' ? decisions : decisions.filter((d) => d.statut === filter);
@@ -127,6 +158,10 @@ export default function DecisionsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Section Jugement de divorce — extraction automatique + capsules */}
+        <Text style={styles.sectionTitle}>{t.jugementSectionTitre}</Text>
+        <JugementUpload />
+
         {filtered.length === 0 ? (
           <Text style={styles.emptyText}>{t.vide}</Text>
         ) : null}
@@ -153,6 +188,9 @@ export default function DecisionsScreen() {
                 <View style={styles.actions}>
                   <Pressable style={[styles.btn, styles.btnAccept]} onPress={() => horodaterDecision(decision.id)}>
                     <Text style={styles.btnAcceptéext}>{t.accepter}</Text>
+                  </Pressable>
+                  <Pressable style={[styles.btn, styles.btnDiscuss]} onPress={discuterDecision}>
+                    <Text style={styles.btnDiscussText}>{t.discuter}</Text>
                   </Pressable>
                   <Pressable
                     style={[styles.btn, styles.btnRefuse]}
@@ -186,6 +224,26 @@ export default function DecisionsScreen() {
           );
         })}
       </ScrollView>
+
+      {/* Bouton flottant, même position/style que celui de l'écran Finances */}
+      <Pressable style={styles.fab} onPress={openCategoryPicker}>
+        <Text style={styles.fabText}>{t.fabAjouter}</Text>
+      </Pressable>
+
+      {/* Sélecteur de catégorie, ouvert par le bouton flottant */}
+      <Modal visible={categoryModalVisible} animationType="fade" transparent onRequestClose={() => setCategoryModalVisible(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setCategoryModalVisible(false)}>
+          <View style={styles.categoryCard}>
+            <Text style={styles.modalTitle}>{t.categoryModalTitre}</Text>
+            <Text style={styles.modalHint}>{t.categoryModalHint}</Text>
+            {CATEGORIES_JUGEMENT.map((c) => (
+              <Pressable key={c.key} style={styles.categoryRow} onPress={() => chooseCategory(c.label)}>
+                <Text style={styles.categoryRowText}>{c.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        </Pressable>
+      </Modal>
 
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
@@ -248,6 +306,10 @@ const styles = StyleSheet.create({
   filterPillText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ardoise },
   filterPillTextActive: { color: COLORS.ivoire },
   content: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xxxl * 2 },
+  sectionTitle: {
+    fontFamily: FONTS.display, fontSize: 17, color: COLORS.vertProfond,
+    marginTop: SPACING.sm, marginBottom: SPACING.sm,
+  },
   emptyText: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise, marginTop: SPACING.xl, textAlign: 'center' },
   card: {
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
@@ -261,6 +323,8 @@ const styles = StyleSheet.create({
   btn: { flex: 1, alignItems: 'center', paddingVertical: 9, borderRadius: 9 },
   btnAccept: { backgroundColor: COLORS.vert },
   btnAcceptéext: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.blanc },
+  btnDiscuss: { borderWidth: 1, borderColor: COLORS.vertProfond },
+  btnDiscussText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond },
   btnRefuse: { borderWidth: 1, borderColor: COLORS.bordure },
   btnRefuseText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ardoise },
   cardFoot: {
@@ -276,6 +340,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(45, 106, 79, 0.08)',
   },
   exportBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.vert },
+  fab: {
+    position: 'absolute',
+    right: SPACING.xl,
+    bottom: SPACING.xl,
+    backgroundColor: COLORS.vert,
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: RADIUS.full,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  fabText: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.blanc },
+  categoryCard: {
+    backgroundColor: COLORS.ivoire, borderRadius: RADIUS.xl,
+    padding: SPACING.xl, margin: SPACING.xl, marginBottom: SPACING.xxxl,
+  },
+  categoryRow: {
+    paddingVertical: 13, borderTopWidth: 1, borderTopColor: COLORS.bordure, marginTop: 8,
+  },
+  categoryRowText: { fontFamily: FONTS.bodySemibold, fontSize: 15, color: COLORS.vertProfond },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(28,43,37,0.5)', justifyContent: 'flex-end' },
   modalCard: {
     backgroundColor: COLORS.ivoire, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,

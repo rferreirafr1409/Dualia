@@ -22,6 +22,7 @@ import {
   startOfWeek,
   endOfWeek,
   isSameDay,
+  subDays,
 } from 'date-fns';
 import { fr, pt } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -48,6 +49,16 @@ function parentDuJour(date: Date, evs: EvenementGarde[]): ParentRole | null {
     if (date >= debut && date <= fin) return ev.parentId;
   }
   return null;
+}
+
+// Un jour de passage est un jour où le parent de garde change par rapport à
+// la veille. On compare sur l'ensemble des événements (pas seulement ceux du
+// mois affiché) pour ne pas manquer une transition en début de mois.
+function estJourDePassage(date: Date, tousLesEvenements: EvenementGarde[]): boolean {
+  const veille = subDays(date, 1);
+  const parentJour = parentDuJour(date, tousLesEvenements);
+  const parentVeille = parentDuJour(veille, tousLesEvenements);
+  return parentJour !== null && parentVeille !== null && parentJour !== parentVeille;
 }
 
 export default function CalendrierScreen() {
@@ -133,6 +144,11 @@ export default function CalendrierScreen() {
     return { garde: gardeDuJour, evenements: evsJour };
   }, [jourSelectionne, evsMois, evenementsCalendrier]);
 
+  const jourSelectionneEstPassage = useMemo(
+    () => (jourSelectionne ? estJourDePassage(jourSelectionne, evenements) : false),
+    [jourSelectionne, evenements]
+  );
+
   const handleSaisirGarde = () => {
     Alert.alert(
       t.ajouter.replace('+ ', ''),
@@ -210,6 +226,7 @@ export default function CalendrierScreen() {
               const couleur = parentId ? parents[parentId].couleur : null;
               const prenomParent = parentId ? parents[parentId].nom.split(' ')[0] : null;
               const estAujourdhui = isToday(jour);
+              const estPassage = estJourDePassage(jour, evenements);
               const evsJourCellule = evenementsCalendrier.filter((ev) =>
                 isSameDay(parseISO(ev.date), jour)
               );
@@ -221,6 +238,11 @@ export default function CalendrierScreen() {
                   activeOpacity={0.7}
                   onPress={() => setJourSelectionne(jour)}
                 >
+                  {estPassage ? (
+                    <View style={styles.pastilleTransfert}>
+                      <Ionicons name="swap-horizontal" size={9} color={COLORS.blanc} />
+                    </View>
+                  ) : null}
                   <Text style={[styles.numeroJourTop, estAujourdhui && styles.numeroJourTopAujourdhui]}>
                     {format(jour, 'd')}
                   </Text>
@@ -256,6 +278,17 @@ export default function CalendrierScreen() {
                 <Ionicons name="close" size={18} color={COLORS.ardoise} />
               </TouchableOpacity>
             </View>
+
+            {jourSelectionneEstPassage ? (
+              <View style={styles.modalLigne}>
+                <View style={styles.modalPuceTransfert}>
+                  <Ionicons name="swap-horizontal" size={11} color={COLORS.blanc} />
+                </View>
+                <Text style={[styles.modalTexte, { fontWeight: TYPOGRAPHY.semibold }]}>
+                  {t.passage}
+                </Text>
+              </View>
+            ) : null}
 
             {elementsJour.garde ? (
               <View style={styles.modalLigne}>
@@ -384,7 +417,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', flexWrap: 'wrap', borderRadius: RADIUS.lg, overflow: 'hidden',
     borderWidth: 1, borderColor: COLORS.bordure, backgroundColor: COLORS.blanc,
   },
-  cellule: { width: CELL, height: 64, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 4, paddingHorizontal: 2 },
+  cellule: { width: CELL, height: 64, alignItems: 'stretch', justifyContent: 'flex-start', paddingTop: 4, paddingHorizontal: 2, position: 'relative' },
   celluleHeader: { height: 28, alignItems: 'center', justifyContent: 'center' },
   headerJour: {
     fontSize: TYPOGRAPHY.xs, fontWeight: TYPOGRAPHY.semibold, color: COLORS.ardoise,
@@ -429,6 +462,18 @@ const styles = StyleSheet.create({
     fontSize: 8.5,
     fontWeight: TYPOGRAPHY.medium,
     color: '#8A6D1E',
+  },
+  pastilleTransfert: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 14,
+    height: 14,
+    borderRadius: RADIUS.full,
+    backgroundColor: COLORS.vertProfond,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
   },
 
   recapMois: {
@@ -508,6 +553,10 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: COLORS.bordure,
   },
   modalPuce: { width: 10, height: 10, borderRadius: RADIUS.sm },
+  modalPuceTransfert: {
+    width: 18, height: 18, borderRadius: RADIUS.full,
+    backgroundColor: COLORS.vertProfond, alignItems: 'center', justifyContent: 'center',
+  },
   modalTexte: { fontSize: TYPOGRAPHY.sm, color: COLORS.texte },
   modalFermerBtn: {
     marginTop: SPACING.lg, paddingVertical: SPACING.md, borderRadius: RADIUS.md,
