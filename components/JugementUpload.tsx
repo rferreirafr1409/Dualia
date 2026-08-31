@@ -152,7 +152,7 @@ function construireCadreFamilial(resultat: any): CadreFamilial {
 
 export default function JugementUpload() {
   const router = useRouter();
-  const setCadreFamilial = useStore((s) => s.setCadreFamilial);
+  const synchroniserCadreFamilial = useStore((s) => s.synchroniserCadreFamilial);
   const langue = useStore((s) => s.langue);
   const t = TRADUCTIONS[langue].decisions;
 
@@ -160,6 +160,7 @@ export default function JugementUpload() {
   const [erreur, setErreur] = useState<string | null>(null);
   const [avertissement, setAvertissement] = useState<string | null>(null);
   const [resultat, setResultat] = useState<any>(null);
+  const [synchronisationEnCours, setSynchronisationEnCours] = useState(false);
 
   const reinitialiser = () => {
     setStatut('idle');
@@ -239,10 +240,24 @@ export default function JugementUpload() {
     }
   };
 
-  const passerALaValidation = () => {
+  const passerALaValidation = async () => {
     const cadre = construireCadreFamilial(resultat);
-    setCadreFamilial(cadre);
-    router.push('/validation-cadre' as any);
+    setSynchronisationEnCours(true);
+    try {
+      await synchroniserCadreFamilial(cadre);
+      router.push('/validation-cadre' as any);
+    } catch (e: any) {
+      const message = e?.message ?? 'Une erreur est survenue.';
+      if (Platform.OS === 'web') {
+        window.alert(
+          "Impossible d'enregistrer le cadre familial pour l'instant. Vérifie ta connexion et réessaie.\n\n" + message
+        );
+      } else {
+        Alert.alert("Échec de l'enregistrement", message);
+      }
+    } finally {
+      setSynchronisationEnCours(false);
+    }
   };
 
   const garde = resultat?.garde;
@@ -385,8 +400,16 @@ export default function JugementUpload() {
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.bouton} onPress={passerALaValidation}>
-            <Text style={styles.boutonTexte}>{t.verifierCadre}</Text>
+          <TouchableOpacity
+            style={styles.bouton}
+            onPress={passerALaValidation}
+            disabled={synchronisationEnCours}
+          >
+            {synchronisationEnCours ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.boutonTexte}>{t.verifierCadre}</Text>
+            )}
           </TouchableOpacity>
         </View>
       )}

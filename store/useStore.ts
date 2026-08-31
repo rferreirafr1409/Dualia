@@ -25,6 +25,93 @@ const PARENTS: Record<ParentRole, Parent> = {
   B: { id: 'B', nom: 'Pierre Dupont', email: 'pierre@example.com', couleur: COLORS.terracotta },
 };
 
+// ---------- Cadre familial : correspondance avec le schéma Supabase ----------
+// Les types locaux (CadreFamilial, ReglePartage) sont conçus pour
+// correspondre presque champ à champ aux tables cadre_familial /
+// regles_partage — ces fonctions ne font que traduire la forme (camelCase
+// imbriqué <-> colonnes plates snake_case).
+
+const regleVersDB = (regle: ReglePartage, cadreFamilialId: string) => ({
+  cadre_familial_id: cadreFamilialId,
+  categorie: regle.categorie,
+  part_a: regle.partA,
+  part_b: regle.partB,
+  clause_reference: regle.clauseSource?.reference ?? null,
+  clause_extrait: regle.clauseSource?.extrait ?? null,
+  clause_page: regle.clauseSource?.page ?? null,
+  accord_prealable: regle.conditions?.accordPrealable ?? null,
+  plafond_montant: regle.conditions?.plafondMontant ?? null,
+  justificatif_obligatoire: regle.conditions?.justificatifObligatoire ?? null,
+  remboursement_assurance_deduit: regle.conditions?.remboursementAssuranceDeduit ?? null,
+  confiance: regle.detection.confiance,
+  detection_source: regle.detection.source,
+  validation_statut: regle.validation.statut,
+  valide_le: regle.validation.valideLe ?? null,
+  valide_par: regle.validation.validePar ?? null,
+});
+
+const regleDepuisDB = (r: any): ReglePartage => ({
+  id: r.id,
+  categorie: r.categorie,
+  partA: r.part_a,
+  partB: r.part_b,
+  clauseSource:
+    r.clause_reference || r.clause_extrait || r.clause_page
+      ? { reference: r.clause_reference ?? undefined, extrait: r.clause_extrait ?? undefined, page: r.clause_page ?? undefined }
+      : undefined,
+  conditions: {
+    accordPrealable: r.accord_prealable ?? undefined,
+    plafondMontant: r.plafond_montant ?? undefined,
+    justificatifObligatoire: r.justificatif_obligatoire ?? undefined,
+    remboursementAssuranceDeduit: r.remboursement_assurance_deduit ?? undefined,
+  },
+  detection: { confiance: r.confiance, source: r.detection_source },
+  validation: { statut: r.validation_statut, valideLe: r.valide_le ?? undefined, validePar: r.valide_par ?? undefined },
+});
+
+const cadreDepuisDB = (c: any, regles: any[]): CadreFamilial => ({
+  id: c.id,
+  statut: c.statut,
+  valideLe: c.valide_le ?? undefined,
+  pension:
+    c.pension_montant != null
+      ? { montant: c.pension_montant, periodicite: c.pension_periodicite ?? 'autre' }
+      : undefined,
+  documentSource: c.document_source_type
+    ? { id: c.id, type: c.document_source_type, date: c.document_source_date ?? undefined }
+    : undefined,
+  regles: regles.map(regleDepuisDB),
+});
+
+/**
+ * Upsert de la ligne cadre_familial pour la famille courante (contrainte
+ * unique sur famille_id : ré-importer un jugement met à jour la même ligne
+ * plutôt que d'en créer une seconde). Renvoie son id réel.
+ */
+async function assurerCadreFamilialDistant(familleId: string, cadre: CadreFamilial): Promise<string> {
+  const { data, error } = await supabase
+    .from('cadre_familial')
+    .upsert(
+      {
+        famille_id: familleId,
+        pension_montant: cadre.pension?.montant ?? null,
+        pension_periodicite: cadre.pension?.periodicite ?? null,
+        document_source_type: cadre.documentSource?.type ?? null,
+        document_source_date: cadre.documentSource?.date ?? null,
+        statut: cadre.statut,
+        valide_le: cadre.valideLe ?? null,
+      },
+      { onConflict: 'famille_id' }
+    )
+    .select('id')
+    .single();
+
+  if (error || !data) {
+    throw error ?? new Error('Échec de la création du cadre familial distant');
+  }
+  return data.id as string;
+}
+
 const genEvenementsGarde = (): EvenementGarde[] => {
   const events: EvenementGarde[] = [];
   const today = new Date();
@@ -373,6 +460,8 @@ interface DualiaStore {
   // null tant qu'aucune convention n'a été importée/validée.
   cadreFamilial: CadreFamilial | null;
   setCadreFamilial: (cadre: CadreFamilial) => void;
+  /** Envoie le cadre extrait vers Supabase (upsert cadre_familial + remplacement des regles_partage), puis met à jour l'état local avec les vrais ids retournés. À utiliser (et attendre) juste après une extraction, avant de naviguer vers l'écran de validation. */
+  synchroniserCadreFamilial: (cadre: CadreFamilial) => Promise<void>;
   validerRegle: (regleId: string, validePar?: string) => void;
   rejeterRegle: (regleId: string) => void;
   ajouterRegleManuelle: (regle: ReglePartage) => void;
@@ -445,7 +534,7 @@ const dualiaStorage = createJSONStorage(() => storageAvecAlerte as any);
 
 export const useStore = create<DualiaStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
   parents: PARENTS,
   evenements: genEvenementsGarde(),
   decisions: DECISIONS_FR,
@@ -567,7 +656,53 @@ export const useStore = create<DualiaStore>()(
 
   setCadreFamilial: (cadre) => set({ cadreFamilial: cadre }),
 
-  validerRegle: (regleId, validePar) =>
+  synchroniserCadreFamilial: async (cadre) => {
+    // Optimiste : on affiche tout de suite, la synchronisation se fait en tâche de fond.
+    set({ cadreFamilial: cadre });
+
+    const familleId = get().familleId;
+    if (!familleId) {
+      console.error('[Dualia] Cadre familial non synchronisé : aucune famille active.');
+      return;
+    }
+
+    try {
+      const cadreFamilialId = await assurerCadreFamilialDistant(familleId, cadre);
+
+      // On repart d'une base propre pour les règles : un ré-import de
+      // jugement doit remplacer les anciennes règles, pas les cumuler.
+      const { error: erreurSuppression } = await supabase
+        .from('regles_partage')
+        .delete()
+        .eq('cadre_familial_id', cadreFamilialId);
+      if (erreurSuppression) throw erreurSuppression;
+
+      let reglesSyncees: ReglePartage[] = [];
+      if (cadre.regles.length > 0) {
+        const { data, error } = await supabase
+          .from('regles_partage')
+          .insert(cadre.regles.map((r) => regleVersDB(r, cadreFamilialId)))
+          .select();
+        if (error) throw error;
+        reglesSyncees = (data ?? []).map(regleDepuisDB);
+      }
+
+      // On réconcilie les ids locaux avec les vrais ids Supabase : toutes
+      // les actions suivantes (valider/rejeter/modifier une règle) doivent
+      // cibler la vraie ligne en base, pas un id généré côté client.
+      set((state) => ({
+        cadreFamilial: state.cadreFamilial
+          ? { ...state.cadreFamilial, id: cadreFamilialId, regles: reglesSyncees }
+          : state.cadreFamilial,
+      }));
+    } catch (e) {
+      console.error('[Dualia] Échec de la synchronisation du cadre familial :', e);
+      throw e;
+    }
+  },
+
+  validerRegle: (regleId, validePar) => {
+    const valideLe = new Date().toISOString();
     set((state) => {
       if (!state.cadreFamilial) return state;
       return {
@@ -575,14 +710,22 @@ export const useStore = create<DualiaStore>()(
           ...state.cadreFamilial,
           regles: state.cadreFamilial.regles.map((r) =>
             r.id === regleId
-              ? { ...r, validation: { statut: 'validee' as const, valideLe: new Date().toISOString(), validePar } }
+              ? { ...r, validation: { statut: 'validee' as const, valideLe, validePar } }
               : r
           ),
         },
       };
-    }),
+    });
+    supabase
+      .from('regles_partage')
+      .update({ validation_statut: 'validee', valide_le: valideLe, valide_par: validePar ?? null })
+      .eq('id', regleId)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec validation règle (distant) :', error);
+      });
+  },
 
-  rejeterRegle: (regleId) =>
+  rejeterRegle: (regleId) => {
     set((state) => {
       if (!state.cadreFamilial) return state;
       return {
@@ -593,7 +736,15 @@ export const useStore = create<DualiaStore>()(
           ),
         },
       };
-    }),
+    });
+    supabase
+      .from('regles_partage')
+      .update({ validation_statut: 'rejetee' })
+      .eq('id', regleId)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec rejet règle (distant) :', error);
+      });
+  },
 
   ajouterRegleManuelle: (regle) =>
     set((state) => {
@@ -601,7 +752,7 @@ export const useStore = create<DualiaStore>()(
       return { cadreFamilial: { ...base, regles: [...base.regles, regle] } };
     }),
 
-  modifierRegle: (regleId, updates) =>
+  modifierRegle: (regleId, updates) => {
     set((state) => {
       if (!state.cadreFamilial) return state;
       return {
@@ -612,19 +763,41 @@ export const useStore = create<DualiaStore>()(
           ),
         },
       };
-    }),
+    });
+    supabase
+      .from('regles_partage')
+      .update({ part_a: updates.partA, part_b: updates.partB })
+      .eq('id', regleId)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec modification règle (distant) :', error);
+      });
+  },
 
-  finaliserCadreFamilial: () =>
+  finaliserCadreFamilial: () => {
+    const valideLe = new Date().toISOString();
+    const cadreFamilialId = get().cadreFamilial?.id;
     set((state) => {
       if (!state.cadreFamilial) return state;
       return {
         cadreFamilial: {
           ...state.cadreFamilial,
           statut: 'valide',
-          valideLe: new Date().toISOString(),
+          valideLe,
         },
       };
-    }),
+    });
+    if (cadreFamilialId) {
+      supabase
+        .from('cadre_familial')
+        .update({ statut: 'valide', valide_le: valideLe })
+        .eq('id', cadreFamilialId)
+        .then(({ error }) => {
+          if (error) console.error('[Dualia] Échec finalisation cadre familial (distant) :', error);
+        });
+    } else {
+      console.error('[Dualia] Finalisation locale seulement : cadre familial jamais synchronisé.');
+    }
+  },
 
   // ---------- Propositions de répartition ----------
   propositionsRepartition: [],
@@ -716,6 +889,27 @@ export const useStore = create<DualiaStore>()(
       parents: parentsMap,
       chargementInitial: false,
     });
+
+    // Charge un cadre familial déjà synchronisé par l'autre parent (ou par
+    // soi-même sur un autre appareil) — sinon on garde celui déjà présent
+    // en local (import en cours de validation, pas encore finalisé/rechargé).
+    const { data: cadreDB, error: erreurCadre } = await supabase
+      .from('cadre_familial')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .maybeSingle();
+
+    if (erreurCadre) {
+      console.error('[Dualia] Échec chargement cadre familial :', erreurCadre);
+      return;
+    }
+    if (cadreDB) {
+      const { data: reglesDB } = await supabase
+        .from('regles_partage')
+        .select('*')
+        .eq('cadre_familial_id', cadreDB.id);
+      set({ cadreFamilial: cadreDepuisDB(cadreDB, reglesDB ?? []) });
+    }
   },
 }),
     {

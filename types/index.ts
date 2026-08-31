@@ -130,6 +130,8 @@ export interface ReglePartage {
 }
 
 export interface CadreFamilial {
+  /** Identifiant réel de la ligne cadre_familial en base — absent tant que rien n'a encore été synchronisé. */
+  id?: string;
   regles: ReglePartage[];
   pension?: {
     montant: number;
