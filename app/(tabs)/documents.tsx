@@ -1,3 +1,5 @@
+// app/(tabs)/documents.tsx
+
 import { useState, useMemo } from 'react';
 import {
   View,
@@ -13,35 +15,46 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { format, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
+import { fr, pt } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../../store/useStore';
 import { DocumentItem, CategorieDocument } from '../../types';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
+import { TRADUCTIONS } from '../../constants/i18n';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-const CATEGORIES: {
-  id: CategorieDocument;
-  emoji: string;
-  label: string;
-  couleur: string;
-  fond: string;
-}[] = [
-  { id: 'administratif', emoji: '📋', label: 'Administratif', couleur: COLORS.ardoise, fond: '#EEF1F0' },
-  { id: 'sante', emoji: '🏥', label: 'Santé', couleur: COLORS.vert, fond: '#E8F3ED' },
-  { id: 'ecole', emoji: '📚', label: 'École', couleur: COLORS.or, fond: '#FBF3DF' },
-  { id: 'juridique', emoji: '⚖️', label: 'Juridique', couleur: COLORS.terracotta, fond: '#F7EEE9' },
-];
+const CATEGORIE_EMOJIS: Record<CategorieDocument, string> = {
+  administratif: '📋',
+  sante: '🏥',
+  ecole: '📚',
+  juridique: '⚖️',
+};
+
+const CATEGORIE_COULEURS: Record<CategorieDocument, { couleur: string; fond: string }> = {
+  administratif: { couleur: COLORS.ardoise, fond: '#EEF1F0' },
+  sante: { couleur: COLORS.vert, fond: '#E8F3ED' },
+  ecole: { couleur: COLORS.or, fond: '#FBF3DF' },
+  juridique: { couleur: COLORS.terracotta, fond: '#F7EEE9' },
+};
+
+const ORDRE_CATEGORIES: CategorieDocument[] = ['administratif', 'sante', 'ecole', 'juridique'];
 
 const ACCENT = '#6B7F7A';
 
-function getCatInfo(cat: CategorieDocument) {
-  return CATEGORIES.find((c) => c.id === cat) ?? CATEGORIES[0];
-}
-
 export default function DocumentsScreen() {
   const { documents, parents, parentActif, ajouterDocument } = useStore();
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].documents;
+  const localeDateFns = langue === 'pt' ? pt : fr;
+
+  const CATEGORIES = ORDRE_CATEGORIES.map((id) => ({
+    id,
+    emoji: CATEGORIE_EMOJIS[id],
+    label: t.categories[id],
+    couleur: CATEGORIE_COULEURS[id].couleur,
+    fond: CATEGORIE_COULEURS[id].fond,
+  }));
 
   const [recherche, setRecherche] = useState('');
   const [filtreCategorie, setFiltreCategorie] = useState<CategorieDocument | 'tous'>('tous');
@@ -97,12 +110,12 @@ export default function DocumentsScreen() {
       {/* Header */}
       <LinearGradient colors={['#566B66', ACCENT]} style={styles.header}>
         <View>
-          <Text style={styles.headerTitre}>Documents</Text>
-          <Text style={styles.headerSous}>Coffre-fort numérique</Text>
+          <Text style={styles.headerTitre}>{t.titre}</Text>
+          <Text style={styles.headerSous}>{t.sousTitre}</Text>
         </View>
         <View style={styles.compteWrap}>
           <Text style={styles.compteTxt}>{documents.length}</Text>
-          <Text style={styles.compteSous}>docs</Text>
+          <Text style={styles.compteSous}>{t.docs}</Text>
         </View>
       </LinearGradient>
 
@@ -114,7 +127,7 @@ export default function DocumentsScreen() {
             style={styles.rechercheInput}
             value={recherche}
             onChangeText={setRecherche}
-            placeholder="Rechercher un document..."
+            placeholder={t.rechercherPlaceholder}
             placeholderTextColor={COLORS.ardoise}
           />
           {recherche ? (
@@ -137,7 +150,7 @@ export default function DocumentsScreen() {
           onPress={() => setFiltreCategorie('tous')}
         >
           <Text style={[styles.filtreTxt, filtreCategorie === 'tous' && styles.filtreTxtActif]}>
-            Tous
+            {t.tous}
           </Text>
         </TouchableOpacity>
         {CATEGORIES.map((cat) => (
@@ -198,7 +211,7 @@ export default function DocumentsScreen() {
                         <Text style={styles.docMetaTxt}>{auteur.nom.split(' ')[0]}</Text>
                         <Text style={styles.docMetaTxt}>·</Text>
                         <Text style={styles.docMetaTxt}>
-                          {format(parseISO(doc.date), 'd MMM yyyy', { locale: fr })}
+                          {format(parseISO(doc.date), 'd MMM yyyy', { locale: localeDateFns })}
                         </Text>
                       </View>
                     </View>
@@ -215,7 +228,7 @@ export default function DocumentsScreen() {
                             doc.certifie && styles.certifTxtOk,
                           ]}
                         >
-                          {doc.certifie ? '✓ Certifié' : 'Standard'}
+                          {doc.certifie ? `✓ ${t.certifie}` : t.standard}
                         </Text>
                       </View>
                     </View>
@@ -229,7 +242,7 @@ export default function DocumentsScreen() {
         {documentsFiltres.length === 0 && (
           <View style={styles.vide}>
             <Text style={styles.videEmoji}>📂</Text>
-            <Text style={styles.videTxt}>Aucun document trouvé</Text>
+            <Text style={styles.videTxt}>{t.aucunDocument}</Text>
           </View>
         )}
 
@@ -247,7 +260,7 @@ export default function DocumentsScreen() {
           style={styles.fabGradient}
         >
           <Ionicons name="add" size={22} color={COLORS.blanc} />
-          <Text style={styles.fabTxt}>Ajouter un document</Text>
+          <Text style={styles.fabTxt}>{t.ajouterDocument}</Text>
         </LinearGradient>
       </TouchableOpacity>
 
@@ -264,18 +277,18 @@ export default function DocumentsScreen() {
         >
           <View style={styles.modal}>
             <View style={styles.modalPoignee} />
-            <Text style={styles.modalTitre}>Nouveau document</Text>
+            <Text style={styles.modalTitre}>{t.modalTitre}</Text>
 
-            <Text style={styles.label}>Nom du document</Text>
+            <Text style={styles.label}>{t.nomDocument}</Text>
             <TextInput
               style={styles.input}
               value={nom}
               onChangeText={setNom}
-              placeholder="Ex : Carnet de santé Emma"
+              placeholder={t.nomPlaceholder}
               placeholderTextColor={COLORS.ardoise}
             />
 
-            <Text style={styles.label}>Catégorie</Text>
+            <Text style={styles.label}>{t.categorie}</Text>
             <View style={styles.catGrid}>
               {CATEGORIES.map((cat) => (
                 <TouchableOpacity
@@ -301,12 +314,12 @@ export default function DocumentsScreen() {
               ))}
             </View>
 
-            <Text style={styles.label}>Note (facultatif)</Text>
+            <Text style={styles.label}>{t.note}</Text>
             <TextInput
               style={styles.input}
               value={note}
               onChangeText={setNote}
-              placeholder="Description ou remarque..."
+              placeholder={t.notePlaceholder}
               placeholderTextColor={COLORS.ardoise}
             />
 
@@ -315,14 +328,14 @@ export default function DocumentsScreen() {
                 style={styles.btnAnnuler}
                 onPress={() => setModalVisible(false)}
               >
-                <Text style={styles.btnAnnulerTxt}>Annuler</Text>
+                <Text style={styles.btnAnnulerTxt}>{t.annuler}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.btnValider, !nom.trim() && styles.btnDisabled]}
                 onPress={soumettre}
                 disabled={!nom.trim()}
               >
-                <Text style={styles.btnValiderTxt}>Ajouter</Text>
+                <Text style={styles.btnValiderTxt}>{t.ajouter}</Text>
               </TouchableOpacity>
             </View>
           </View>

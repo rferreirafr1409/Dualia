@@ -6,14 +6,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWindowDimensions } from 'react-native';
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { COLORS, TYPOGRAPHY } from '../../constants/theme';
+import { useStore } from '../../store/useStore';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+
+// Libellés des onglets (barre du bas ET titre du bandeau en haut).
+// Utilisé pour les deux afin de garantir qu'ils restent toujours synchronisés.
+const TAB_LABELS: Record<string, { fr: string; pt: string }> = {
+  accueil: { fr: 'Accueil', pt: 'Início' },
+  calendrier: { fr: 'Calendrier', pt: 'Calendário' },
+  decisions: { fr: 'Décisions', pt: 'Decisões' },
+  messagerie: { fr: 'Messagerie', pt: 'Mensagens' },
+  journal: { fr: 'Journal', pt: 'Diário' },
+  finances: { fr: 'Finances', pt: 'Finanças' },
+  documents: { fr: 'Documents', pt: 'Documentos' },
+  caf: { fr: 'CAF', pt: 'CAF' },
+};
 
 function ScrollableTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const numTabs = state.routes.length;
   const tabWidth = Math.max(72, Math.floor(width / numTabs));
+  const langue = useStore((state) => state.langue);
 
   return (
     <View
@@ -35,9 +50,10 @@ function ScrollableTabBar({ state, descriptors, navigation }: BottomTabBarProps)
           const isFocused = state.index === index;
           const color = isFocused ? COLORS.or : COLORS.ardoise;
           const label =
-            typeof options.tabBarLabel === 'string'
+            TAB_LABELS[route.name]?.[langue] ??
+            (typeof options.tabBarLabel === 'string'
               ? options.tabBarLabel
-              : (options.title ?? route.name);
+              : (options.title ?? route.name));
 
           const onPress = () => {
             const event = navigation.emit({
@@ -85,6 +101,13 @@ function ScrollableTabBar({ state, descriptors, navigation }: BottomTabBarProps)
 }
 
 export default function TabLayout() {
+  // Langue active : pilote le titre du bandeau en haut de chaque écran.
+  // Avant ce fix, chaque Tabs.Screen avait un `title` français figé en dur,
+  // donc le bandeau restait en français même quand le contenu de la page
+  // passait en portugais.
+  const langue = useStore((state) => state.langue);
+  const titre = (key: keyof typeof TAB_LABELS) => TAB_LABELS[key][langue];
+
   return (
     <Tabs
       tabBar={(props) => <ScrollableTabBar {...props} />}
@@ -110,7 +133,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="accueil"
         options={{
-          title: 'Accueil',
+          title: titre('accueil'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
@@ -124,7 +147,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="calendrier"
         options={{
-          title: 'Calendrier',
+          title: titre('calendrier'),
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
               name={focused ? 'calendar' : ('calendar-outline' as IoniconName)}
@@ -137,7 +160,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="decisions"
         options={{
-          title: 'Décisions',
+          title: titre('decisions'),
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
               name={
@@ -154,7 +177,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="messagerie"
         options={{
-          title: 'Messagerie',
+          title: titre('messagerie'),
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
               name={
@@ -169,7 +192,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="journal"
         options={{
-          title: 'Journal',
+          title: titre('journal'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
@@ -183,7 +206,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="finances"
         options={{
-          title: 'Finances',
+          title: titre('finances'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
@@ -197,7 +220,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="documents"
         options={{
-          title: 'Documents',
+          title: titre('documents'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
@@ -211,7 +234,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="caf"
         options={{
-          title: 'CAF',
+          title: titre('caf'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons

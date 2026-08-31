@@ -1,0 +1,71 @@
+﻿  const jours = useMemo(
+    () => eachDayOfInterval({ start: startOfMonth(mois), end: endOfMonth(mois) }),
+    [mois]
+  );
+
+  const decalage = useMemo(() => jourFR(startOfMonth(mois)), [mois]);
+
+  const evsMois = useMemo(
+    () =>
+      evenements.filter((ev) => {
+        const debut = parseISO(ev.dateDebut);
+        const fin = parseISO(ev.dateFin);
+        return debut <= endOfMonth(mois) && fin >= startOfMonth(mois);
+      }),
+    [evenements, mois]
+  );
+
+  const prochainsEvs = useMemo(
+    () =>
+      [...evenements]
+        .filter((ev) => parseISO(ev.dateFin) >= new Date())
+        .sort((a, b) => parseISO(a.dateDebut).getTime() - parseISO(b.dateDebut).getTime())
+        .slice(0, 5),
+    [evenements]
+  );
+
+  const recapMois = useMemo(() => {
+    const compteur: Partial<Record<ParentRole, number>> = {};
+    jours.forEach((jour) => {
+      const parentId = parentDuJour(jour, evsMois);
+      if (parentId) {
+        compteur[parentId] = (compteur[parentId] ?? 0) + 1;
+      }
+    });
+    return compteur;
+  }, [jours, evsMois]);
+
+  const handleSaisirGarde = () => {
+    Alert.alert(
+      'Saisir ma garde',
+      'DÃ©clarez une nouvelle pÃ©riode de rÃ©sidence pour votre enfant.',
+      [{ text: 'Compris', style: 'default' }]
+    );
+  };
+
+  return (
+    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+
+        {/* LÃ©gende parents */}
+        <View style={styles.legende}>
+          {(['A', 'B'] as ParentRole[]).map((role) => (
+            <View key={role} style={styles.legendeItem}>
+              <View
+                style={[styles.legendePuce, { backgroundColor: parents[role].couleur }]}
+              />
+              <Text style={styles.legendeTxt}>{parents[role].nom}</Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Navigation mois */}
+        <View style={styles.navMois}>
+          <TouchableOpacity
+            onPress={() => setMois((m) => subMonths(m, 1))}
+            style={styles.navBtn}
+            accessibilityLabel="Mois prÃ©cÃ©dent"
+          >
+            <Ionicons name="chevron-back" size={20} color={COLORS.blanc} />
+          </TouchableOpacity>
+          <Text style={styles.titreMois}>

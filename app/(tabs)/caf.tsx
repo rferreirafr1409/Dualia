@@ -14,62 +14,67 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
+import { useStore } from '../../store/useStore';
+import { TRADUCTIONS } from '../../constants/i18n';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 const ACCENT = '#B5927C';
 
-const DROITS = [
-  {
-    titre: 'Allocations familiales',
-    montant: '~132 €/mois',
-    desc: 'Pour 2 enfants (Emma 8 ans, Léo 5 ans)',
-    icone: 'people-outline' as IoniconName,
-    fond: '#F7EEE9',
-    couleur: ACCENT,
-  },
-  {
-    titre: "Crédit d'impôt frais de garde",
-    montant: "Jusqu'à 50%",
-    desc: 'Plafond 3 500 € par enfant',
-    icone: 'card-outline' as IoniconName,
-    fond: '#FBF3DF',
-    couleur: COLORS.or,
-  },
-  {
-    titre: "Prime d'activité",
-    montant: 'À simuler',
-    desc: 'Selon vos revenus et situation familiale',
-    icone: 'trending-up-outline' as IoniconName,
-    fond: '#E8F3ED',
-    couleur: COLORS.vert,
-  },
-  {
-    titre: 'Aide au logement (APL)',
-    montant: 'Variable',
-    desc: 'En fonction du loyer et des ressources',
-    icone: 'home-outline' as IoniconName,
-    fond: '#EEF1F0',
-    couleur: COLORS.ardoise,
-  },
-];
-
-const DOCS_GENERES = [
-  {
-    nom: 'Attestation de garde alternée',
-    date: '15 jan. 2026',
-    icone: 'document-text-outline' as IoniconName,
-    certifie: true,
-  },
-  {
-    nom: 'Déclaration revenus CAF 2025',
-    date: '3 fév. 2026',
-    icone: 'document-outline' as IoniconName,
-    certifie: true,
-  },
-];
-
 export default function CafScreen() {
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].caf;
+
+  const DROITS = [
+    {
+      titre: t.droitAllocFamTitre,
+      montant: t.droitAllocFamMontant,
+      desc: t.droitAllocFamDesc,
+      icone: 'people-outline' as IoniconName,
+      fond: '#F7EEE9',
+      couleur: ACCENT,
+    },
+    {
+      titre: t.droitCreditGardeTitre,
+      montant: t.droitCreditGardeMontant,
+      desc: t.droitCreditGardeDesc,
+      icone: 'card-outline' as IoniconName,
+      fond: '#FBF3DF',
+      couleur: COLORS.or,
+    },
+    {
+      titre: t.droitPrimeTitre,
+      montant: t.droitPrimeMontant,
+      desc: t.droitPrimeDesc,
+      icone: 'trending-up-outline' as IoniconName,
+      fond: '#E8F3ED',
+      couleur: COLORS.vert,
+    },
+    {
+      titre: t.droitApITitre,
+      montant: t.droitApIMontant,
+      desc: t.droitApIDesc,
+      icone: 'home-outline' as IoniconName,
+      fond: '#EEF1F0',
+      couleur: COLORS.ardoise,
+    },
+  ];
+
+  const DOCS_GENERES = [
+    {
+      nom: t.docAttestationNom,
+      date: t.docAttestationDate,
+      icone: 'document-text-outline' as IoniconName,
+      certifie: true,
+    },
+    {
+      nom: t.docDeclarationNom,
+      date: t.docDeclarationDate,
+      icone: 'document-outline' as IoniconName,
+      certifie: true,
+    },
+  ];
+
   const [modalVisible, setModalVisible] = useState(false);
   const [revenus, setRevenus] = useState('');
   const [joursPar, setJoursPar] = useState('');
@@ -96,8 +101,8 @@ export default function CafScreen() {
       {/* Header */}
       <LinearGradient colors={['#9E7A64', ACCENT]} style={styles.header}>
         <View>
-          <Text style={styles.headerTitre}>CAF / Fiscal</Text>
-          <Text style={styles.headerSous}>Droits & déclarations</Text>
+          <Text style={styles.headerTitre}>{t.titre}</Text>
+          <Text style={styles.headerSous}>{t.sousTitre}</Text>
         </View>
         <View style={styles.headerBadge}>
           <Ionicons name="shield-checkmark" size={20} color={COLORS.blanc} />
@@ -114,12 +119,12 @@ export default function CafScreen() {
           <View style={[styles.dashCard, { flex: 1 }]}>
             <Ionicons name="checkmark-circle" size={22} color={COLORS.succes} />
             <Text style={styles.dashValeur}>✓</Text>
-            <Text style={styles.dashLabel}>Garde alternée{'\n'}déclarée</Text>
+            <Text style={styles.dashLabel}>{t.gardeAlterneeDeclaree}</Text>
           </View>
           <View style={[styles.dashCard, { flex: 1 }]}>
             <Ionicons name="cash-outline" size={22} color={COLORS.or} />
             <Text style={styles.dashValeur}>1 840 €</Text>
-            <Text style={styles.dashLabel}>Crédit d'impôt{'\n'}estimé 2025</Text>
+            <Text style={styles.dashLabel}>{t.creditImpotEstime}</Text>
           </View>
         </View>
 
@@ -128,13 +133,13 @@ export default function CafScreen() {
             <Ionicons name="calendar-outline" size={22} color={ACCENT} />
             <View style={{ flex: 1 }}>
               <Text style={styles.dashValeur}>15 mai 2026</Text>
-              <Text style={styles.dashLabel}>Prochaine déclaration — Impôts 2025</Text>
+              <Text style={styles.dashLabel}>{t.prochaineDeclaration}</Text>
             </View>
           </View>
         </View>
 
         {/* Mes droits */}
-        <Text style={styles.sectionTitre}>MES DROITS</Text>
+        <Text style={styles.sectionTitre}>{t.mesDroits}</Text>
         {DROITS.map((droit, i) => (
           <View key={i} style={styles.droitCard}>
             <View style={[styles.droitIcon, { backgroundColor: droit.fond }]}>
@@ -152,7 +157,7 @@ export default function CafScreen() {
 
         {/* Documents générés */}
         <Text style={[styles.sectionTitre, { marginTop: SPACING.xl }]}>
-          DOCUMENTS GÉNÉRÉS
+          {t.documentsGeneres}
         </Text>
         {DOCS_GENERES.map((doc, i) => (
           <View key={i} style={styles.docCard}>
@@ -165,7 +170,7 @@ export default function CafScreen() {
             </View>
             {doc.certifie && (
               <View style={styles.certifBadge}>
-                <Text style={styles.certifTxt}>✓ Certifié</Text>
+                <Text style={styles.certifTxt}>✓ {t.certifie}</Text>
               </View>
             )}
           </View>
@@ -183,7 +188,7 @@ export default function CafScreen() {
           >
             <Ionicons name="calculator-outline" size={20} color={COLORS.blanc} />
             <Text style={styles.btnSimulerTxt}>
-              Simuler mon crédit d'impôt
+              {t.simulerCreditImpot}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -204,40 +209,42 @@ export default function CafScreen() {
         >
           <View style={styles.modal}>
             <View style={styles.modalPoignee} />
-            <Text style={styles.modalTitre}>Simulateur crédit d'impôt</Text>
+            <Text style={styles.modalTitre}>{t.modalTitre}</Text>
             <Text style={styles.modalInfo}>
-              Estimation indicative — consultez un expert pour votre situation.
+              {t.modalInfo}
             </Text>
 
             {resultat !== null ? (
               <View style={styles.resultatWrap}>
-                <Text style={styles.resultatLabel}>Crédit d'impôt estimé</Text>
-                <Text style={styles.resultatValeur}>{resultat.toLocaleString('fr-FR')} €</Text>
+                <Text style={styles.resultatLabel}>{t.resultatLabel}</Text>
+                <Text style={styles.resultatValeur}>
+                  {resultat.toLocaleString(langue === 'pt' ? 'pt-PT' : 'fr-FR')} €
+                </Text>
                 <Text style={styles.resultatNote}>
-                  Soit 50% des frais estimés, dans la limite du plafond légal.
+                  {t.resultatNote}
                 </Text>
                 <TouchableOpacity style={styles.btnFermer} onPress={fermerModal}>
-                  <Text style={styles.btnFermerTxt}>Fermer</Text>
+                  <Text style={styles.btnFermerTxt}>{t.fermer}</Text>
                 </TouchableOpacity>
               </View>
             ) : (
               <>
-                <Text style={styles.label}>Revenus annuels nets (€)</Text>
+                <Text style={styles.label}>{t.revenusLabel}</Text>
                 <TextInput
                   style={styles.input}
                   value={revenus}
                   onChangeText={setRevenus}
-                  placeholder="Ex : 35000"
+                  placeholder={t.revenusPlaceholder}
                   placeholderTextColor={COLORS.ardoise}
                   keyboardType="decimal-pad"
                 />
 
-                <Text style={styles.label}>Jours de garde par mois (enfant)</Text>
+                <Text style={styles.label}>{t.joursLabel}</Text>
                 <TextInput
                   style={styles.input}
                   value={joursPar}
                   onChangeText={setJoursPar}
-                  placeholder="Ex : 15"
+                  placeholder={t.joursPlaceholder}
                   placeholderTextColor={COLORS.ardoise}
                   keyboardType="decimal-pad"
                 />
@@ -247,7 +254,7 @@ export default function CafScreen() {
                     style={styles.btnAnnuler}
                     onPress={fermerModal}
                   >
-                    <Text style={styles.btnAnnulerTxt}>Annuler</Text>
+                    <Text style={styles.btnAnnulerTxt}>{t.annuler}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
@@ -257,7 +264,7 @@ export default function CafScreen() {
                     onPress={simuler}
                     disabled={!revenus || !joursPar}
                   >
-                    <Text style={styles.btnValiderTxt}>Simuler</Text>
+                    <Text style={styles.btnValiderTxt}>{t.simuler}</Text>
                   </TouchableOpacity>
                 </View>
               </>

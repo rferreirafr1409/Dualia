@@ -1,574 +1,313 @@
-import { useMemo } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  useWindowDimensions,
-  Image,
-  Platform,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
+﻿// app/(tabs)/accueil.tsx
+
+import React from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { format, parseISO } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../../store/useStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
+import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
+import { ShieldIcon, SealMark, BrandMark } from '../../components/icons';
+import { TRADUCTIONS } from '../../constants/i18n';
+import type { JournalEntry, ParentRole } from '../../types';
 
-type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
-
-const FAMILY_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="140" viewBox="0 0 200 180" fill="none">
-  <circle cx="30" cy="50" r="11" stroke="#F8F6F2" stroke-width="1.5" fill="none"/>
-  <line x1="30" y1="61" x2="30" y2="97" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="30" y1="73" x2="18" y2="88" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="30" y1="73" x2="52" y2="86" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="30" y1="97" x2="22" y2="118" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="30" y1="97" x2="38" y2="118" stroke="#F8F6F2" stroke-width="1.5"/>
-  <circle cx="76" cy="38" r="14" stroke="#F8F6F2" stroke-width="1.5" fill="none"/>
-  <line x1="76" y1="52" x2="76" y2="110" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="76" y1="70" x2="52" y2="86" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="76" y1="70" x2="98" y2="82" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="76" y1="110" x2="66" y2="135" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="76" y1="110" x2="86" y2="135" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="98" y1="82" x2="108" y2="82" stroke="#C9A84C" stroke-width="1.8" stroke-dasharray="4,3"/>
-  <circle cx="126" cy="38" r="14" stroke="#F8F6F2" stroke-width="1.5" fill="none"/>
-  <line x1="126" y1="52" x2="126" y2="110" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="126" y1="70" x2="108" y2="82" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="126" y1="70" x2="150" y2="86" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="126" y1="110" x2="116" y2="135" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="126" y1="110" x2="136" y2="135" stroke="#F8F6F2" stroke-width="1.5"/>
-  <circle cx="172" cy="50" r="11" stroke="#F8F6F2" stroke-width="1.5" fill="none"/>
-  <line x1="172" y1="61" x2="172" y2="97" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="172" y1="73" x2="150" y2="86" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="172" y1="73" x2="184" y2="88" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="172" y1="97" x2="164" y2="118" stroke="#F8F6F2" stroke-width="1.5"/>
-  <line x1="172" y1="97" x2="180" y2="118" stroke="#F8F6F2" stroke-width="1.5"/>
-  <circle cx="101" cy="20" r="2" fill="#C9A84C" opacity="0.7"/>
-  <circle cx="115" cy="13" r="1.5" fill="#C9A84C" opacity="0.5"/>
-  <circle cx="87" cy="15" r="1.5" fill="#C9A84C" opacity="0.5"/>
-  <path d="M101 64 C101 64 97 61 97 57.5 C97 55.2 99 53.8 101 55.4 C103 53.8 105 55.2 105 57.5 C105 61 101 64 101 64Z" stroke="#C9A84C" stroke-width="1" fill="none"/>
-</svg>`;
-
-function FamilyIllustration() {
-  if (Platform.OS !== 'web') return null;
-  return (
-    <Image
-      source={{ uri: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(FAMILY_SVG)}` }}
-      style={styles.familyIllustration}
-      resizeMode="contain"
-    />
-  );
+// Repère un souvenir publié il y a environ un an (fenêtre de 15 jours autour
+// de la date anniversaire). À défaut, on retombe sur le souvenir le plus
+// récent plutôt que d'inventer une ancienneté qui ne correspond à rien.
+function trouverSouvenir(journalEntries: JournalEntry[]) {
+  if (journalEntries.length === 0) return null;
+  const maintenant = Date.now();
+  const unAn = 365 * 24 * 60 * 60 * 1000;
+  const fenetre = 15 * 24 * 60 * 60 * 1000;
+  const anniversaire = journalEntries.find((e) => {
+    const age = maintenant - new Date(e.date).getTime();
+    return Math.abs(age - unAn) < fenetre;
+  });
+  if (anniversaire) return { entry: anniversaire, ilYaUnAn: true };
+  const plusRecent = [...journalEntries].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+  )[0];
+  return { entry: plusRecent, ilYaUnAn: false };
 }
 
-function HeroTexture() {
-  const dots = [];
-  for (let r = 0; r < 7; r++) {
-    for (let c = 0; c < 10; c++) {
-      dots.push(
-        <View
-          key={`${r}-${c}`}
-          style={{
-            position: 'absolute',
-            top: r * 22 + 4,
-            left: c * 38 + 8,
-            width: 2,
-            height: 2,
-            borderRadius: 1,
-            backgroundColor: 'rgba(255,255,255,0.07)',
-          }}
-        />
-      );
-    }
-  }
+// Initiale d'affichage pour l'avatar d'un parent : première lettre du
+// prénom (premier mot du nom complet), en majuscule. Fallback sur "?" si le
+// nom est vide, pour ne jamais planter sur un profil incomplet.
+function initialeParent(nomComplet: string | undefined): string {
+  const prenom = nomComplet?.trim().split(' ')[0] ?? '';
+  return prenom.length > 0 ? prenom.charAt(0).toUpperCase() : '?';
+}
+
+export default function AccueilScreen() {
+  const router = useRouter();
+  const langue = useStore((s) => s.langue);
+  const setLangue = useStore((s) => s.setLangue);
+  const todayEvents = useStore((s) => s.todayEvents);
+  const familyCard = useStore((s) => s.familyCard);
+  const decisions = useStore((s) => s.decisions);
+  const depenses = useStore((s) => s.depenses);
+  const documents = useStore((s) => s.documents);
+  const journalEntries = useStore((s) => s.journalEntries);
+  const parents = useStore((s) => s.parents);
+  const parentActif = useStore((s) => s.parentActif);
+  const t = TRADUCTIONS[langue];
+  const prenom = parents[parentActif]?.nom.split(' ')[0] ?? '';
+
+  // Le parent actif (vous) s'affiche toujours en premier, l'autre parent
+  // ensuite — peu importe que les rôles internes soient 'A' ou 'B'.
+  const autreRole: ParentRole = parentActif === 'A' ? 'B' : 'A';
+  const initialeMoi = initialeParent(parents[parentActif]?.nom);
+  const initialeAutre = initialeParent(parents[autreRole]?.nom);
+
+  const decisionsEnAttente = decisions.filter(
+    (d) => d.statut === 'proposée' || d.statut === 'en_attente'
+  );
+  const depensesNonReglees = depenses.filter((d) => !d.rembourse);
+  const totalARegulariser = depensesNonReglees.reduce((s, d) => s + d.montant, 0);
+  const nbElementsAttention = decisionsEnAttente.length + (depensesNonReglees.length > 0 ? 1 : 0);
+  const aDesElementsAttention = nbElementsAttention > 0;
+
+  const souvenir = trouverSouvenir(journalEntries);
+
   return (
-    <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
-      {dots}
+    <View style={styles.screen}>
+      <View style={styles.topbar}>
+        <View style={styles.brandRow}>
+          <View style={styles.brand}>
+            <View style={styles.brandMarkWrap}>
+              <BrandMark size={16} color={COLORS.ivoire} />
+            </View>
+            <Text style={styles.brandName}>{t.brand}</Text>
+          </View>
+          <View style={styles.rightRow}>
+            <View style={styles.langSwitch}>
+              <Pressable onPress={() => setLangue('fr')} style={[styles.langBtn, langue === 'fr' && styles.langBtnActive]}>
+                <Text style={[styles.langBtnText, langue === 'fr' && styles.langBtnTextActive]}>FR</Text>
+              </Pressable>
+              <Pressable onPress={() => setLangue('pt')} style={[styles.langBtn, langue === 'pt' && styles.langBtnActive]}>
+                <Text style={[styles.langBtnText, langue === 'pt' && styles.langBtnTextActive]}>PT</Text>
+              </Pressable>
+            </View>
+            <View style={styles.avatarPair}>
+              <View style={[styles.avatar, { backgroundColor: COLORS.vert }]}>
+                <Text style={styles.avatarText}>{initialeMoi}</Text>
+              </View>
+              <View style={[styles.avatar, styles.avatarSecond, { backgroundColor: COLORS.terracotta }]}>
+                <Text style={styles.avatarText}>{initialeAutre}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Salutation + statut, sans emoji */}
+        <Text style={styles.bonjour}>{t.accueil.bonjour} {prenom}</Text>
+        <Text style={styles.statutLigne}>
+          {aDesElementsAttention ? t.accueil.elementsAttention(nbElementsAttention) : t.accueil.tousAJour}
+        </Text>
+
+        <View style={styles.familyCard}>
+          <View style={styles.sealWrap}>
+            <SealMark size={90} />
+          </View>
+          <Text style={styles.eyebrow}>{t.accueil.eyebrowEnfants}</Text>
+          <Text style={styles.names}>{familyCard.enfants}</Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.metaText}>{familyCard.localisation}</Text>
+            <View style={styles.dot} />
+            <Text style={styles.metaText}>{familyCard.prochainEchange}</Text>
+          </View>
+        </View>
+
+        {/* À votre attention — regroupé, pas une carte par élément */}
+        {aDesElementsAttention ? (
+          <>
+            <Text style={styles.sectionLabel}>{t.accueil.attention.titre}</Text>
+
+            {decisionsEnAttente.length > 0 ? (
+              <Pressable style={styles.attentionCard} onPress={() => router.push('/decisions' as any)}>
+                <Text style={styles.attentionCardTitle}>
+                  {t.accueil.attention.decisionsTitre(decisionsEnAttente.length)}
+                </Text>
+                {decisionsEnAttente.slice(0, 2).map((d) => (
+                  <View key={d.id} style={styles.attentionRow}>
+                    <Text style={styles.attentionRowTitle} numberOfLines={1}>{d.titre}</Text>
+                    <Text style={styles.attentionRowMeta}>
+                      {t.accueil.attention.proposePar(parents[d.auteurId]?.nom.split(' ')[0] ?? '')}
+                    </Text>
+                  </View>
+                ))}
+                <Text style={styles.attentionCardLink}>{t.accueil.attention.toutExaminer} →</Text>
+              </Pressable>
+            ) : null}
+
+            {depensesNonReglees.length > 0 ? (
+              <Pressable style={styles.attentionCard} onPress={() => router.push('/finances' as any)}>
+                <Text style={styles.attentionCardTitle}>{t.accueil.attention.financesTitre}</Text>
+                <Text style={styles.attentionAmount}>
+                  {totalARegulariser.toFixed(2)} € {t.accueil.attention.aRegulariser}
+                </Text>
+                <Text style={styles.attentionCardLink}>{t.accueil.attention.voirSolde} →</Text>
+              </Pressable>
+            ) : null}
+          </>
+        ) : null}
+
+        <Text style={styles.sectionLabel}>{t.accueil.aujourdhui}</Text>
+        <View style={styles.timeline}>
+          <View style={styles.timelineRail} />
+          {todayEvents.map((event) => (
+            <View key={event.id} style={styles.timelineItem}>
+              <View style={styles.timelineDot} />
+              <Text style={styles.timelineTime}>{event.time}</Text>
+              <View style={styles.timelineBody}>
+                <Text style={styles.timelineTitle}>{event.title}</Text>
+                <Text style={styles.timelineWho}>{event.who}</Text>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        {/* Votre famille — indicateurs réels, remplace la grille de raccourcis
+            (redondante avec la barre d'onglets) */}
+        <Text style={styles.sectionLabel}>{t.accueil.votreFamille}</Text>
+        <View style={styles.indicatorRow}>
+          <Pressable style={styles.indicatorCard} onPress={() => router.push('/calendrier' as any)}>
+            <Text style={styles.indicatorLabel}>{t.accueil.organisation}</Text>
+            <Text style={styles.indicatorValueOk}>{t.accueil.organisationAJour}</Text>
+          </Pressable>
+          <Pressable style={styles.indicatorCard} onPress={() => router.push('/finances' as any)}>
+            <Text style={styles.indicatorLabel}>{t.accueil.finances}</Text>
+            <Text style={totalARegulariser > 0 ? styles.indicatorValueWarn : styles.indicatorValueOk}>
+              {totalARegulariser > 0 ? `${totalARegulariser.toFixed(2)} €` : t.accueil.organisationAJour}
+            </Text>
+          </Pressable>
+          <Pressable style={styles.indicatorCard} onPress={() => router.push('/documents' as any)}>
+            <Text style={styles.indicatorLabel}>{t.accueil.documents}</Text>
+            <Text style={styles.indicatorValueOk}>{documents.length}</Text>
+          </Pressable>
+        </View>
+
+        {/* Un souvenir — tiré du vrai Journal */}
+        {souvenir ? (
+          <>
+            <Text style={styles.sectionLabel}>{t.accueil.unSouvenir}</Text>
+            <Pressable style={styles.souvenirCard} onPress={() => router.push('/journal' as any)}>
+              <Text style={styles.souvenirEyebrow}>
+                {souvenir.ilYaUnAn ? t.accueil.souvenirIlYaUnAn : t.accueil.souvenirRecent}
+              </Text>
+              <Text style={styles.souvenirTitle}>{souvenir.entry.titre}</Text>
+              <Text style={styles.souvenirLink}>{t.accueil.revoir} →</Text>
+            </Pressable>
+          </>
+        ) : null}
+
+        <View style={styles.trustStrip}>
+          <ShieldIcon size={14} color={COLORS.vert} strokeWidth={2} />
+          <Text style={styles.trustText}>{t.accueil.trustStrip}</Text>
+        </View>
+      </ScrollView>
     </View>
   );
 }
 
-const MODULES_GRID: {
-  id: string;
-  titre: string;
-  sous: string;
-  emoji: string;
-  couleur: string;
-  fond: string;
-  route: string;
-}[] = [
-  {
-    id: 'calendrier',
-    titre: 'Calendrier',
-    sous: 'Planning',
-    emoji: '📅',
-    couleur: COLORS.vert,
-    fond: '#E8F3ED',
-    route: '/(tabs)/calendrier',
-  },
-  {
-    id: 'decisions',
-    titre: 'Décisions',
-    sous: 'Co-parentalité',
-    emoji: '✅',
-    couleur: COLORS.or,
-    fond: '#FBF3DF',
-    route: '/(tabs)/decisions',
-  },
-  {
-    id: 'messagerie',
-    titre: 'Messagerie',
-    sous: 'Échanges',
-    emoji: '💬',
-    couleur: COLORS.terracotta,
-    fond: '#F7EEE9',
-    route: '/(tabs)/messagerie',
-  },
-  {
-    id: 'journal',
-    titre: 'Journal',
-    sous: 'Souvenirs',
-    emoji: '📔',
-    couleur: COLORS.vert,
-    fond: '#E8F3ED',
-    route: '/(tabs)/journal',
-  },
-  {
-    id: 'finances',
-    titre: 'Finances',
-    sous: 'Dépenses',
-    emoji: '💰',
-    couleur: COLORS.or,
-    fond: '#FBF3DF',
-    route: '/(tabs)/finances',
-  },
-  {
-    id: 'documents',
-    titre: 'Documents',
-    sous: 'Coffre-fort',
-    emoji: '📁',
-    couleur: COLORS.ardoise,
-    fond: '#EEF1F0',
-    route: '/(tabs)/documents',
-  },
-  {
-    id: 'caf',
-    titre: 'CAF / Fiscal',
-    sous: 'Déclarations',
-    emoji: '🏛️',
-    couleur: COLORS.terracotta,
-    fond: '#F7EEE9',
-    route: '/(tabs)/caf',
-  },
-];
-
-const EVENEMENTS_JOUR = [
-  { emoji: '🏊', titre: 'Natation — Léo', heure: '16h00', fond: '#E8F3ED' },
-  { emoji: '📚', titre: 'Devoirs — Emma', heure: '17h30', fond: '#FBF3DF' },
-  { emoji: '🍽️', titre: 'Repas en famille', heure: '19h30', fond: '#F7EEE9' },
-];
-
-export default function AccueilScreen() {
-  const { parents, parentActif, evenements, decisions, messages } = useStore();
-  const router = useRouter();
-  const parent = parents[parentActif];
-  const { width } = useWindowDimensions();
-
-  const today = new Date();
-  const colWidth = Math.floor((width - SPACING.lg * 2 - SPACING.md * 2) / 3);
-
-  const initiales = parent.nom
-    .split(' ')
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
-
-  const decisionsEnAttente = decisions.filter(
-    (d) => d.statut === 'proposée' || d.statut === 'en_attente'
-  ).length;
-
-  const messagesNonLus = messages.filter(
-    (m) => m.expediteurId !== parentActif && m.statut !== 'lu'
-  ).length;
-
-  const badges: Record<string, number> = {
-    decisions: decisionsEnAttente,
-    messagerie: messagesNonLus,
-  };
-
-  const prochainEvenement = useMemo(() => {
-    const now = new Date();
-    const futur = evenements
-      .filter((ev) => parseISO(ev.dateDebut) > now)
-      .sort((a, b) => parseISO(a.dateDebut).getTime() - parseISO(b.dateDebut).getTime());
-    if (futur.length === 0) return null;
-    const next = futur[0];
-    const diffMs = parseISO(next.dateDebut).getTime() - now.getTime();
-    const jours = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    return { jours, date: format(parseISO(next.dateDebut), 'd MMM', { locale: fr }) };
-  }, [evenements]);
-
-  return (
-    <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
-      <ScrollView showsVerticalScrollIndicator={false} bounces>
-
-        {/* Hero */}
-        <LinearGradient
-          colors={['#2D6A4F', '#3D8B6A']}
-          style={styles.hero}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        >
-          <HeroTexture />
-          <FamilyIllustration />
-          <View style={styles.heroRow}>
-            <View style={styles.heroLeft}>
-              <Text style={styles.logo}>dualia</Text>
-              <Text style={styles.tagline}>L'app de toutes les familles.</Text>
-              <Text style={styles.subTagline}>
-                Ensemble ou séparés, organisez la vie de vos enfants.
-              </Text>
-            </View>
-            <View style={styles.parentPill}>
-              <View style={[styles.parentInitiale, { backgroundColor: parent.couleur }]}>
-                <Text style={styles.initialesTxt}>{initiales}</Text>
-              </View>
-              <Text style={styles.parentNom}>{parent.nom.split(' ')[0]}</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        {/* Carte famille */}
-        <View style={styles.carteWrap}>
-          <View style={styles.carteEnfant}>
-            <View style={styles.carteEnfantTop}>
-              <Ionicons name="heart" size={14} color={COLORS.or} />
-              <Text style={styles.carteEnfantLabel}>VOS ENFANTS</Text>
-            </View>
-            <Text style={styles.carteEnfantNoms}>Emma & Léo</Text>
-            <View style={styles.statutRow}>
-              <View style={styles.statutDot} />
-              <Text style={styles.statutTxt}>En famille — Paris</Text>
-            </View>
-            {prochainEvenement && (
-              <View style={styles.prochainRow}>
-                <Ionicons name="calendar-outline" size={11} color={COLORS.orClair} />
-                <Text style={styles.prochainTxt}>
-                  Prochain événement :{' '}
-                  <Text style={styles.prochainValeur}>
-                    dans {prochainEvenement.jours}j — {prochainEvenement.date}
-                  </Text>
-                </Text>
-              </View>
-            )}
-            <Text style={styles.dateJour}>
-              {format(today, 'EEEE d MMMM yyyy', { locale: fr })}
-            </Text>
-          </View>
-        </View>
-
-        {/* Aujourd'hui */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitre}>AUJOURD'HUI</Text>
-          <View style={styles.evenementsCol}>
-            {EVENEMENTS_JOUR.map((ev, i) => (
-              <View key={i} style={[styles.evCard, { backgroundColor: ev.fond }]}>
-                <Text style={styles.evEmoji}>{ev.emoji}</Text>
-                <Text style={styles.evTitre}>{ev.titre}</Text>
-                <Text style={styles.evHeure}>{ev.heure}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Grille de modules — 3 colonnes */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitre}>VOS MODULES</Text>
-          <View style={styles.grid}>
-            {MODULES_GRID.map((mod) => {
-              const badge = badges[mod.id] ?? 0;
-              return (
-                <TouchableOpacity
-                  key={mod.id}
-                  style={[styles.moduleCard, { width: colWidth }]}
-                  onPress={() => router.navigate(mod.route as any)}
-                  activeOpacity={0.72}
-                >
-                  <View style={[styles.moduleIconWrap, { backgroundColor: mod.fond }]}>
-                    <Text style={styles.moduleEmoji}>{mod.emoji}</Text>
-                    {badge > 0 && (
-                      <View style={styles.moduleBadge}>
-                        <Text style={styles.moduleBadgeTxt}>{badge}</Text>
-                      </View>
-                    )}
-                  </View>
-                  <Text style={styles.moduleTitre} numberOfLines={1}>
-                    {mod.titre}
-                  </Text>
-                  <Text style={styles.moduleSous} numberOfLines={1}>
-                    {mod.sous}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerTxt}>
-            🔒 Communications certifiées eIDAS · Données hébergées en France
-          </Text>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
-  );
-}
-
 const styles = StyleSheet.create({
-  conteneur: { flex: 1, backgroundColor: COLORS.ivoire },
+  screen: { flex: 1, backgroundColor: COLORS.ivoire },
+  topbar: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.xl, paddingBottom: SPACING.sm },
+  brandRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  brand: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  brandMarkWrap: {
+    width: 30, height: 30, borderRadius: 9,
+    backgroundColor: COLORS.vert, alignItems: 'center', justifyContent: 'center',
+  },
+  brandName: { fontFamily: FONTS.display, fontSize: 19, color: COLORS.vertProfond, letterSpacing: 0.2 },
+  rightRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  langSwitch: {
+    flexDirection: 'row', backgroundColor: COLORS.blanc, borderRadius: RADIUS.full,
+    borderWidth: 1, borderColor: COLORS.bordure, padding: 2,
+  },
+  langBtn: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: RADIUS.full },
+  langBtnActive: { backgroundColor: COLORS.vertProfond },
+  langBtnText: { fontFamily: FONTS.bodyBold, fontSize: 10.5, color: COLORS.ardoise },
+  langBtnTextActive: { color: COLORS.ivoire },
+  avatarPair: { flexDirection: 'row' },
+  avatar: {
+    width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 2, borderColor: COLORS.ivoire,
+  },
+  avatarSecond: { marginLeft: -10 },
+  avatarText: { fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.blanc },
+  content: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xxxl * 2 },
 
-  hero: {
-    paddingHorizontal: SPACING.xl,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.xxxl + 8,
-    overflow: 'hidden',
-  },
-  familyIllustration: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 160,
-    height: 140,
-    opacity: 0.85,
-  },
-  heroRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  heroLeft: { flex: 1, paddingRight: SPACING.md },
-  logo: {
-    fontSize: 48,
-    fontWeight: '200',
-    color: COLORS.blanc,
-    letterSpacing: 6,
-    fontStyle: 'italic',
-  },
-  tagline: {
-    fontSize: TYPOGRAPHY.md,
-    color: COLORS.blanc,
-    fontWeight: TYPOGRAPHY.semibold,
-    marginTop: SPACING.sm,
-    letterSpacing: 0.2,
-  },
-  subTagline: {
-    fontSize: TYPOGRAPHY.sm,
-    color: 'rgba(255,255,255,0.72)',
-    marginTop: SPACING.xs,
-    lineHeight: 19,
-  },
-  parentPill: {
-    alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.xl,
-    marginTop: SPACING.xs,
-  },
-  parentInitiale: {
-    width: 36,
-    height: 36,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  initialesTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: TYPOGRAPHY.bold,
-    color: COLORS.blanc,
-  },
-  parentNom: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.blanc,
-    fontWeight: TYPOGRAPHY.medium,
-  },
+  bonjour: { fontFamily: FONTS.display, fontSize: 22, color: COLORS.vertProfond, marginTop: SPACING.lg },
+  statutLigne: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, marginTop: 3, marginBottom: SPACING.lg },
 
-  carteWrap: {
-    paddingHorizontal: SPACING.lg,
-    marginTop: -24,
-  },
-  carteEnfant: {
+  familyCard: {
     backgroundColor: COLORS.vertProfond,
     borderRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    shadowColor: COLORS.vertProfond,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
-    shadowRadius: 20,
-    elevation: 10,
+    padding: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
+    overflow: 'hidden',
   },
-  carteEnfantTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    marginBottom: SPACING.sm,
-  },
-  carteEnfantLabel: {
-    fontSize: 10,
-    color: COLORS.orClair,
-    fontWeight: TYPOGRAPHY.semibold,
-    letterSpacing: 1.5,
-  },
-  carteEnfantNoms: {
-    fontSize: TYPOGRAPHY.xxl,
-    fontWeight: TYPOGRAPHY.bold,
-    color: COLORS.blanc,
-    marginBottom: SPACING.sm,
-  },
-  statutRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  statutDot: {
-    width: 8,
-    height: 8,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.vertClair,
-  },
-  statutTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    color: 'rgba(255,255,255,0.75)',
-  },
-  prochainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    marginTop: SPACING.sm,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: RADIUS.sm,
-    alignSelf: 'flex-start',
-  },
-  prochainTxt: {
-    fontSize: TYPOGRAPHY.xs,
-    color: 'rgba(255,255,255,0.65)',
-  },
-  prochainValeur: {
-    color: COLORS.orClair,
-    fontWeight: TYPOGRAPHY.semibold,
-  },
-  dateJour: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    marginTop: SPACING.md,
-    textTransform: 'capitalize',
-    letterSpacing: 0.2,
-  },
+  sealWrap: { position: 'absolute', top: -18, right: -18 },
+  eyebrow: { fontFamily: FONTS.bodySemibold, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', color: COLORS.or },
+  names: { fontFamily: FONTS.display, fontSize: 20, color: COLORS.ivoire, marginTop: 4 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md, flexWrap: 'wrap' },
+  metaText: { fontFamily: FONTS.body, fontSize: 12.5, color: 'rgba(248, 246, 242, 0.75)' },
+  dot: { width: 4, height: 4, borderRadius: 2, backgroundColor: 'rgba(248, 246, 242, 0.4)' },
 
-  section: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.xxl,
-    paddingBottom: SPACING.sm,
-  },
-  sectionTitre: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.semibold,
+  sectionLabel: {
+    fontFamily: FONTS.bodySemibold,
+    fontSize: 12,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
     color: COLORS.ardoise,
-    letterSpacing: 1.5,
+    marginTop: SPACING.xxxl - 4,
     marginBottom: SPACING.md,
   },
 
-  evenementsCol: { gap: SPACING.sm },
-  evCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
+  attentionCard: {
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
+    borderRadius: 15, padding: SPACING.lg, marginBottom: SPACING.sm,
   },
-  evEmoji: { fontSize: 22 },
-  evTitre: {
-    flex: 1,
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: TYPOGRAPHY.medium,
-    color: COLORS.texte,
-  },
-  evHeure: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    fontWeight: TYPOGRAPHY.semibold,
-  },
+  attentionCardTitle: { fontFamily: FONTS.displaySemibold, fontSize: 15, color: COLORS.vertProfond, marginBottom: 8 },
+  attentionRow: { marginBottom: 6 },
+  attentionRowTitle: { fontFamily: FONTS.bodyMedium, fontSize: 13, color: COLORS.texte },
+  attentionRowMeta: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise },
+  attentionAmount: { fontFamily: FONTS.display, fontSize: 18, color: COLORS.vertProfond, marginBottom: 4 },
+  attentionCardLink: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vert, marginTop: 6 },
 
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.md,
+  timeline: { paddingLeft: SPACING.lg, position: 'relative' },
+  timelineRail: { position: 'absolute', left: 8, top: 8, bottom: 8, width: 1, backgroundColor: COLORS.bordure },
+  timelineItem: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: SPACING.lg },
+  timelineDot: {
+    position: 'absolute', left: -14, top: 4,
+    width: 9, height: 9, aspectRatio: 1, borderRadius: 4.5,
+    backgroundColor: COLORS.vert, borderWidth: 2, borderColor: COLORS.ivoire,
   },
-  moduleCard: {
-    backgroundColor: COLORS.blanc,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.09,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  moduleIconWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.sm,
-  },
-  moduleEmoji: { fontSize: 26 },
-  moduleBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    backgroundColor: COLORS.erreur,
-    width: 16,
-    height: 16,
-    borderRadius: RADIUS.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  moduleBadgeTxt: {
-    fontSize: 9,
-    color: COLORS.blanc,
-    fontWeight: TYPOGRAPHY.bold,
-  },
-  moduleTitre: {
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.texte,
-    textAlign: 'center',
-  },
-  moduleSous: {
-    fontSize: 10,
-    color: COLORS.ardoise,
-    textAlign: 'center',
-    marginTop: 2,
-  },
+  timelineTime: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise, minWidth: 44 },
+  timelineBody: { flex: 1, marginLeft: SPACING.sm },
+  timelineTitle: { fontFamily: FONTS.bodyMedium, fontSize: 14.5, color: COLORS.vertProfond },
+  timelineWho: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, marginTop: 1 },
 
-  footer: {
-    alignItems: 'center',
-    paddingVertical: SPACING.xl,
-    paddingHorizontal: SPACING.lg,
+  indicatorRow: { flexDirection: 'row', gap: SPACING.sm },
+  indicatorCard: {
+    flex: 1, backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
+    borderRadius: 14, paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm, alignItems: 'center',
   },
-  footerTxt: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    textAlign: 'center',
-    lineHeight: 18,
+  indicatorLabel: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.ardoise, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 5 },
+  indicatorValueOk: { fontFamily: FONTS.displaySemibold, fontSize: 14, color: COLORS.vert },
+  indicatorValueWarn: { fontFamily: FONTS.displaySemibold, fontSize: 14, color: COLORS.terracotta },
+
+  souvenirCard: {
+    backgroundColor: COLORS.ivoireFonce, borderRadius: 15, padding: SPACING.lg,
   },
+  souvenirEyebrow: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.terracotta, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 },
+  souvenirTitle: { fontFamily: FONTS.display, fontSize: 15.5, color: COLORS.vertProfond, marginBottom: 6 },
+  souvenirLink: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vert },
+
+  trustStrip: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.xl,
+    padding: SPACING.md, backgroundColor: 'rgba(45, 106, 79, 0.08)', borderRadius: RADIUS.md,
+  },
+  trustText: { flex: 1, fontFamily: FONTS.bodyMedium, fontSize: 11.5, color: COLORS.vert },
 });

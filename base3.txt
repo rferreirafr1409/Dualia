@@ -1,0 +1,81 @@
+﻿          <Text style={styles.titreMois}>
+            {format(mois, 'MMMM yyyy', { locale: fr })}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setMois((m) => addMonths(m, 1))}
+            style={styles.navBtn}
+            accessibilityLabel="Mois suivant"
+          >
+            <Ionicons name="chevron-forward" size={20} color={COLORS.blanc} />
+          </TouchableOpacity>
+        </View>
+
+        {/* RÃ©capitulatif du mois */}
+        <View style={styles.recapMois}>
+          <Text style={styles.recapTxt}>
+            <Text style={[styles.recapNom, { color: parents.A.couleur }]}>
+              {parents.A.nom.split(' ')[0]}
+            </Text>
+            <Text style={styles.recapSep}> : </Text>
+            <Text style={[styles.recapNb, { color: parents.A.couleur }]}>{recapMois.A ?? 0}j</Text>
+            <Text style={styles.recapSep}>   /   </Text>
+            <Text style={[styles.recapNom, { color: parents.B.couleur }]}>
+              {parents.B.nom.split(' ')[0]}
+            </Text>
+            <Text style={styles.recapSep}> : </Text>
+            <Text style={[styles.recapNb, { color: parents.B.couleur }]}>{recapMois.B ?? 0}j</Text>
+            <Text style={styles.recapSep}> ce mois</Text>
+          </Text>
+        </View>
+
+        {/* Grille */}
+        <View style={styles.grilleWrap}>
+          {/* En-tÃªtes jours */}
+          <View style={styles.grilleLigne}>
+            {JOURS.map((j, i) => (
+              <View key={i} style={[styles.cellule, styles.celluleHeader]}>
+                <Text style={styles.headerJour}>{j}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Cellules */}
+          <View style={styles.grille}>
+            {Array.from({ length: decalage }).map((_, i) => (
+              <View key={`v-${i}`} style={styles.cellule} />
+            ))}
+
+            {jours.map((jour) => {
+              const parentId = parentDuJour(jour, evsMois);
+              const couleur = parentId ? parents[parentId].couleur : null;
+              const estAujourdhui = isToday(jour);
+
+              return (
+                <View
+                  key={jour.toISOString()}
+                  style={[
+                    styles.cellule,
+                    couleur ? { backgroundColor: couleur } : null,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.numeroCercle,
+                      estAujourdhui && !couleur && styles.numeroCercleAujourdhui,
+                      estAujourdhui && couleur && styles.numeroCercleAujourdhuiGarde,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.numeroJour,
+                        estAujourdhui && styles.numeroJourAujourdhui,
+                        couleur && !estAujourdhui && styles.numeroJourGarde,
+                      ]}
+                    >
+                      {format(jour, 'd')}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>

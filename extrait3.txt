@@ -1,0 +1,31 @@
+﻿                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitre}>{t.prochainesPeriodes}</Text>
+          {prochainsEvs.map((ev) => {
+            const parent = parents[ev.parentId];
+            return (
+              <View key={ev.id} style={styles.carteEv}>
+                <View style={[styles.barreEv, { backgroundColor: parent.couleur }]} />
+                <View style={styles.contenuEv}>
+                  <Text style={styles.evParent}>{parent.nom}</Text>
+                  <Text style={styles.evDate}>
+                    {format(parseISO(ev.dateDebut), 'd MMM', { locale })}
+                    {'  →  '}
+                    {format(parseISO(ev.dateFin), 'd MMM yyyy', { locale })}
+                  </Text>
+                  <Text style={styles.evType}>{t.typesGarde[ev.type]}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={{ height: SPACING.xxxl }} />
+      </ScrollView>
+

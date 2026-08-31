@@ -1,408 +1,239 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useState, useRef } from 'react';
-import { format, parseISO, isToday, isYesterday } from 'date-fns';
-import { fr } from 'date-fns/locale';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { useStore } from '../../store/useStore';
-import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
-import { Message } from '../../types';
+// app/(tabs)/messagerie.tsx
 
-function formaterHeure(isoDate: string): string {
-  const date = parseISO(isoDate);
-  if (isToday(date)) return format(date, 'HH:mm');
-  if (isYesterday(date)) return `Hier ${format(date, 'HH:mm')}`;
-  return format(date, 'd MMM HH:mm', { locale: fr });
+import React from 'react';
+import { View, Text, ScrollView, Pressable, StyleSheet, TextInput } from 'react-native';
+import { useRouter } from 'expo-router';
+import { useStore } from '../../store/useStore';
+import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
+import { ExportIcon } from '../../components/icons';
+import { TRADUCTIONS } from '../../constants/i18n';
+
+const PARSE_MESSAGE_URL = 'https://dualia-backend.vercel.app/api/parse-message';
+
+const fetchAvecRetry = async (url: string, options: RequestInit, tentatives = 2): Promise<Response> => {
+  for (let i = 0; i < tentatives; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok || i === tentatives - 1) return response;
+      if ([502, 503, 504].includes(response.status)) {
+        await new Promise((r) => setTimeout(r, 1500));
+        continue;
+      }
+      return response;
+    } catch (e) {
+      if (i === tentatives - 1) throw e;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  throw new Error('parse_failed');
+};
+
+function formatDay(isoDate: string, langue: 'fr' | 'pt') {
+  const d = new Date(isoDate);
+  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
-function getSeparateur(messages: Message[], index: number): string | null {
-  if (index === 0) {
-    return format(parseISO(messages[0].dateEnvoi), 'd MMMM yyyy', { locale: fr });
-  }
-  const curr = format(parseISO(messages[index].dateEnvoi), 'yyyy-MM-dd');
-  const prev = format(parseISO(messages[index - 1].dateEnvoi), 'yyyy-MM-dd');
-  if (curr !== prev) {
-    return format(parseISO(messages[index].dateEnvoi), 'd MMMM yyyy', { locale: fr });
-  }
-  return null;
+function formatTime(isoDate: string, langue: 'fr' | 'pt') {
+  const d = new Date(isoDate);
+  return d.toLocaleTimeString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { hour: '2-digit', minute: '2-digit' });
 }
 
 export default function MessagerieScreen() {
-  const { messages, parents, parentActif, ajouterMessage } = useStore();
-  const [texte, setTexte] = useState('');
-  const [exportEnCours, setExportEnCours] = useState(false);
-  const listRef = useRef<FlatList<Message>>(null);
+  const router = useRouter();
+  const messages = useStore((s) => s.messages);
+  const parentActif = useStore((s) => s.parentActif);
+  const setDraft = useStore((s) => s.setNouvelleDecisionDraft);
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].messagerie;
+  const ajouterMessage = useStore((s) => s.ajouterMessage);
+  const [texteEnvoi, setTexteEnvoi] = React.useState('');
 
-  const handleEnvoyer = () => {
-    const contenu = texte.trim();
-    if (!contenu) return;
+  const envoyerMessage = () => {
+    if (!texteEnvoi.trim()) return;
     ajouterMessage({
-      id: `m-${Date.now()}`,
+      id: 'msg-' + Date.now(),
       expediteurId: parentActif,
-      contenu,
+      contenu: texteEnvoi.trim(),
       dateEnvoi: new Date().toISOString(),
       statut: 'envoyé',
     });
-    setTexte('');
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 80);
+    setTexteEnvoi('');
+  };
+  const evenementsCalendrier = useStore((s) => s.evenementsCalendrier);
+  const ajouterEvenementCalendrier = useStore((s) => s.ajouterEvenementCalendrier);
+  const messagesAnalyses = useStore((s) => s.messagesAnalyses);
+  const marquerMessageAnalyse = useStore((s) => s.marquerMessageAnalyse);
+  const ignorerSuggestion = useStore((s) => s.ignorerSuggestion);
+
+  const [suggestions, setSuggestions] = React.useState<Record<string, { titre: string; date: string; enfant: string | null }>>({});
+
+  React.useEffect(() => {
+    messages.forEach((msg) => {
+      if (messagesAnalyses.includes(msg.id)) return;
+      marquerMessageAnalyse(msg.id);
+      fetchAvecRetry(PARSE_MESSAGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texte: msg.contenu, langue }),
+      })
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.evenementDetecte && data.date) {
+            setSuggestions((prev) => ({
+              ...prev,
+              [msg.id]: { titre: data.titre || 'Evenement', date: data.date, enfant: data.enfant },
+            }));
+          }
+        })
+        .catch(() => {});
+    });
+  }, [messages]);
+
+  const confirmerSuggestion = (msgId: string) => {
+    const sug = suggestions[msgId];
+    if (!sug) return;
+    ajouterEvenementCalendrier({
+      id: 'evt-' + Date.now(),
+      titre: sug.titre,
+      date: sug.date,
+      parentId: parentActif,
+      enfant: sug.enfant || undefined,
+      sourceMessageId: msgId,
+    });
+    setSuggestions((prev) => { const next = { ...prev }; delete next[msgId]; return next; });
   };
 
-  const handleExportJAF = async () => {
-    setExportEnCours(true);
-    try {
-      const lignes = messages
-        .map(
-          (m) => `
-          <tr style="background:${m.expediteurId === 'A' ? '#EBF5F0' : '#FAF0EB'}">
-            <td style="font-weight:600;color:${m.expediteurId === 'A' ? '#2D6A4F' : '#B5927C'};white-space:nowrap">
-              ${parents[m.expediteurId].nom}
-            </td>
-            <td>${m.contenu.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</td>
-            <td style="white-space:nowrap;color:#6B7F7A;font-size:11px">
-              ${format(parseISO(m.dateEnvoi), "d MMM yyyy 'à' HH:mm", { locale: fr })}
-            </td>
-          </tr>`
-        )
-        .join('');
-
-      const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"/>
-        <style>
-          body{font-family:Arial,sans-serif;padding:24px;color:#1C1917;font-size:13px}
-          h1{color:#1C2B25;margin-bottom:4px}
-          .subtitle{color:#78716C;margin-bottom:24px;font-size:12px}
-          table{width:100%;border-collapse:collapse}
-          th{background:#1C2B25;color:#fff;padding:10px;text-align:left;font-size:11px}
-          td{padding:10px;border-bottom:1px solid #E7E5E4;vertical-align:top}
-          .footer{margin-top:32px;font-size:10px;color:#78716C;text-align:center;border-top:1px solid #E7E5E4;padding-top:12px}
-        </style></head><body>
-        <h1>Dualia — Journal des échanges coparentaux</h1>
-        <p class="subtitle">
-          Entre ${parents['A'].nom} et ${parents['B'].nom}<br/>
-          Exporté le ${format(new Date(), "d MMMM yyyy 'à' HH:mm", { locale: fr })} — Document confidentiel JAF
-        </p>
-        <table>
-          <thead><tr><th>Expéditeur</th><th>Message</th><th>Date &amp; heure</th></tr></thead>
-          <tbody>${lignes}</tbody>
-        </table>
-        <p class="footer">Document certifié Dualia<br/>
-        Destiné exclusivement au Juge aux Affaires Familiales — Ne pas diffuser</p>
-        </body></html>`;
-
-      const { uri } = await Print.printToFileAsync({ html });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, {
-          mimeType: 'application/pdf',
-          dialogTitle: 'Export JAF — Messagerie Dualia',
-        });
-      }
-    } catch {
-      Alert.alert('Erreur export', 'La génération du PDF a échoué. Réessayez.');
-    } finally {
-      setExportEnCours(false);
-    }
+  const ignorerCetteSuggestion = (msgId: string) => {
+    ignorerSuggestion(msgId);
+    setSuggestions((prev) => { const next = { ...prev }; delete next[msgId]; return next; });
   };
 
-  const renderItem = ({ item, index }: { item: Message; index: number }) => {
-    const estMoi = item.expediteurId === parentActif;
-    const separateur = getSeparateur(messages, index);
-    const couleurBulle = parents[item.expediteurId].couleur;
-    const texteClairSurBulle = item.expediteurId === 'A'; // vert foncé → texte blanc
-
-    return (
-      <>
-        {separateur !== null && (
-          <View style={styles.separateur}>
-            <View style={styles.separateurLigne} />
-            <View style={styles.separateurPill}>
-              <Text style={styles.separateurTxt}>{separateur}</Text>
-            </View>
-            <View style={styles.separateurLigne} />
-          </View>
-        )}
-        <View style={[styles.bulleWrap, estMoi ? styles.bulleDroite : styles.bulleGauche]}>
-          {!estMoi && (
-            <Text style={styles.nomExp}>
-              {parents[item.expediteurId].nom.split(' ')[0]}
-            </Text>
-          )}
-          <View
-            style={[
-              styles.bulle,
-              { backgroundColor: couleurBulle },
-              estMoi ? styles.bulleMe : styles.bulleThem,
-            ]}
-          >
-            <Text
-              style={[
-                styles.bulleTxt,
-                texteClairSurBulle ? styles.bulleTxtClair : styles.bulleTxtSombre,
-              ]}
-            >
-              {item.contenu}
-            </Text>
-          </View>
-          <View style={[styles.heureCont, estMoi ? styles.heureContDroite : styles.heureContGauche]}>
-            <Text style={styles.heure}>{formaterHeure(item.dateEnvoi)}</Text>
-            {estMoi && (
-              <Ionicons
-                name={item.statut === 'lu' ? 'checkmark-done' : 'checkmark'}
-                size={12}
-                color={COLORS.ardoise}
-              />
-            )}
-          </View>
-        </View>
-      </>
-    );
+  const formaliser = (contenu: string) => {
+    setDraft(contenu);
+    router.push('/decisions' as any);
   };
+
+  let lastDay = '';
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
-      {/* Bandeau sécurité */}
-      <View style={styles.bandeauSecurite}>
-        <Ionicons name="shield-checkmark" size={13} color={COLORS.orClair} />
-        <Text style={styles.bandeauSecuriteTxt}>
-          Messagerie sécurisée — Échanges certifiés Dualia
-        </Text>
+    <View style={styles.screen}>
+      <View style={styles.topbar}>
+        <Text style={styles.title}>{t.titre}</Text>
+        <Text style={styles.subtitle}>{t.sousTitre}</Text>
       </View>
 
-      {/* Barre actions */}
-      <View style={styles.barreActions}>
-        <View style={styles.participantsRow}>
-          <View style={[styles.avatarDot, { backgroundColor: COLORS.vert }]} />
-          <View style={[styles.avatarDot, { backgroundColor: COLORS.terracotta, marginLeft: -4 }]} />
-          <Text style={styles.participantsTxt}>
-            {parents['A'].nom.split(' ')[0]} & {parents['B'].nom.split(' ')[0]}
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={styles.btnExport}
-          onPress={handleExportJAF}
-          disabled={exportEnCours}
-          accessibilityLabel="Exporter pour le JAF"
-        >
-          {exportEnCours ? (
-            <ActivityIndicator size="small" color={COLORS.vertProfond} />
-          ) : (
-            <Ionicons name="download-outline" size={16} color={COLORS.vertProfond} />
-          )}
-          <Text style={styles.btnExportTxt}>Export JAF</Text>
-        </TouchableOpacity>
-      </View>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {messages.map((msg) => {
+          const day = formatDay(msg.dateEnvoi, langue);
+          const showDaySeparator = day !== lastDay;
+          lastDay = day;
+          const fromMe = msg.expediteurId === parentActif;
 
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={90}
-      >
-        <FlatList
-          ref={listRef}
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.liste}
-          showsVerticalScrollIndicator={false}
-          onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
-        />
+          return (
+            <View key={msg.id}>
+              {showDaySeparator ? (
+                <Text style={styles.dateSeparator}>{day}</Text>
+              ) : null}
 
-        {/* Saisie */}
-        <View style={styles.saisieConteneur}>
+              <View style={[styles.bubbleRow, fromMe && styles.bubbleRowMe]}>
+                <View style={styles.bubbleColumn}>
+                  <View style={[styles.bubble, fromMe ? styles.bubbleMe : styles.bubbleOther]}>
+                    <Text style={[styles.bubbleText, fromMe && styles.bubbleTextMe]}>{msg.contenu}</Text>
+                    <Text style={[styles.bubbleMeta, fromMe && styles.bubbleMetaMe]}>{formatTime(msg.dateEnvoi, langue)}</Text>
+              </View>
+              {suggestions[msg.id] ? (
+                <View style={styles.suggestionCard}>
+                  <Text style={styles.suggestionTexte}>
+                   Ajouter au calendrier : {suggestions[msg.id].titre}
+                {suggestions[msg.id].enfant ? ` – ${suggestions[msg.id].enfant}` : ''}
+                {' – '}
+                {(() => {
+                  const d = new Date(suggestions[msg.id].date);
+                  const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
+                  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', {
+                    day: 'numeric',
+                    month: 'long',
+                    ...(aUneHeure ? { hour: '2-digit', minute: '2-digit' } : {}),
+                  });
+                })()}
+                {' ?'}
+                  </Text>
+                  <View style={styles.suggestionBtns}>
+                    <Pressable style={styles.suggestionBtnIgnorer} onPress={() => ignorerCetteSuggestion(msg.id)}>
+                      <Text style={styles.suggestionBtnIgnorerText}>Ignorer</Text>
+                    </Pressable>
+                    <Pressable style={styles.suggestionBtnConfirmer} onPress={() => confirmerSuggestion(msg.id)}>
+                      <Text style={styles.suggestionBtnConfirmerText}>Confirmer</Text>
+                    </Pressable>
+                  </View>
+                  </View>
+                                ) : null}
+                              code "app\(tabs)\calendrier.tsx"              <Pressable
+                    style={[styles.formaliserBtn, fromMe && styles.formaliserBtnMe]}
+                    onPress={() => formaliser(msg.contenu)}
+                  >
+                    <ExportIcon size={11} color={COLORS.vert} strokeWidth={2} />
+                    <Text style={styles.formaliserText}>{t.formaliser}</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          );
+        })}
+      </ScrollView>
+        <View style={styles.saisieZone}>
           <TextInput
-            style={styles.saisie}
-            value={texte}
-            onChangeText={setTexte}
-            placeholder="Écrire un message…"
+            style={styles.saisieInput}
+            value={texteEnvoi}
+            onChangeText={setTexteEnvoi}
+            placeholder={langue === 'pt' ? 'Escrever uma mensagem...' : 'Ecrire un message...'}
             placeholderTextColor={COLORS.ardoise}
             multiline
-            maxLength={1000}
-            returnKeyType="default"
           />
-          <TouchableOpacity
-            style={[styles.btnEnvoyer, !texte.trim() && styles.btnEnvoyerOff]}
-            onPress={handleEnvoyer}
-            disabled={!texte.trim()}
-            accessibilityLabel="Envoyer"
-          >
-            <Ionicons name="send" size={18} color={COLORS.blanc} />
-          </TouchableOpacity>
+          <Pressable style={styles.saisieBtnEnvoyer} onPress={envoyerMessage}>
+            <Text style={styles.saisieBtnEnvoyerText}>Envoyer</Text>
+          </Pressable>
         </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  conteneur: { flex: 1, backgroundColor: COLORS.ivoireFonce },
-  flex: { flex: 1 },
-
-  bandeauSecurite: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: COLORS.vertProfond,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm + 2,
+  screen: { flex: 1, backgroundColor: COLORS.ivoire },
+  topbar: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.xl, paddingBottom: SPACING.md },
+  title: { fontFamily: FONTS.display, fontSize: 24, color: COLORS.vertProfond },
+  subtitle: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise, marginTop: 3 },
+  content: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xxxl * 2 },
+  dateSeparator: {
+    textAlign: 'center', fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.ardoise,
+    textTransform: 'uppercase', letterSpacing: 0.4, marginVertical: SPACING.md,
   },
-  bandeauSecuriteTxt: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.orClair,
-    fontWeight: TYPOGRAPHY.medium,
-    letterSpacing: 0.2,
+  bubbleRow: { flexDirection: 'row', marginBottom: SPACING.md },
+  bubbleRowMe: { justifyContent: 'flex-end' },
+  bubbleColumn: { maxWidth: '78%' },
+  bubble: { paddingHorizontal: 14, paddingVertical: 11, borderRadius: 16 },
+  bubbleOther: {
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure, borderBottomLeftRadius: 4,
   },
-
-  barreActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    backgroundColor: COLORS.ivoire,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.bordure,
+  bubbleMe: { backgroundColor: COLORS.vert, borderBottomRightRadius: 4 },
+  bubbleText: { fontFamily: FONTS.body, fontSize: 13.5, lineHeight: 19, color: COLORS.vertProfond },
+  bubbleTextMe: { color: COLORS.blanc },
+  bubbleMeta: { fontFamily: FONTS.body, fontSize: 10, color: COLORS.ardoise, marginTop: 4 },
+  bubbleMetaMe: { color: 'rgba(248, 246, 242, 0.75)', textAlign: 'right' },
+  formaliserBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, paddingHorizontal: 4,
   },
-  participantsRow: { flexDirection: 'row', alignItems: 'center' },
-  avatarDot: {
-    width: 22,
-    height: 22,
-    borderRadius: RADIUS.full,
-    borderWidth: 2,
-    borderColor: COLORS.ivoire,
-  },
-  participantsTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.texte,
-    marginLeft: SPACING.sm,
-  },
-  btnExport: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.or,
-  },
-  btnExportTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.vertProfond,
-    fontWeight: TYPOGRAPHY.semibold,
-  },
-
-  liste: { padding: SPACING.md, paddingBottom: SPACING.lg },
-
-  separateur: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginVertical: SPACING.lg,
-  },
-  separateurLigne: { flex: 1, height: 1, backgroundColor: COLORS.bordure },
-  separateurPill: {
-    backgroundColor: COLORS.ivoireFonce,
-    borderRadius: RADIUS.full,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: COLORS.bordure,
-  },
-  separateurTxt: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    textTransform: 'capitalize',
-  },
-
-  bulleWrap: { marginBottom: SPACING.xs },
-  bulleDroite: { alignItems: 'flex-end' },
-  bulleGauche: { alignItems: 'flex-start' },
-  nomExp: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    marginBottom: 4,
-    marginLeft: SPACING.sm,
-    fontWeight: TYPOGRAPHY.medium,
-  },
-  bulle: {
-    maxWidth: '78%',
-    borderRadius: RADIUS.lg,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  bulleMe: {
-    borderBottomRightRadius: 4,
-  },
-  bulleThem: {
-    borderBottomLeftRadius: 4,
-  },
-  bulleTxt: { fontSize: TYPOGRAPHY.md, lineHeight: 22 },
-  bulleTxtClair: { color: COLORS.blanc },
-  bulleTxtSombre: { color: COLORS.texte },
-
-  heureCont: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    marginTop: 3,
-  },
-  heureContGauche: { marginLeft: SPACING.sm },
-  heureContDroite: { marginRight: SPACING.sm },
-  heure: { fontSize: 10, color: COLORS.ardoise },
-
-  saisieConteneur: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: SPACING.sm,
-    padding: SPACING.md,
-    backgroundColor: COLORS.ivoire,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.bordure,
-  },
-  saisie: {
-    flex: 1,
-    backgroundColor: COLORS.blanc,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.bordure,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    fontSize: TYPOGRAPHY.md,
-    color: COLORS.texte,
-    maxHeight: 120,
-  },
-  btnEnvoyer: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.full,
-    backgroundColor: COLORS.vert,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: COLORS.vert,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  btnEnvoyerOff: {
-    backgroundColor: COLORS.ardoise,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
+  formaliserBtnMe: { alignSelf: 'flex-end' },
+  formaliserText: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.vert },
+  suggestionCard: { backgroundColor: COLORS.ivoire, borderWidth: 1, borderColor: COLORS.vert, borderRadius: 10, padding: 10, marginTop: 6, marginBottom: 8 },
+  suggestionTexte: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.vertProfond, marginBottom: 8 },
+  suggestionBtns: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
+  suggestionBtnIgnorer: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
+  suggestionBtnIgnorerText: { fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.ardoise },
+  suggestionBtnConfirmer: { backgroundColor: COLORS.vert, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
+  suggestionBtnConfirmerText: { fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.blanc },
+  saisieZone: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md, backgroundColor: COLORS.blanc, borderTopWidth: 1, borderTopColor: COLORS.bordure },
+  saisieInput: { flex: 1, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.vertProfond, maxHeight: 100 },
+  saisieBtnEnvoyer: { backgroundColor: COLORS.vert, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
+  saisieBtnEnvoyerText: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.blanc }
 });

@@ -1,0 +1,31 @@
+const prochainsEvs = useMemo(
+  () =>
+    [...evenements]
+      .filter((ev) => parseISO(ev.dateFin) >= new Date())
+      .sort((a, b) => parseISO(a.dateDebut).getTime() - parseISO(b.dateDebut).getTime())
+      .slice(0, 5),
+  [evenements]
+);  const prochainsEvs = useMemo(
+    () =>
+      [...evenements]
+        .filter((ev) => parseISO(ev.dateFin) >= new Date())
+        .sort((a, b) => parseISO(a.dateDebut).getTime() - parseISO(b.dateDebut).getTime())
+        .slice(0, 5),
+    [evenements]
+  );
+
+  const recapMois = useMemo(() => {
+    const compteur: Partial<Record<ParentRole, number>> = {};
+    joursMois.forEach((jour) => {
+      const parentId = parentDuJour(jour, evsMois);
+      if (parentId) {
+        compteur[parentId] = (compteur[parentId] ?? 0) + 1;
+      }
+    });
+    return compteur;
+  }, [joursMois, evsMois]);
+
+  const chargeMentale = useMemo(() => {
+    const compteur: Partial<Record<ParentRole, number>> = {};
+    decisions.forEach((d) => {
+      const date = parseISO(d.dateCreation);
