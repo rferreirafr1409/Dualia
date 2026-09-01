@@ -112,6 +112,26 @@ async function assurerCadreFamilialDistant(familleId: string, cadre: CadreFamili
   return data.id as string;
 }
 
+// ---------- Événements calendrier : correspondance avec Supabase ----------
+// parent_id en base est un uuid réel (parents.id), alors que le store local
+// manipule ParentRole ('A'|'B') partout pour rester compatible avec les
+// écrans existants — d'où ces deux petites fonctions de traduction.
+
+const evenementCalendrierVersDB = (ev: EvenementCalendrier, familleId: string, parentUuid?: string) => ({
+  famille_id: familleId,
+  titre: ev.titre,
+  date: ev.date,
+  parent_id: parentUuid ?? null,
+});
+
+const evenementCalendrierDepuisDB = (e: any, roleParUuid: Record<string, ParentRole>): EvenementCalendrier => ({
+  id: e.id,
+  titre: e.titre,
+  date: e.date,
+  parentId: (e.parent_id && roleParUuid[e.parent_id]) || 'A',
+  sourceMessageId: e.source_message_id ?? undefined,
+});
+
 const genEvenementsGarde = (): EvenementGarde[] => {
   const events: EvenementGarde[] = [];
   const today = new Date();
@@ -553,8 +573,34 @@ export const useStore = create<DualiaStore>()(
   ajouterEvenement: (ev) =>
     set((state) => ({ evenements: [...state.evenements, ev] })),
       evenementsCalendrier: [],
-      ajouterEvenementCalendrier: (ev) =>
-        set((state) => ({ evenementsCalendrier: [...state.evenementsCalendrier, ev] })),
+      ajouterEvenementCalendrier: (ev) => {
+        // Optimiste : affiché tout de suite, écrit en base en tâche de fond.
+        set((state) => ({ evenementsCalendrier: [...state.evenementsCalendrier, ev] }));
+
+        const { familleId, parents } = get();
+        if (!familleId) {
+          console.error('[Dualia] Événement non synchronisé : aucune famille active.');
+          return;
+        }
+        const parentUuid = parents[ev.parentId]?.uuid;
+        supabase
+          .from('evenements_calendrier')
+          .insert(evenementCalendrierVersDB(ev, familleId, parentUuid))
+          .select()
+          .single()
+          .then(({ data, error }) => {
+            if (error || !data) {
+              console.error('[Dualia] Échec synchronisation événement calendrier :', error);
+              return;
+            }
+            // Réconcilie l'id local (généré côté client) avec le vrai id Supabase.
+            set((state) => ({
+              evenementsCalendrier: state.evenementsCalendrier.map((e) =>
+                e === ev || e.id === ev.id ? { ...e, id: data.id } : e
+              ),
+            }));
+          });
+      },
       ignorerSuggestion: (messageId) =>
         set((state) => ({ messagesAnalyses: [...state.messagesAnalyses, messageId] })),
       messagesAnalyses: [],
@@ -687,9 +733,6 @@ export const useStore = create<DualiaStore>()(
         reglesSyncees = (data ?? []).map(regleDepuisDB);
       }
 
-      // On réconcilie les ids locaux avec les vrais ids Supabase : toutes
-      // les actions suivantes (valider/rejeter/modifier une règle) doivent
-      // cibler la vraie ligne en base, pas un id généré côté client.
       set((state) => ({
         cadreFamilial: state.cadreFamilial
           ? { ...state.cadreFamilial, id: cadreFamilialId, regles: reglesSyncees }
@@ -901,14 +944,32 @@ export const useStore = create<DualiaStore>()(
 
     if (erreurCadre) {
       console.error('[Dualia] Échec chargement cadre familial :', erreurCadre);
-      return;
-    }
-    if (cadreDB) {
+    } else if (cadreDB) {
       const { data: reglesDB } = await supabase
         .from('regles_partage')
         .select('*')
         .eq('cadre_familial_id', cadreDB.id);
       set({ cadreFamilial: cadreDepuisDB(cadreDB, reglesDB ?? []) });
+    }
+
+    // Charge les événements calendrier déjà créés par l'un ou l'autre parent
+    // (ex. suggérés depuis un message et confirmés) — sinon chacun ne voit
+    // que ce qu'il a lui-même ajouté depuis son propre appareil.
+    const roleParUuid: Record<string, ParentRole> = {};
+    (tousLesParents ?? []).forEach((p: any) => {
+      roleParUuid[p.id] = p.role as ParentRole;
+    });
+    const { data: evenementsDB, error: erreurEvenements } = await supabase
+      .from('evenements_calendrier')
+      .select('*')
+      .eq('famille_id', moi.famille_id);
+
+    if (erreurEvenements) {
+      console.error('[Dualia] Échec chargement événements calendrier :', erreurEvenements);
+    } else if (evenementsDB && evenementsDB.length > 0) {
+      set({
+        evenementsCalendrier: evenementsDB.map((e: any) => evenementCalendrierDepuisDB(e, roleParUuid)),
+      });
     }
   },
 }),
