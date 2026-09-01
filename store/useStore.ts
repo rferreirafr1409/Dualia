@@ -132,6 +132,40 @@ const evenementCalendrierDepuisDB = (e: any, roleParUuid: Record<string, ParentR
   sourceMessageId: e.source_message_id ?? undefined,
 });
 
+// ---------- Dépenses : correspondance avec Supabase ----------
+// photoUri n'est JAMAIS envoyé en base : c'est une image locale (souvent
+// base64), pas une donnée relationnelle — même logique que pour le
+// localStorage (voir partialize plus bas). La colonne `date` de Supabase
+// est un type DATE (pas timestamp), d'où le découpage sur le 'T'.
+
+const depenseVersDB = (dep: Depense, familleId: string, auteurUuid?: string) => ({
+  famille_id: familleId,
+  categorie: dep.categorie,
+  montant: dep.montant,
+  description: dep.description || null,
+  auteur_id: auteurUuid ?? null,
+  date: dep.date.split('T')[0],
+  rembourse: dep.rembourse,
+  part_a: dep.partA ?? null,
+  part_b: dep.partB ?? null,
+  commercant: dep.commercant ?? null,
+  lignes_detail: dep.lignesDetail ?? null,
+});
+
+const depenseDepuisDB = (d: any, roleParUuid: Record<string, ParentRole>): Depense => ({
+  id: d.id,
+  categorie: d.categorie,
+  montant: Number(d.montant),
+  description: d.description ?? '',
+  auteurId: (d.auteur_id && roleParUuid[d.auteur_id]) || 'A',
+  date: d.date,
+  rembourse: d.rembourse ?? false,
+  partA: d.part_a != null ? Number(d.part_a) : undefined,
+  partB: d.part_b != null ? Number(d.part_b) : undefined,
+  commercant: d.commercant ?? undefined,
+  lignesDetail: d.lignes_detail ?? undefined,
+});
+
 const genEvenementsGarde = (): EvenementGarde[] => {
   const events: EvenementGarde[] = [];
   const today = new Date();
@@ -476,11 +510,8 @@ interface DualiaStore {
   setNouvelleDecisionDraft: (texte: string | null) => void;
   setLangue: (langue: Langue) => void;
 
-  // Cadre familial — règles financières issues de la convention.
-  // null tant qu'aucune convention n'a été importée/validée.
   cadreFamilial: CadreFamilial | null;
   setCadreFamilial: (cadre: CadreFamilial) => void;
-  /** Envoie le cadre extrait vers Supabase (upsert cadre_familial + remplacement des regles_partage), puis met à jour l'état local avec les vrais ids retournés. À utiliser (et attendre) juste après une extraction, avant de naviguer vers l'écran de validation. */
   synchroniserCadreFamilial: (cadre: CadreFamilial) => Promise<void>;
   validerRegle: (regleId: string, validePar?: string) => void;
   rejeterRegle: (regleId: string) => void;
@@ -488,9 +519,6 @@ interface DualiaStore {
   modifierRegle: (regleId: string, updates: { partA: number; partB: number }) => void;
   finaliserCadreFamilial: () => void;
 
-  // Propositions de répartition, une par dépense passée dans le moteur de règles.
-  // Ne remplace jamais Depense.rembourse / partA / partB existants : c'est une
-  // couche de traçabilité en plus, pas une nouvelle source de vérité financière.
   propositionsRepartition: PropositionRepartition[];
   creerProposition: (proposition: PropositionRepartition) => void;
   confirmerProposition: (id: string, confirmePar?: string) => void;
@@ -501,19 +529,11 @@ interface DualiaStore {
   ) => void;
   refuserProposition: (id: string) => void;
 
-  // ---------- Session réelle (Supabase) ----------
-  // familleId et chargementInitial ne sont pas persistés dans le
-  // localStorage : ils sont reconstruits à chaque démarrage depuis la
-  // vraie base, pour ne jamais afficher une donnée périmée.
   familleId: string | null;
   chargementInitial: boolean;
   initialiserSession: () => Promise<void>;
 }
 
-// Sur le web, localStorage n'existe que dans un vrai navigateur — pas
-// pendant le pré-rendu côté serveur (web.output "static" dans app.json).
-// On utilise donc un storage factice tant que `window` n'est pas défini,
-// pour ne jamais planter le build.
 const rawStorage =
   Platform.OS === 'web'
     ? (typeof window !== 'undefined' ? localStorage : {
@@ -523,16 +543,12 @@ const rawStorage =
       })
     : AsyncStorage;
 
-// Enveloppe le storage pour ne jamais échouer silencieusement : si l'écriture
-// dépasse le quota (ex. localStorage plein), on log une erreur explicite au
-// lieu de perdre les données sans que personne ne le sache.
 const storageAvecAlerte = {
   getItem: (name: string) => rawStorage.getItem(name),
   removeItem: (name: string) => rawStorage.removeItem(name),
   setItem: (name: string, value: string) => {
     try {
       const resultat = rawStorage.setItem(name, value);
-      // AsyncStorage.setItem renvoie une Promise ; localStorage.setItem est synchrone.
       if (resultat && typeof (resultat as any).catch === 'function') {
         (resultat as Promise<void>).catch((e) => {
           console.error('[Dualia] Échec sauvegarde (AsyncStorage) :', e);
@@ -574,7 +590,6 @@ export const useStore = create<DualiaStore>()(
     set((state) => ({ evenements: [...state.evenements, ev] })),
       evenementsCalendrier: [],
       ajouterEvenementCalendrier: (ev) => {
-        // Optimiste : affiché tout de suite, écrit en base en tâche de fond.
         set((state) => ({ evenementsCalendrier: [...state.evenementsCalendrier, ev] }));
 
         const { familleId, parents } = get();
@@ -593,7 +608,6 @@ export const useStore = create<DualiaStore>()(
               console.error('[Dualia] Échec synchronisation événement calendrier :', error);
               return;
             }
-            // Réconcilie l'id local (généré côté client) avec le vrai id Supabase.
             set((state) => ({
               evenementsCalendrier: state.evenementsCalendrier.map((e) =>
                 e === ev || e.id === ev.id ? { ...e, id: data.id } : e
@@ -656,8 +670,32 @@ export const useStore = create<DualiaStore>()(
       ),
     })),
 
-  ajouterDepense: (dep) =>
-    set((state) => ({ depenses: [dep, ...state.depenses] })),
+  ajouterDepense: (dep) => {
+    set((state) => ({ depenses: [dep, ...state.depenses] }));
+
+    const { familleId, parents } = get();
+    if (!familleId) {
+      console.error('[Dualia] Dépense non synchronisée : aucune famille active.');
+      return;
+    }
+    const auteurUuid = parents[dep.auteurId]?.uuid;
+    supabase
+      .from('depenses')
+      .insert(depenseVersDB(dep, familleId, auteurUuid))
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.error('[Dualia] Échec synchronisation dépense :', error);
+          return;
+        }
+        set((state) => ({
+          depenses: state.depenses.map((d) =>
+            d === dep || d.id === dep.id ? { ...d, id: data.id } : d
+          ),
+        }));
+      });
+  },
 
   ajouterDocument: (doc) =>
     set((state) => ({ documents: [doc, ...state.documents] })),
@@ -690,12 +728,20 @@ export const useStore = create<DualiaStore>()(
     }
   },
 
-  reglerDepense: (id) =>
+  reglerDepense: (id) => {
     set((state) => ({
       depenses: state.depenses.map((d) =>
         d.id === id ? { ...d, rembourse: true } : d
       ),
-    })),
+    }));
+    supabase
+      .from('depenses')
+      .update({ rembourse: true })
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec sync règlement dépense (distant) :', error);
+      });
+  },
 
   // ---------- Cadre familial ----------
   cadreFamilial: null,
@@ -703,7 +749,6 @@ export const useStore = create<DualiaStore>()(
   setCadreFamilial: (cadre) => set({ cadreFamilial: cadre }),
 
   synchroniserCadreFamilial: async (cadre) => {
-    // Optimiste : on affiche tout de suite, la synchronisation se fait en tâche de fond.
     set({ cadreFamilial: cadre });
 
     const familleId = get().familleId;
@@ -715,8 +760,6 @@ export const useStore = create<DualiaStore>()(
     try {
       const cadreFamilialId = await assurerCadreFamilialDistant(familleId, cadre);
 
-      // On repart d'une base propre pour les règles : un ré-import de
-      // jugement doit remplacer les anciennes règles, pas les cumuler.
       const { error: erreurSuppression } = await supabase
         .from('regles_partage')
         .delete()
@@ -933,9 +976,6 @@ export const useStore = create<DualiaStore>()(
       chargementInitial: false,
     });
 
-    // Charge un cadre familial déjà synchronisé par l'autre parent (ou par
-    // soi-même sur un autre appareil) — sinon on garde celui déjà présent
-    // en local (import en cours de validation, pas encore finalisé/rechargé).
     const { data: cadreDB, error: erreurCadre } = await supabase
       .from('cadre_familial')
       .select('*')
@@ -952,9 +992,6 @@ export const useStore = create<DualiaStore>()(
       set({ cadreFamilial: cadreDepuisDB(cadreDB, reglesDB ?? []) });
     }
 
-    // Charge les événements calendrier déjà créés par l'un ou l'autre parent
-    // (ex. suggérés depuis un message et confirmés) — sinon chacun ne voit
-    // que ce qu'il a lui-même ajouté depuis son propre appareil.
     const roleParUuid: Record<string, ParentRole> = {};
     (tousLesParents ?? []).forEach((p: any) => {
       roleParUuid[p.id] = p.role as ParentRole;
@@ -971,6 +1008,20 @@ export const useStore = create<DualiaStore>()(
         evenementsCalendrier: evenementsDB.map((e: any) => evenementCalendrierDepuisDB(e, roleParUuid)),
       });
     }
+
+    const { data: depensesDB, error: erreurDepenses } = await supabase
+      .from('depenses')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .order('date', { ascending: false });
+
+    if (erreurDepenses) {
+      console.error('[Dualia] Échec chargement dépenses :', erreurDepenses);
+    } else if (depensesDB && depensesDB.length > 0) {
+      set({
+        depenses: depensesDB.map((d: any) => depenseDepuisDB(d, roleParUuid)),
+      });
+    }
   },
 }),
     {
@@ -980,11 +1031,6 @@ export const useStore = create<DualiaStore>()(
         decisions: state.decisions,
         messages: state.messages,
         journalEntries: state.journalEntries,
-        // On retire photoUri avant de persister : ce sont des images en
-        // base64 (souvent 1-3 Mo chacune) qui saturent le quota de
-        // localStorage (~5-10 Mo). Une fois le quota dépassé, l'écriture
-        // échoue silencieusement et plus AUCUNE dépense n'est sauvegardée
-        // (ce qui explique pourquoi seuls les derniers ajouts disparaissent).
         depenses: state.depenses.map(({ photoUri, ...rest }) => rest),
         documents: state.documents,
         parentActif: state.parentActif,
