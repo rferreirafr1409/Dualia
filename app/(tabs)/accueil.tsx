@@ -3,6 +3,7 @@
 import React from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { ShieldIcon, SealMark, BrandMark } from '../../components/icons';
@@ -28,9 +29,7 @@ function trouverSouvenir(journalEntries: JournalEntry[]) {
   return { entry: plusRecent, ilYaUnAn: false };
 }
 
-// Initiale d'affichage pour l'avatar d'un parent : première lettre du
-// prénom (premier mot du nom complet), en majuscule. Fallback sur "?" si le
-// nom est vide, pour ne jamais planter sur un profil incomplet.
+// Initiale d'affichage pour l'avatar d'un parent.
 function initialeParent(nomComplet: string | undefined): string {
   const prenom = nomComplet?.trim().split(' ')[0] ?? '';
   return prenom.length > 0 ? prenom.charAt(0).toUpperCase() : '?';
@@ -44,15 +43,12 @@ export default function AccueilScreen() {
   const familyCard = useStore((s) => s.familyCard);
   const decisions = useStore((s) => s.decisions);
   const depenses = useStore((s) => s.depenses);
-  const documents = useStore((s) => s.documents);
   const journalEntries = useStore((s) => s.journalEntries);
   const parents = useStore((s) => s.parents);
   const parentActif = useStore((s) => s.parentActif);
   const t = TRADUCTIONS[langue];
   const prenom = parents[parentActif]?.nom.split(' ')[0] ?? '';
 
-  // Le parent actif (vous) s'affiche toujours en premier, l'autre parent
-  // ensuite — peu importe que les rôles internes soient 'A' ou 'B'.
   const autreRole: ParentRole = parentActif === 'A' ? 'B' : 'A';
   const initialeMoi = initialeParent(parents[parentActif]?.nom);
   const initialeAutre = initialeParent(parents[autreRole]?.nom);
@@ -67,6 +63,10 @@ export default function AccueilScreen() {
 
   const souvenir = trouverSouvenir(journalEntries);
 
+  const dateAujourdhui = new Date().toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', {
+    weekday: 'long', day: 'numeric', month: 'long',
+  });
+
   return (
     <View style={styles.screen}>
       <View style={styles.topbar}>
@@ -75,7 +75,10 @@ export default function AccueilScreen() {
             <View style={styles.brandMarkWrap}>
               <BrandMark size={16} color={COLORS.ivoire} />
             </View>
-            <Text style={styles.brandName}>{t.brand}</Text>
+            <View>
+              <Text style={styles.brandName}>{t.brand}</Text>
+              <Text style={styles.tagline}>{t.accueil.tagline}</Text>
+            </View>
           </View>
           <View style={styles.rightRow}>
             <View style={styles.langSwitch}>
@@ -99,7 +102,6 @@ export default function AccueilScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Salutation + statut, sans emoji */}
         <Text style={styles.bonjour}>{t.accueil.bonjour} {prenom}</Text>
         <Text style={styles.statutLigne}>
           {aDesElementsAttention ? t.accueil.elementsAttention(nbElementsAttention) : t.accueil.tousAJour}
@@ -109,7 +111,10 @@ export default function AccueilScreen() {
           <View style={styles.sealWrap}>
             <SealMark size={90} />
           </View>
-          <Text style={styles.eyebrow}>{t.accueil.eyebrowEnfants}</Text>
+          <View style={styles.familyCardTop}>
+            <Text style={styles.eyebrow}>{t.accueil.eyebrowEnfants}</Text>
+            <Ionicons name="heart-outline" size={16} color={COLORS.or} />
+          </View>
           <Text style={styles.names}>{familyCard.enfants}</Text>
           <View style={styles.metaRow}>
             <Text style={styles.metaText}>{familyCard.localisation}</Text>
@@ -118,41 +123,53 @@ export default function AccueilScreen() {
           </View>
         </View>
 
-        {/* À votre attention — regroupé, pas une carte par élément */}
-        {aDesElementsAttention ? (
-          <>
-            <Text style={styles.sectionLabel}>{t.accueil.attention.titre}</Text>
-
-            {decisionsEnAttente.length > 0 ? (
-              <Pressable style={styles.attentionCard} onPress={() => router.push('/decisions' as any)}>
-                <Text style={styles.attentionCardTitle}>
-                  {t.accueil.attention.decisionsTitre(decisionsEnAttente.length)}
-                </Text>
-                {decisionsEnAttente.slice(0, 2).map((d) => (
-                  <View key={d.id} style={styles.attentionRow}>
-                    <Text style={styles.attentionRowTitle} numberOfLines={1}>{d.titre}</Text>
-                    <Text style={styles.attentionRowMeta}>
-                      {t.accueil.attention.proposePar(parents[d.auteurId]?.nom.split(' ')[0] ?? '')}
-                    </Text>
-                  </View>
-                ))}
-                <Text style={styles.attentionCardLink}>{t.accueil.attention.toutExaminer} →</Text>
+        {/* À votre attention + Finances côte à côte, comme dans la maquette */}
+        <View style={styles.duoRow}>
+          <View style={styles.duoCard}>
+            <View style={styles.duoHeader}>
+              <View style={[styles.duoIcon, { backgroundColor: '#FBF3DF' }]}>
+                <Ionicons name="notifications-outline" size={16} color={COLORS.or} />
+              </View>
+              <Text style={styles.duoTitre} numberOfLines={1}>{t.accueil.attention.titre}</Text>
+              {nbElementsAttention > 0 ? (
+                <View style={styles.duoBadge}>
+                  <Text style={styles.duoBadgeTxt}>{nbElementsAttention}</Text>
+                </View>
+              ) : null}
+            </View>
+            {decisionsEnAttente.slice(0, 2).map((d) => (
+              <Pressable key={d.id} onPress={() => router.push('/decisions' as any)} style={styles.duoRowItem}>
+                <Text style={styles.duoRowItemTitle} numberOfLines={1}>{d.titre}</Text>
               </Pressable>
-            ) : null}
+            ))}
+            <Pressable onPress={() => router.push('/echanges' as any)}>
+              <Text style={styles.duoLien}>{t.accueil.attention.toutExaminer} →</Text>
+            </Pressable>
+          </View>
 
-            {depensesNonReglees.length > 0 ? (
-              <Pressable style={styles.attentionCard} onPress={() => router.push('/finances' as any)}>
-                <Text style={styles.attentionCardTitle}>{t.accueil.attention.financesTitre}</Text>
-                <Text style={styles.attentionAmount}>
-                  {totalARegulariser.toFixed(2)} € {t.accueil.attention.aRegulariser}
-                </Text>
-                <Text style={styles.attentionCardLink}>{t.accueil.attention.voirSolde} →</Text>
-              </Pressable>
-            ) : null}
-          </>
-        ) : null}
+          <View style={styles.duoCard}>
+            <View style={styles.duoHeader}>
+              <View style={[styles.duoIcon, { backgroundColor: '#EEF1F0' }]}>
+                <Ionicons name="wallet-outline" size={16} color={COLORS.vert} />
+              </View>
+              <Text style={styles.duoTitre}>{t.accueil.attention.financesTitre}</Text>
+            </View>
+            <Text style={styles.duoMontant}>
+              {totalARegulariser > 0 ? `${totalARegulariser.toFixed(2)} €` : '0,00 €'}
+            </Text>
+            <Text style={styles.duoSousTexte}>
+              {totalARegulariser > 0 ? t.accueil.attention.aRegulariser : t.accueil.organisationAJour}
+            </Text>
+            <Pressable onPress={() => router.push('/finances' as any)}>
+              <Text style={styles.duoLien}>{t.accueil.attention.voirSolde} →</Text>
+            </Pressable>
+          </View>
+        </View>
 
-        <Text style={styles.sectionLabel}>{t.accueil.aujourdhui}</Text>
+        <View style={styles.aujourdhuiHeader}>
+          <Text style={styles.sectionLabel}>{t.accueil.aujourdhui}</Text>
+          <Text style={styles.dateTxt}>{dateAujourdhui}</Text>
+        </View>
         <View style={styles.timeline}>
           <View style={styles.timelineRail} />
           {todayEvents.map((event) => (
@@ -166,28 +183,18 @@ export default function AccueilScreen() {
             </View>
           ))}
         </View>
+        <Pressable onPress={() => router.push('/calendrier' as any)}>
+          <Text style={styles.duoLien}>{t.accueil.voirAgendaComplet}</Text>
+        </Pressable>
 
-        {/* Votre famille — indicateurs réels, remplace la grille de raccourcis
-            (redondante avec la barre d'onglets) */}
-        <Text style={styles.sectionLabel}>{t.accueil.votreFamille}</Text>
-        <View style={styles.indicatorRow}>
-          <Pressable style={styles.indicatorCard} onPress={() => router.push('/calendrier' as any)}>
-            <Text style={styles.indicatorLabel}>{t.accueil.organisation}</Text>
-            <Text style={styles.indicatorValueOk}>{t.accueil.organisationAJour}</Text>
-          </Pressable>
-          <Pressable style={styles.indicatorCard} onPress={() => router.push('/finances' as any)}>
-            <Text style={styles.indicatorLabel}>{t.accueil.finances}</Text>
-            <Text style={totalARegulariser > 0 ? styles.indicatorValueWarn : styles.indicatorValueOk}>
-              {totalARegulariser > 0 ? `${totalARegulariser.toFixed(2)} €` : t.accueil.organisationAJour}
-            </Text>
-          </Pressable>
-          <Pressable style={styles.indicatorCard} onPress={() => router.push('/documents' as any)}>
-            <Text style={styles.indicatorLabel}>{t.accueil.documents}</Text>
-            <Text style={styles.indicatorValueOk}>{documents.length}</Text>
-          </Pressable>
-        </View>
+        <Pressable style={styles.banner} onPress={() => {}}>
+          <Ionicons name="heart" size={26} color={COLORS.or} style={{ marginRight: SPACING.md }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.bannerTitre}>{t.accueil.bannerTitre}</Text>
+            <Text style={styles.bannerTexte}>{t.accueil.bannerTexte}</Text>
+          </View>
+        </Pressable>
 
-        {/* Un souvenir — tiré du vrai Journal */}
         {souvenir ? (
           <>
             <Text style={styles.sectionLabel}>{t.accueil.unSouvenir}</Text>
@@ -220,6 +227,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.vert, alignItems: 'center', justifyContent: 'center',
   },
   brandName: { fontFamily: FONTS.display, fontSize: 19, color: COLORS.vertProfond, letterSpacing: 0.2 },
+  tagline: { fontFamily: FONTS.body, fontSize: 10, fontStyle: 'italic', color: COLORS.ardoise, marginTop: -1 },
   rightRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   langSwitch: {
     flexDirection: 'row', backgroundColor: COLORS.blanc, borderRadius: RADIUS.full,
@@ -249,6 +257,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   sealWrap: { position: 'absolute', top: -18, right: -18 },
+  familyCardTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   eyebrow: { fontFamily: FONTS.bodySemibold, fontSize: 11, letterSpacing: 0.8, textTransform: 'uppercase', color: COLORS.or },
   names: { fontFamily: FONTS.display, fontSize: 20, color: COLORS.ivoire, marginTop: 4 },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.md, flexWrap: 'wrap' },
@@ -265,16 +274,24 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
 
-  attentionCard: {
-    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
-    borderRadius: 15, padding: SPACING.lg, marginBottom: SPACING.sm,
+  duoRow: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl },
+  duoCard: {
+    flex: 1, backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
+    borderRadius: 15, padding: SPACING.md,
   },
-  attentionCardTitle: { fontFamily: FONTS.displaySemibold, fontSize: 15, color: COLORS.vertProfond, marginBottom: 8 },
-  attentionRow: { marginBottom: 6 },
-  attentionRowTitle: { fontFamily: FONTS.bodyMedium, fontSize: 13, color: COLORS.texte },
-  attentionRowMeta: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise },
-  attentionAmount: { fontFamily: FONTS.display, fontSize: 18, color: COLORS.vertProfond, marginBottom: 4 },
-  attentionCardLink: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vert, marginTop: 6 },
+  duoHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.sm },
+  duoIcon: { width: 26, height: 26, borderRadius: RADIUS.sm, alignItems: 'center', justifyContent: 'center' },
+  duoTitre: { flex: 1, fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond },
+  duoBadge: { backgroundColor: COLORS.or, borderRadius: RADIUS.full, minWidth: 18, height: 18, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  duoBadgeTxt: { fontSize: 10, fontFamily: FONTS.bodyBold, color: COLORS.vertProfond },
+  duoRowItem: { marginBottom: 6 },
+  duoRowItemTitle: { fontFamily: FONTS.bodyMedium, fontSize: 12, color: COLORS.texte },
+  duoMontant: { fontFamily: FONTS.display, fontSize: 18, color: COLORS.vertProfond, marginBottom: 2 },
+  duoSousTexte: { fontFamily: FONTS.body, fontSize: 11, color: COLORS.ardoise, marginBottom: 8 },
+  duoLien: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.vert, marginTop: 4 },
+
+  aujourdhuiHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', marginTop: SPACING.xxxl - 4, marginBottom: SPACING.md },
+  dateTxt: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, textTransform: 'capitalize' },
 
   timeline: { paddingLeft: SPACING.lg, position: 'relative' },
   timelineRail: { position: 'absolute', left: 8, top: 8, bottom: 8, width: 1, backgroundColor: COLORS.bordure },
@@ -289,14 +306,13 @@ const styles = StyleSheet.create({
   timelineTitle: { fontFamily: FONTS.bodyMedium, fontSize: 14.5, color: COLORS.vertProfond },
   timelineWho: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, marginTop: 1 },
 
-  indicatorRow: { flexDirection: 'row', gap: SPACING.sm },
-  indicatorCard: {
-    flex: 1, backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
-    borderRadius: 14, paddingVertical: SPACING.md, paddingHorizontal: SPACING.sm, alignItems: 'center',
+  banner: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#F3ECDF', borderRadius: RADIUS.lg, padding: SPACING.lg,
+    marginTop: SPACING.xl,
   },
-  indicatorLabel: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.ardoise, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 5 },
-  indicatorValueOk: { fontFamily: FONTS.displaySemibold, fontSize: 14, color: COLORS.vert },
-  indicatorValueWarn: { fontFamily: FONTS.displaySemibold, fontSize: 14, color: COLORS.terracotta },
+  bannerTitre: { fontFamily: FONTS.display, fontSize: 15, color: COLORS.vertProfond, marginBottom: 2 },
+  bannerTexte: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise },
 
   souvenirCard: {
     backgroundColor: COLORS.ivoireFonce, borderRadius: 15, padding: SPACING.lg,
