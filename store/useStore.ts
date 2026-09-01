@@ -210,6 +210,49 @@ const decisionUpdatesVersDB = (updates: Partial<Decision>) => {
   return out;
 };
 
+// ---------- Messages : correspondance avec Supabase ----------
+
+const messageVersDB = (m: Message, familleId: string, expediteurUuid?: string) => ({
+  famille_id: familleId,
+  expediteur_id: expediteurUuid ?? null,
+  contenu: m.contenu,
+  date_envoi: m.dateEnvoi,
+  statut: m.statut,
+});
+
+const messageDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): Message => ({
+  id: row.id,
+  expediteurId: (row.expediteur_id && roleParUuid[row.expediteur_id]) || 'A',
+  contenu: row.contenu,
+  dateEnvoi: row.date_envoi,
+  statut: row.statut,
+});
+
+// ---------- Documents : correspondance avec Supabase ----------
+// Comme les autres écrans "métadonnées seules" (pas de vrai fichier
+// uploadé ici, juste un nom + catégorie + statut), la synchronisation
+// est directe, sans champ à exclure.
+
+const documentVersDB = (doc: DocumentItem, familleId: string, auteurUuid?: string) => ({
+  famille_id: familleId,
+  nom: doc.nom,
+  categorie: doc.categorie,
+  auteur_id: auteurUuid ?? null,
+  date: doc.date.split('T')[0],
+  certifie: doc.certifie,
+  note: doc.note ?? null,
+});
+
+const documentDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): DocumentItem => ({
+  id: row.id,
+  nom: row.nom,
+  categorie: row.categorie,
+  auteurId: (row.auteur_id && roleParUuid[row.auteur_id]) || 'A',
+  date: row.date,
+  certifie: row.certifie ?? false,
+  note: row.note ?? undefined,
+});
+
 const genEvenementsGarde = (): EvenementGarde[] => {
   const events: EvenementGarde[] = [];
   const today = new Date();
@@ -712,8 +755,32 @@ export const useStore = create<DualiaStore>()(
       });
   },
 
-  ajouterMessage: (m) =>
-    set((state) => ({ messages: [...state.messages, m] })),
+  ajouterMessage: (m) => {
+    set((state) => ({ messages: [...state.messages, m] }));
+
+    const { familleId, parents } = get();
+    if (!familleId) {
+      console.error('[Dualia] Message non synchronisé : aucune famille active.');
+      return;
+    }
+    const expediteurUuid = parents[m.expediteurId]?.uuid;
+    supabase
+      .from('messages')
+      .insert(messageVersDB(m, familleId, expediteurUuid))
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.error('[Dualia] Échec synchronisation message :', error);
+          return;
+        }
+        set((state) => ({
+          messages: state.messages.map((msg) =>
+            msg === m || msg.id === m.id ? { ...msg, id: data.id } : msg
+          ),
+        }));
+      });
+  },
 
   horodaterDecision: (id) => {
     const token = `EIDAS-${Date.now()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
@@ -826,8 +893,32 @@ export const useStore = create<DualiaStore>()(
       });
   },
 
-  ajouterDocument: (doc) =>
-    set((state) => ({ documents: [doc, ...state.documents] })),
+  ajouterDocument: (doc) => {
+    set((state) => ({ documents: [doc, ...state.documents] }));
+
+    const { familleId, parents } = get();
+    if (!familleId) {
+      console.error('[Dualia] Document non synchronisé : aucune famille active.');
+      return;
+    }
+    const auteurUuid = parents[doc.auteurId]?.uuid;
+    supabase
+      .from('documents')
+      .insert(documentVersDB(doc, familleId, auteurUuid))
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.error('[Dualia] Échec synchronisation document :', error);
+          return;
+        }
+        set((state) => ({
+          documents: state.documents.map((d) =>
+            d === doc || d.id === doc.id ? { ...d, id: data.id } : d
+          ),
+        }));
+      });
+  },
 
   setNouvelleDecisionDraft: (texte) => set({ nouvelleDecisionDraft: texte }),
 
@@ -1174,6 +1265,34 @@ export const useStore = create<DualiaStore>()(
     } else if (decisionsDB && decisionsDB.length > 0) {
       set({
         decisions: decisionsDB.map((row: any) => decisionDepuisDB(row, roleParUuid)),
+      });
+    }
+
+    const { data: messagesDB, error: erreurMessages } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .order('date_envoi', { ascending: true });
+
+    if (erreurMessages) {
+      console.error('[Dualia] Échec chargement messages :', erreurMessages);
+    } else if (messagesDB && messagesDB.length > 0) {
+      set({
+        messages: messagesDB.map((row: any) => messageDepuisDB(row, roleParUuid)),
+      });
+    }
+
+    const { data: documentsDB, error: erreurDocuments } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .order('date', { ascending: false });
+
+    if (erreurDocuments) {
+      console.error('[Dualia] Échec chargement documents :', erreurDocuments);
+    } else if (documentsDB && documentsDB.length > 0) {
+      set({
+        documents: documentsDB.map((row: any) => documentDepuisDB(row, roleParUuid)),
       });
     }
   },
