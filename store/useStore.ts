@@ -168,6 +168,48 @@ const journalDepuisDB = (e: any, roleParUuid: Record<string, ParentRole>): Journ
   recitCroise: e.recit_croise ?? undefined,
 });
 
+// ---------- Décisions : correspondance avec Supabase ----------
+// IMPORTANT — honnêteté sur horodatageEIDAS/signatureToken : malgré leur
+// nom, ce ne sont PAS des horodatages eIDAS/QTSP certifiés. Le token est
+// généré côté client (Date.now() + chaîne aléatoire), sans passer par un
+// prestataire de confiance qualifié. C'est un horodatage interne simple —
+// utile pour tracer qui a accepté quoi et quand, mais qui n'a aucune valeur
+// probante légale au sens du règlement eIDAS. Ne jamais présenter ce champ
+// comme une signature électronique qualifiée dans un pitch, une doc client
+// ou un support investisseur tant qu'un vrai prestataire n'est pas branché.
+
+const decisionVersDB = (d: Decision, familleId: string, auteurUuid?: string) => ({
+  famille_id: familleId,
+  titre: d.titre,
+  description: d.description || null,
+  date_creation: d.dateCreation,
+  auteur_id: auteurUuid ?? null,
+  statut: d.statut,
+  horodatage_eidas: d.horodatageEIDAS ?? null,
+  signature_token: d.signatureToken ?? null,
+});
+
+const decisionDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): Decision => ({
+  id: row.id,
+  titre: row.titre,
+  description: row.description ?? '',
+  dateCreation: row.date_creation,
+  auteurId: (row.auteur_id && roleParUuid[row.auteur_id]) || 'A',
+  statut: row.statut,
+  horodatageEIDAS: row.horodatage_eidas ?? undefined,
+  signatureToken: row.signature_token ?? undefined,
+});
+
+const decisionUpdatesVersDB = (updates: Partial<Decision>) => {
+  const out: Record<string, any> = {};
+  if (updates.titre !== undefined) out.titre = updates.titre;
+  if (updates.description !== undefined) out.description = updates.description;
+  if (updates.statut !== undefined) out.statut = updates.statut;
+  if (updates.horodatageEIDAS !== undefined) out.horodatage_eidas = updates.horodatageEIDAS;
+  if (updates.signatureToken !== undefined) out.signature_token = updates.signatureToken;
+  return out;
+};
+
 const genEvenementsGarde = (): EvenementGarde[] => {
   const events: EvenementGarde[] = [];
   const today = new Date();
@@ -626,33 +668,75 @@ export const useStore = create<DualiaStore>()(
   supprimerEvenement: (id) =>
     set((state) => ({ evenements: state.evenements.filter((e) => e.id !== id) })),
 
-  ajouterDecision: (d) =>
-    set((state) => ({ decisions: [d, ...state.decisions] })),
+  ajouterDecision: (d) => {
+    set((state) => ({ decisions: [d, ...state.decisions] }));
 
-  mettreAJourDecision: (id, updates) =>
+    const { familleId, parents } = get();
+    if (!familleId) {
+      console.error('[Dualia] Décision non synchronisée : aucune famille active.');
+      return;
+    }
+    const auteurUuid = parents[d.auteurId]?.uuid;
+    supabase
+      .from('decisions')
+      .insert(decisionVersDB(d, familleId, auteurUuid))
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.error('[Dualia] Échec synchronisation décision :', error);
+          return;
+        }
+        set((state) => ({
+          decisions: state.decisions.map((dec) =>
+            dec === d || dec.id === d.id ? { ...dec, id: data.id } : dec
+          ),
+        }));
+      });
+  },
+
+  mettreAJourDecision: (id, updates) => {
     set((state) => ({
       decisions: state.decisions.map((d) =>
         d.id === id ? { ...d, ...updates } : d
       ),
-    })),
+    }));
+    const dbUpdates = decisionUpdatesVersDB(updates);
+    if (Object.keys(dbUpdates).length === 0) return;
+    supabase
+      .from('decisions')
+      .update(dbUpdates)
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec sync mise à jour décision (distant) :', error);
+      });
+  },
 
   ajouterMessage: (m) =>
     set((state) => ({ messages: [...state.messages, m] })),
 
   horodaterDecision: (id) => {
     const token = `EIDAS-${Date.now()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
+    const horodatageEIDAS = new Date().toISOString();
     set((state) => ({
       decisions: state.decisions.map((d) =>
         d.id === id
           ? {
               ...d,
-              horodatageEIDAS: new Date().toISOString(),
+              horodatageEIDAS,
               signatureToken: token,
               statut: 'acceptée' as const,
             }
           : d
       ),
     }));
+    supabase
+      .from('decisions')
+      .update({ horodatage_eidas: horodatageEIDAS, signature_token: token, statut: 'acceptée' })
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec sync horodatage décision (distant) :', error);
+      });
   },
 
   ajouterJournal: (entry) => {
@@ -1076,6 +1160,20 @@ export const useStore = create<DualiaStore>()(
     } else if (journalDB && journalDB.length > 0) {
       set({
         journalEntries: journalDB.map((e: any) => journalDepuisDB(e, roleParUuid)),
+      });
+    }
+
+    const { data: decisionsDB, error: erreurDecisions } = await supabase
+      .from('decisions')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .order('date_creation', { ascending: false });
+
+    if (erreurDecisions) {
+      console.error('[Dualia] Échec chargement décisions :', erreurDecisions);
+    } else if (decisionsDB && decisionsDB.length > 0) {
+      set({
+        decisions: decisionsDB.map((row: any) => decisionDepuisDB(row, roleParUuid)),
       });
     }
   },
