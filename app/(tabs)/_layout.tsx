@@ -20,6 +20,7 @@ const TAB_LABELS: Record<string, { fr: string; pt: string }> = {
   journal: { fr: 'Journal', pt: 'Diário' },
   finances: { fr: 'Finances', pt: 'Finanças' },
   documents: { fr: 'Documents', pt: 'Documentos' },
+  enfants: { fr: 'Enfants', pt: 'Filhos' },
   caf: { fr: 'CAF', pt: 'CAF' },
 };
 
@@ -225,6 +226,20 @@ export default function TabLayout() {
           tabBarIcon: ({ focused, color }) => (
             <Ionicons
               name={focused ? 'folder' : ('folder-outline' as IoniconName)}
+              size={22}
+              color={color}
+            />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="enfants"
+        options={{
+          title: titre('enfants'),
+          headerShown: false,
+          tabBarIcon: ({ focused, color }) => (
+            <Ionicons
+              name={focused ? 'medkit' : ('medkit-outline' as IoniconName)}
               size={22}
               color={color}
             />

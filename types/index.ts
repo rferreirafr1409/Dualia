@@ -170,3 +170,27 @@ export interface PropositionRepartition {
   confirmeLe?: string;
   confirmePar?: string;
 }
+
+// ---------- Essentiel de l'enfant (fiche + contacts d'urgence) ----------
+
+export interface ContactUrgence {
+  id: string;
+  enfantId: string;
+  nom: string;
+  relation?: string;
+  telephone: string;
+  priorite: number;
+}
+
+export interface Enfant {
+  id: string;
+  prenom: string;
+  dateNaissance?: string;
+  ecole?: string;
+  medecinTraitant?: string;
+  medecinTelephone?: string;
+  allergies?: string;
+  groupeSanguin?: string;
+  mutuelle?: string;
+  contactsUrgence: ContactUrgence[];
+}

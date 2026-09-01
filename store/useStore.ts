@@ -7,6 +7,7 @@ import {
   EvenementCalendrier,
   JournalEntry, Depense, DocumentItem,
   CadreFamilial, ReglePartage, PropositionRepartition,
+  Enfant, ContactUrgence,
 } from '../types';
 import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
@@ -251,6 +252,51 @@ const documentDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): Do
   date: row.date,
   certifie: row.certifie ?? false,
   note: row.note ?? undefined,
+});
+
+// ---------- Essentiel de l'enfant : correspondance avec Supabase ----------
+
+const enfantVersDB = (e: Enfant, familleId: string) => ({
+  famille_id: familleId,
+  prenom: e.prenom,
+  date_naissance: e.dateNaissance ? e.dateNaissance.split('T')[0] : null,
+  ecole: e.ecole || null,
+  medecin_traitant: e.medecinTraitant || null,
+  medecin_telephone: e.medecinTelephone || null,
+  allergies: e.allergies || null,
+  groupe_sanguin: e.groupeSanguin || null,
+  mutuelle: e.mutuelle || null,
+});
+
+const enfantDepuisDB = (row: any, contacts: ContactUrgence[]): Enfant => ({
+  id: row.id,
+  prenom: row.prenom,
+  dateNaissance: row.date_naissance ?? undefined,
+  ecole: row.ecole ?? undefined,
+  medecinTraitant: row.medecin_traitant ?? undefined,
+  medecinTelephone: row.medecin_telephone ?? undefined,
+  allergies: row.allergies ?? undefined,
+  groupeSanguin: row.groupe_sanguin ?? undefined,
+  mutuelle: row.mutuelle ?? undefined,
+  contactsUrgence: contacts,
+});
+
+const contactUrgenceVersDB = (c: ContactUrgence, familleId: string) => ({
+  famille_id: familleId,
+  enfant_id: c.enfantId,
+  nom: c.nom,
+  relation: c.relation || null,
+  telephone: c.telephone,
+  priorite: c.priorite,
+});
+
+const contactUrgenceDepuisDB = (row: any): ContactUrgence => ({
+  id: row.id,
+  enfantId: row.enfant_id,
+  nom: row.nom,
+  relation: row.relation ?? undefined,
+  telephone: row.telephone,
+  priorite: row.priorite ?? 0,
 });
 
 const genEvenementsGarde = (): EvenementGarde[] => {
@@ -596,6 +642,15 @@ interface DualiaStore {
   ajouterDocument: (doc: DocumentItem) => void;
   setNouvelleDecisionDraft: (texte: string | null) => void;
   setLangue: (langue: Langue) => void;
+
+  // Essentiel de l'enfant — fiche + contacts d'urgence, un jeu par enfant.
+  enfants: Enfant[];
+  ajouterEnfant: (e: Enfant) => void;
+  modifierEnfant: (id: string, updates: Partial<Enfant>) => void;
+  supprimerEnfant: (id: string) => void;
+  ajouterContactUrgence: (c: ContactUrgence) => void;
+  modifierContactUrgence: (id: string, updates: Partial<ContactUrgence>) => void;
+  supprimerContactUrgence: (id: string) => void;
 
   cadreFamilial: CadreFamilial | null;
   setCadreFamilial: (cadre: CadreFamilial) => void;
@@ -963,6 +1018,145 @@ export const useStore = create<DualiaStore>()(
       });
   },
 
+  // ---------- Essentiel de l'enfant ----------
+  enfants: [],
+
+  ajouterEnfant: (e) => {
+    set((state) => ({ enfants: [...state.enfants, e] }));
+
+    const familleId = get().familleId;
+    if (!familleId) {
+      console.error("[Dualia] Enfant non synchronisé : aucune famille active.");
+      return;
+    }
+    supabase
+      .from('enfants')
+      .insert(enfantVersDB(e, familleId))
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.error('[Dualia] Échec synchronisation enfant :', error);
+          return;
+        }
+        set((state) => ({
+          enfants: state.enfants.map((en) =>
+            en === e || en.id === e.id ? { ...en, id: data.id } : en
+          ),
+        }));
+      });
+  },
+
+  modifierEnfant: (id, updates) => {
+    set((state) => ({
+      enfants: state.enfants.map((e) => (e.id === id ? { ...e, ...updates } : e)),
+    }));
+    const dbUpdates: Record<string, any> = {};
+    if (updates.prenom !== undefined) dbUpdates.prenom = updates.prenom;
+    if (updates.dateNaissance !== undefined)
+      dbUpdates.date_naissance = updates.dateNaissance ? updates.dateNaissance.split('T')[0] : null;
+    if (updates.ecole !== undefined) dbUpdates.ecole = updates.ecole || null;
+    if (updates.medecinTraitant !== undefined) dbUpdates.medecin_traitant = updates.medecinTraitant || null;
+    if (updates.medecinTelephone !== undefined) dbUpdates.medecin_telephone = updates.medecinTelephone || null;
+    if (updates.allergies !== undefined) dbUpdates.allergies = updates.allergies || null;
+    if (updates.groupeSanguin !== undefined) dbUpdates.groupe_sanguin = updates.groupeSanguin || null;
+    if (updates.mutuelle !== undefined) dbUpdates.mutuelle = updates.mutuelle || null;
+    if (Object.keys(dbUpdates).length === 0) return;
+    supabase
+      .from('enfants')
+      .update(dbUpdates)
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec sync mise à jour enfant (distant) :', error);
+      });
+  },
+
+  supprimerEnfant: (id) => {
+    set((state) => ({ enfants: state.enfants.filter((e) => e.id !== id) }));
+    supabase
+      .from('enfants')
+      .delete()
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec sync suppression enfant (distant) :', error);
+      });
+  },
+
+  ajouterContactUrgence: (c) => {
+    set((state) => ({
+      enfants: state.enfants.map((e) =>
+        e.id === c.enfantId ? { ...e, contactsUrgence: [...e.contactsUrgence, c] } : e
+      ),
+    }));
+
+    const familleId = get().familleId;
+    if (!familleId) {
+      console.error("[Dualia] Contact d'urgence non synchronisé : aucune famille active.");
+      return;
+    }
+    supabase
+      .from('contacts_urgence')
+      .insert(contactUrgenceVersDB(c, familleId))
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.error("[Dualia] Échec synchronisation contact d'urgence :", error);
+          return;
+        }
+        set((state) => ({
+          enfants: state.enfants.map((e) =>
+            e.id === c.enfantId
+              ? {
+                  ...e,
+                  contactsUrgence: e.contactsUrgence.map((ct) =>
+                    ct === c || ct.id === c.id ? { ...ct, id: data.id } : ct
+                  ),
+                }
+              : e
+          ),
+        }));
+      });
+  },
+
+  modifierContactUrgence: (id, updates) => {
+    set((state) => ({
+      enfants: state.enfants.map((e) => ({
+        ...e,
+        contactsUrgence: e.contactsUrgence.map((c) => (c.id === id ? { ...c, ...updates } : c)),
+      })),
+    }));
+    const dbUpdates: Record<string, any> = {};
+    if (updates.nom !== undefined) dbUpdates.nom = updates.nom;
+    if (updates.relation !== undefined) dbUpdates.relation = updates.relation || null;
+    if (updates.telephone !== undefined) dbUpdates.telephone = updates.telephone;
+    if (updates.priorite !== undefined) dbUpdates.priorite = updates.priorite;
+    if (Object.keys(dbUpdates).length === 0) return;
+    supabase
+      .from('contacts_urgence')
+      .update(dbUpdates)
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec sync mise à jour contact urgence (distant) :', error);
+      });
+  },
+
+  supprimerContactUrgence: (id) => {
+    set((state) => ({
+      enfants: state.enfants.map((e) => ({
+        ...e,
+        contactsUrgence: e.contactsUrgence.filter((c) => c.id !== id),
+      })),
+    }));
+    supabase
+      .from('contacts_urgence')
+      .delete()
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec sync suppression contact urgence (distant) :', error);
+      });
+  },
+
   cadreFamilial: null,
 
   setCadreFamilial: (cadre) => set({ cadreFamilial: cadre }),
@@ -1295,6 +1489,35 @@ export const useStore = create<DualiaStore>()(
         documents: documentsDB.map((row: any) => documentDepuisDB(row, roleParUuid)),
       });
     }
+
+    const { data: enfantsDB, error: erreurEnfants } = await supabase
+      .from('enfants')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .order('prenom', { ascending: true });
+
+    if (erreurEnfants) {
+      console.error('[Dualia] Échec chargement enfants :', erreurEnfants);
+    } else if (enfantsDB && enfantsDB.length > 0) {
+      const { data: contactsDB, error: erreurContacts } = await supabase
+        .from('contacts_urgence')
+        .select('*')
+        .eq('famille_id', moi.famille_id)
+        .order('priorite', { ascending: true });
+
+      if (erreurContacts) {
+        console.error("[Dualia] Échec chargement contacts d'urgence :", erreurContacts);
+      }
+
+      set({
+        enfants: enfantsDB.map((row: any) =>
+          enfantDepuisDB(
+            row,
+            (contactsDB ?? []).filter((c: any) => c.enfant_id === row.id).map(contactUrgenceDepuisDB)
+          )
+        ),
+      });
+    }
   },
 }),
     {
@@ -1313,6 +1536,7 @@ export const useStore = create<DualiaStore>()(
         messagesAnalyses: state.messagesAnalyses,
         cadreFamilial: state.cadreFamilial,
         propositionsRepartition: state.propositionsRepartition,
+        enfants: state.enfants,
       }),
     }
   )
