@@ -25,12 +25,6 @@ const PARENTS: Record<ParentRole, Parent> = {
   B: { id: 'B', nom: 'Pierre Dupont', email: 'pierre@example.com', couleur: COLORS.terracotta },
 };
 
-// ---------- Cadre familial : correspondance avec le schéma Supabase ----------
-// Les types locaux (CadreFamilial, ReglePartage) sont conçus pour
-// correspondre presque champ à champ aux tables cadre_familial /
-// regles_partage — ces fonctions ne font que traduire la forme (camelCase
-// imbriqué <-> colonnes plates snake_case).
-
 const regleVersDB = (regle: ReglePartage, cadreFamilialId: string) => ({
   cadre_familial_id: cadreFamilialId,
   categorie: regle.categorie,
@@ -83,11 +77,6 @@ const cadreDepuisDB = (c: any, regles: any[]): CadreFamilial => ({
   regles: regles.map(regleDepuisDB),
 });
 
-/**
- * Upsert de la ligne cadre_familial pour la famille courante (contrainte
- * unique sur famille_id : ré-importer un jugement met à jour la même ligne
- * plutôt que d'en créer une seconde). Renvoie son id réel.
- */
 async function assurerCadreFamilialDistant(familleId: string, cadre: CadreFamilial): Promise<string> {
   const { data, error } = await supabase
     .from('cadre_familial')
@@ -112,11 +101,6 @@ async function assurerCadreFamilialDistant(familleId: string, cadre: CadreFamili
   return data.id as string;
 }
 
-// ---------- Événements calendrier : correspondance avec Supabase ----------
-// parent_id en base est un uuid réel (parents.id), alors que le store local
-// manipule ParentRole ('A'|'B') partout pour rester compatible avec les
-// écrans existants — d'où ces deux petites fonctions de traduction.
-
 const evenementCalendrierVersDB = (ev: EvenementCalendrier, familleId: string, parentUuid?: string) => ({
   famille_id: familleId,
   titre: ev.titre,
@@ -131,12 +115,6 @@ const evenementCalendrierDepuisDB = (e: any, roleParUuid: Record<string, ParentR
   parentId: (e.parent_id && roleParUuid[e.parent_id]) || 'A',
   sourceMessageId: e.source_message_id ?? undefined,
 });
-
-// ---------- Dépenses : correspondance avec Supabase ----------
-// photoUri n'est JAMAIS envoyé en base : c'est une image locale (souvent
-// base64), pas une donnée relationnelle — même logique que pour le
-// localStorage (voir partialize plus bas). La colonne `date` de Supabase
-// est un type DATE (pas timestamp), d'où le découpage sur le 'T'.
 
 const depenseVersDB = (dep: Depense, familleId: string, auteurUuid?: string) => ({
   famille_id: familleId,
@@ -164,6 +142,30 @@ const depenseDepuisDB = (d: any, roleParUuid: Record<string, ParentRole>): Depen
   partB: d.part_b != null ? Number(d.part_b) : undefined,
   commercant: d.commercant ?? undefined,
   lignesDetail: d.lignes_detail ?? undefined,
+});
+
+const journalVersDB = (entry: JournalEntry, familleId: string, auteurUuid?: string) => ({
+  famille_id: familleId,
+  titre: entry.titre,
+  description: entry.description || null,
+  emoji: entry.emoji || null,
+  auteur_id: auteurUuid ?? null,
+  date: entry.date.split('T')[0],
+  liked: entry.liked,
+  date_revelation: entry.dateRevelation ? entry.dateRevelation.split('T')[0] : null,
+  recit_croise: entry.recitCroise ?? null,
+});
+
+const journalDepuisDB = (e: any, roleParUuid: Record<string, ParentRole>): JournalEntry => ({
+  id: e.id,
+  titre: e.titre,
+  description: e.description ?? '',
+  emoji: e.emoji ?? '',
+  auteurId: (e.auteur_id && roleParUuid[e.auteur_id]) || 'A',
+  date: e.date,
+  liked: e.liked ?? false,
+  dateRevelation: e.date_revelation ?? undefined,
+  recitCroise: e.recit_croise ?? undefined,
 });
 
 const genEvenementsGarde = (): EvenementGarde[] => {
@@ -653,22 +655,65 @@ export const useStore = create<DualiaStore>()(
     }));
   },
 
-  ajouterJournal: (entry) =>
-    set((state) => ({ journalEntries: [entry, ...state.journalEntries] })),
+  ajouterJournal: (entry) => {
+    set((state) => ({ journalEntries: [entry, ...state.journalEntries] }));
 
-  likerEntree: (id) =>
+    const { familleId, parents } = get();
+    if (!familleId) {
+      console.error('[Dualia] Entrée de journal non synchronisée : aucune famille active.');
+      return;
+    }
+    const auteurUuid = parents[entry.auteurId]?.uuid;
+    supabase
+      .from('journal_entries')
+      .insert(journalVersDB(entry, familleId, auteurUuid))
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.error('[Dualia] Échec synchronisation entrée de journal :', error);
+          return;
+        }
+        set((state) => ({
+          journalEntries: state.journalEntries.map((e) =>
+            e === entry || e.id === entry.id ? { ...e, id: data.id } : e
+          ),
+        }));
+      });
+  },
+
+  likerEntree: (id) => {
+    const entreeActuelle = get().journalEntries.find((e) => e.id === id);
+    if (!entreeActuelle) return;
+    const nouveauLike = !entreeActuelle.liked;
     set((state) => ({
       journalEntries: state.journalEntries.map((e) =>
-        e.id === id ? { ...e, liked: !e.liked } : e
+        e.id === id ? { ...e, liked: nouveauLike } : e
       ),
-    })),
+    }));
+    supabase
+      .from('journal_entries')
+      .update({ liked: nouveauLike })
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec sync like entrée journal (distant) :', error);
+      });
+  },
 
-  ajouterRecitCroise: (id, texte) =>
+  ajouterRecitCroise: (id, texte) => {
     set((state) => ({
       journalEntries: state.journalEntries.map((e) =>
         e.id === id ? { ...e, recitCroise: texte } : e
       ),
-    })),
+    }));
+    supabase
+      .from('journal_entries')
+      .update({ recit_croise: texte })
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec sync récit croisé (distant) :', error);
+      });
+  },
 
   ajouterDepense: (dep) => {
     set((state) => ({ depenses: [dep, ...state.depenses] }));
@@ -743,7 +788,6 @@ export const useStore = create<DualiaStore>()(
       });
   },
 
-  // ---------- Cadre familial ----------
   cadreFamilial: null,
 
   setCadreFamilial: (cadre) => set({ cadreFamilial: cadre }),
@@ -885,7 +929,6 @@ export const useStore = create<DualiaStore>()(
     }
   },
 
-  // ---------- Propositions de répartition ----------
   propositionsRepartition: [],
 
   creerProposition: (proposition) =>
@@ -928,7 +971,6 @@ export const useStore = create<DualiaStore>()(
       ),
     })),
 
-  // ---------- Session réelle (Supabase) ----------
   familleId: null,
   chargementInitial: true,
 
@@ -1020,6 +1062,20 @@ export const useStore = create<DualiaStore>()(
     } else if (depensesDB && depensesDB.length > 0) {
       set({
         depenses: depensesDB.map((d: any) => depenseDepuisDB(d, roleParUuid)),
+      });
+    }
+
+    const { data: journalDB, error: erreurJournal } = await supabase
+      .from('journal_entries')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .order('date', { ascending: false });
+
+    if (erreurJournal) {
+      console.error('[Dualia] Échec chargement journal :', erreurJournal);
+    } else if (journalDB && journalDB.length > 0) {
+      set({
+        journalEntries: journalDB.map((e: any) => journalDepuisDB(e, roleParUuid)),
       });
     }
   },
