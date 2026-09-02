@@ -14,9 +14,6 @@ export default function RootLayout() {
     initialiserSession();
   }, []);
 
-  // Tant que la session n'est pas résolue, on n'affiche rien du contenu de
-  // l'app : ça évite un flash des données mockées par défaut (ex. "Bonjour
-  // Marie") avant que le vrai parent connecté ne soit chargé depuis Supabase.
   if (chargementInitial) {
     return (
       <SafeAreaProvider>
@@ -42,6 +39,7 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="validation-cadre" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="semaine-activites" options={{ presentation: 'modal' }} />
         <Stack.Screen name="creer-espace" />
         <Stack.Screen name="rejoindre" />
         <Stack.Screen name="connexion" />
