@@ -1,10 +1,12 @@
 ﻿// app/(tabs)/accueil.tsx
 //
-// Le "cockpit familial" — reconstruit pour répondre en 3 secondes, sans
-// scroller, à quatre questions : où sont mes enfants, qu'est-ce que j'ai
-// aujourd'hui, qu'est-ce qui nécessite mon attention, quel est le prochain
-// changement de garde. Tout le reste (souvenir, détail de l'agenda) est
-// volontairement discret et secondaire.
+// Le "cockpit familial" — répond en 3 secondes, sans scroller, à quatre
+// questions : où sont mes enfants, qu'est-ce que j'ai aujourd'hui,
+// qu'est-ce qui nécessite mon attention, quel est le prochain changement
+// de garde. Chaque lien montre exactement ce qu'il promet — jamais un
+// module entier : la carte "Aujourd'hui" et "Voir la journée" ouvrent la
+// page dédiée aux activités de la semaine (pas le calendrier complet), et
+// "Revoir" ouvre le seul souvenir concerné (pas tout le journal).
 //
 // Échelle typographique strictement limitée à 4 niveaux :
 //   28 — titre principal ("Bonjour Ricardo")
@@ -12,7 +14,7 @@
 //   16 — contenu / action
 //   13.5 — labels / métadonnées
 
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -20,6 +22,7 @@ import { useStore } from '../../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { BrandMark } from '../../components/icons';
 import { TRADUCTIONS } from '../../constants/i18n';
+import SouvenirModal from '../../components/SouvenirModal';
 import type { JournalEntry, ParentRole } from '../../types';
 
 function trouverSouvenir(journalEntries: JournalEntry[]) {
@@ -57,6 +60,8 @@ export default function AccueilScreen() {
   const t = TRADUCTIONS[langue];
   const prenom = parents[parentActif]?.nom.split(' ')[0] ?? '';
 
+  const [souvenirVisible, setSouvenirVisible] = useState(false);
+
   const autreRole: ParentRole = parentActif === 'A' ? 'B' : 'A';
   const initialeMoi = initialeParent(parents[parentActif]?.nom);
   const initialeAutre = initialeParent(parents[autreRole]?.nom);
@@ -65,8 +70,25 @@ export default function AccueilScreen() {
     (d) => d.statut === 'proposée' || d.statut === 'en_attente'
   );
   const depensesNonReglees = depenses.filter((d) => !d.rembourse);
-  const totalARegulariser = depensesNonReglees.reduce((s, d) => s + d.montant, 0);
   const nbATraiter = decisionsEnAttente.length + (depensesNonReglees.length > 0 ? 1 : 0);
+
+  // Qui doit quoi à qui, uniquement sur les dépenses non réglées — même
+  // méthode de calcul (50/50 sur le total payé par chacun) que le module
+  // Finances, pour rester cohérent avec le solde qu'on y retrouve.
+  const soldeNonRegle = useMemo(() => {
+    let totalA = 0;
+    let totalB = 0;
+    depensesNonReglees.forEach((d) => {
+      if (d.auteurId === 'A') totalA += d.montant;
+      else totalB += d.montant;
+    });
+    const total = totalA + totalB;
+    const duA = total / 2 - totalA; // positif => B doit à A
+    const aJour = Math.abs(duA) < 0.005;
+    const debiteur: ParentRole = duA > 0 ? 'B' : 'A';
+    const crediteur: ParentRole = duA > 0 ? 'A' : 'B';
+    return { montant: Math.abs(duA), aJour, debiteur, crediteur };
+  }, [depensesNonReglees]);
 
   const souvenir = trouverSouvenir(journalEntries);
   const prochainEvenement = todayEvents.length > 0 ? todayEvents[0] : null;
@@ -102,7 +124,7 @@ export default function AccueilScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* 2. Promesse Dualia — compacte, fond ivoire + accent vert, jamais un aplat sombre */}
+        {/* 2. Promesse Dualia — compacte, fond ivoire + accent vert */}
         <View style={styles.promesse}>
           <Text style={styles.promesseTitre}>{t.accueil.bannerTitre}</Text>
           <Text style={styles.promesseSous}>
@@ -122,7 +144,8 @@ export default function AccueilScreen() {
             <Text style={styles.trioCaption}>{t.accueil.cockpitAExaminer}</Text>
           </Pressable>
 
-          <Pressable style={styles.trioCard} onPress={() => router.push('/calendrier' as any)}>
+          {/* Ouvre la page "activités de la semaine", pas le calendrier complet. */}
+          <Pressable style={styles.trioCard} onPress={() => router.push('/semaine-activites' as any)}>
             <Text style={styles.trioLabel} numberOfLines={1}>{t.accueil.cockpitAujourdhui}</Text>
             <Text style={styles.trioValeur}>{todayEvents.length}</Text>
             <Text style={styles.trioCaption} numberOfLines={1}>
@@ -133,17 +156,19 @@ export default function AccueilScreen() {
           <Pressable style={styles.trioCard} onPress={() => router.push('/finances' as any)}>
             <Text style={styles.trioLabel} numberOfLines={1}>{t.accueil.attention.financesTitre}</Text>
             <Text style={styles.trioValeur} numberOfLines={1} adjustsFontSizeToFit>
-              {totalARegulariser > 0 ? `${totalARegulariser.toFixed(0)} €` : '0 €'}
+              {soldeNonRegle.aJour ? '0 €' : `${soldeNonRegle.montant.toFixed(0)} €`}
             </Text>
             <Text style={styles.trioCaption} numberOfLines={1}>
-              {totalARegulariser > 0 ? t.accueil.attention.aRegulariser : t.accueil.organisationAJour}
+              {soldeNonRegle.aJour
+                ? t.accueil.organisationAJour
+                : `${parents[soldeNonRegle.debiteur]?.nom.split(' ')[0]} ${t.finances.doit} ${parents[soldeNonRegle.crediteur]?.nom.split(' ')[0]}`}
             </Text>
           </Pressable>
         </View>
 
-        {/* 4. Agenda ultra-condensé — un seul événement, pas trois */}
+        {/* 4. Agenda ultra-condensé — renvoie vers la page semaine, pas le calendrier */}
         {prochainEvenement ? (
-          <Pressable style={styles.agendaLigne} onPress={() => router.push('/calendrier' as any)}>
+          <Pressable style={styles.agendaLigne} onPress={() => router.push('/semaine-activites' as any)}>
             <View style={styles.agendaDot} />
             <Text style={styles.agendaTime}>{prochainEvenement.time}</Text>
             <View style={{ flex: 1 }}>
@@ -154,9 +179,9 @@ export default function AccueilScreen() {
           </Pressable>
         ) : null}
 
-        {/* 5. Un souvenir — discret */}
+        {/* 5. Un souvenir — discret, ouvre seulement ce souvenir-là */}
         {souvenir ? (
-          <Pressable style={styles.souvenirLigne} onPress={() => router.push('/journal' as any)}>
+          <Pressable style={styles.souvenirLigne} onPress={() => setSouvenirVisible(true)}>
             <Ionicons name="heart-outline" size={16} color={COLORS.terracotta} />
             <View style={{ flex: 1, marginLeft: SPACING.sm }}>
               <Text style={styles.souvenirEyebrow}>
@@ -168,6 +193,13 @@ export default function AccueilScreen() {
           </Pressable>
         ) : null}
       </ScrollView>
+
+      <SouvenirModal
+        visible={souvenirVisible}
+        onClose={() => setSouvenirVisible(false)}
+        entry={souvenir?.entry ?? null}
+        ilYaUnAn={souvenir?.ilYaUnAn ?? false}
+      />
     </View>
   );
 }
@@ -204,8 +236,6 @@ const styles = StyleSheet.create({
 
   content: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.sm, paddingBottom: SPACING.xxxl * 2 },
 
-  // Promesse : fond ivoire (pas d'aplat sombre en ouverture), simple accent
-  // vert à gauche — le vertProfond reste en réserve pour bouton/accent.
   promesse: {
     backgroundColor: 'rgba(45, 106, 79, 0.06)',
     borderLeftWidth: 3,
