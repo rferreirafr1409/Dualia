@@ -50,6 +50,9 @@ export const TRADUCTIONS = {
       cockpitEvenements: (n: number) => `${n} événement${n > 1 ? 's' : ''}`,
       cockpitProchain: (heure: string) => `Prochain ${heure}`,
       voirLaJournee: 'Voir la journée',
+      semaineAVenir: 'À venir cette semaine',
+      semaineLien: 'Semaine',
+      autresSemaine: (n: number) => `+${n} autre${n > 1 ? 's' : ''} cette semaine`,
     },
     nav: {
       accueil: 'Accueil',
@@ -443,6 +446,9 @@ export const TRADUCTIONS = {
       cockpitEvenements: (n: number) => `${n} evento${n > 1 ? 's' : ''}`,
       cockpitProchain: (heure: string) => `Próximo ${heure}`,
       voirLaJournee: 'Ver o dia',
+      semaineAVenir: 'A seguir esta semana',
+      semaineLien: 'Semana',
+      autresSemaine: (n: number) => `+${n} outro${n > 1 ? 's' : ''} esta semana`,
     },
     nav: {
       accueil: 'Início',
