@@ -80,7 +80,10 @@ export default function AccueilScreen() {
     (d) => d.statut === 'proposée' || d.statut === 'en_attente'
   );
   const depensesNonReglees = depenses.filter((d) => !d.rembourse);
-  const nbATraiter = decisionsEnAttente.length + (depensesNonReglees.length > 0 ? 1 : 0);
+    // Ne compte que les vraies décisions en attente : le "+1" pour les
+  // dépenses non réglées a été retiré, car il n'avait nulle part où
+  // atterrir en cliquant (Échanges ne montre que Conversations/Décisions).
+  const nbATraiter = decisionsEnAttente.length;
 
   // Solde "qui doit à qui" — net exact des parts de chaque dépense non
   // réglée (pas un écart par rapport à une moyenne globale), pour
