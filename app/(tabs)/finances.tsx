@@ -208,18 +208,27 @@ function FinancesScreenInner() {
 
   const regleActive = trouverRegleValidee(formCategorie);
 
+  // Solde "qui doit à qui" : uniquement sur les dépenses non réglées (une
+  // fois marquée "réglée", une dépense ne doit plus peser sur le solde),
+  // et net exact des parts de chaque dépense (pas un écart par rapport à
+  // une moyenne globale) — pour représenter un mouvement d'argent précis,
+  // pas une estimation.
   const soldes = useMemo(() => {
-    let totalA = 0;
-    let totalB = 0;
-    depenses.forEach((d) => {
-      const partA = d.partA ?? (d.auteurId === 'A' ? d.montant : d.montant / 2);
-      const partB = d.partB ?? (d.auteurId === 'B' ? d.montant : d.montant / 2);
-      totalA += d.auteurId === 'A' ? d.montant : 0;
-      totalB += d.auteurId === 'B' ? d.montant : 0;
+    const totalDepenses = depenses.reduce((s, d) => s + d.montant, 0);
+    const nonReglees = depenses.filter((d) => !d.rembourse);
+    let duAVersB = 0;
+    let duBVersA = 0;
+    nonReglees.forEach((d) => {
+      const partA = d.partA ?? d.montant / 2;
+      const partB = d.partB ?? d.montant / 2;
+      if (d.auteurId === 'A') {
+        duBVersA += partB;
+      } else {
+        duAVersB += partA;
+      }
     });
-    const totalDepenses = totalA + totalB;
-    const duA = totalDepenses / 2 - totalA;
-    return { totalDepenses, solde: duA };
+    const solde = duBVersA - duAVersB; // positif => B doit à A
+    return { totalDepenses, solde };
   }, [depenses]);
 
   const resetForm = () => {
