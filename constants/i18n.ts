@@ -85,6 +85,16 @@ export const TRADUCTIONS = {
       fermer: 'Fermer',
       garde: 'Garde',
       passage: 'Passage',
+      modalTitreEvenement: 'Nouvel événement',
+      champTitre: 'Titre',
+      titrePlaceholder: 'Ex : Réunion école',
+      heure: 'Heure (optionnel)',
+      heurePlaceholder: 'Ex : 09:00',
+    },
+    semaine: {
+      titre: 'Activités de la semaine',
+      aucuneActivite: 'Aucune activité cette semaine',
+      aujourdhuiLabel: "Aujourd'hui",
     },
     decisions: {
       titre: 'Décisions',
@@ -468,6 +478,16 @@ export const TRADUCTIONS = {
       fermer: 'Fechar',
       garde: 'Guarda',
       passage: 'Troca',
+      modalTitreEvenement: 'Novo evento',
+      champTitre: 'Título',
+      titrePlaceholder: 'Ex: Reunião escola',
+      heure: 'Hora (opcional)',
+      heurePlaceholder: 'Ex: 09:00',
+    },
+    semaine: {
+      titre: 'Atividades da semana',
+      aucuneActivite: 'Nenhuma atividade esta semana',
+      aujourdhuiLabel: 'Hoje',
     },
     decisions: {
       titre: 'Decisões',

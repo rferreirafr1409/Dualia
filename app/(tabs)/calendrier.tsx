@@ -6,6 +6,11 @@ import {
   TouchableOpacity,
   Alert,
   Dimensions,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useState, useMemo } from 'react';
@@ -30,6 +35,7 @@ import { useStore } from '../../store/useStore';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { EvenementGarde, ParentRole } from '../../types';
 import { TRADUCTIONS } from '../../constants/i18n';
+import DatePickerField from '../../components/DatePickerField';
 
 const LOCALES = { fr, pt };
 const { width } = Dimensions.get('window');
@@ -62,12 +68,18 @@ function estJourDePassage(date: Date, tousLesEvenements: EvenementGarde[]): bool
 }
 
 export default function CalendrierScreen() {
-  const { evenements, parents, evenementsCalendrier, langue } = useStore();
+  const { evenements, parents, evenementsCalendrier, langue, parentActif, ajouterEvenementCalendrier } = useStore();
   const t = TRADUCTIONS[langue].calendrier;
   const dateLocale = LOCALES[langue];
   const JOURS = t.jours;
   const [mois, setMois] = useState(new Date());
   const [jourSelectionne, setJourSelectionne] = useState<Date | null>(null);
+
+  const [modalAjoutVisible, setModalAjoutVisible] = useState(false);
+  const [formTitre, setFormTitre] = useState('');
+  const [formDate, setFormDate] = useState<Date | null>(null);
+  const [formHeure, setFormHeure] = useState('');
+  const [formParent, setFormParent] = useState<ParentRole>(parentActif);
 
   const jours = useMemo(
     () => eachDayOfInterval({ start: startOfMonth(mois), end: endOfMonth(mois) }),
@@ -149,12 +161,36 @@ export default function CalendrierScreen() {
     [jourSelectionne, evenements]
   );
 
-  const handleSaisirGarde = () => {
-    Alert.alert(
-      t.ajouter.replace('+ ', ''),
-      t.modalTitre,
-      [{ text: 'Compris', style: 'default' }]
-    );
+  const ouvrirAjoutEvenement = () => {
+    setFormTitre('');
+    setFormDate(new Date());
+    setFormHeure('');
+    setFormParent(parentActif);
+    setModalAjoutVisible(true);
+  };
+
+  const soumettreEvenement = () => {
+    if (!formTitre.trim() || !formDate) return;
+
+    // Combine la date choisie avec l'heure saisie (si valide, format HH:MM) ;
+    // sans heure valide, l'événement reste à minuit — le calendrier
+    // n'affiche alors pas d'heure, comme pour les événements existants.
+    const dateComplete = new Date(formDate);
+    const heureValide = /^([01]?\d|2[0-3]):([0-5]\d)$/.test(formHeure.trim());
+    if (heureValide) {
+      const [h, m] = formHeure.trim().split(':').map(Number);
+      dateComplete.setHours(h, m, 0, 0);
+    } else {
+      dateComplete.setHours(0, 0, 0, 0);
+    }
+
+    ajouterEvenementCalendrier({
+      id: `evt-${Date.now()}`,
+      titre: formTitre.trim(),
+      date: dateComplete.toISOString(),
+      parentId: formParent,
+    });
+    setModalAjoutVisible(false);
   };
 
   return (
@@ -372,12 +408,83 @@ export default function CalendrierScreen() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={handleSaisirGarde}
+        onPress={ouvrirAjoutEvenement}
         activeOpacity={0.85}
       >
         <Ionicons name="add" size={22} color={COLORS.blanc} />
         <Text style={styles.fabTxt}>{t.ajouter.replace('+ ', '')}</Text>
       </TouchableOpacity>
+
+      <Modal
+        visible={modalAjoutVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setModalAjoutVisible(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.overlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalAjoutVisible(false)} />
+          <View style={styles.modalAjout}>
+            <View style={styles.modalPoignee} />
+            <Text style={styles.modalAjoutTitre}>{t.modalTitreEvenement}</Text>
+
+            <Text style={styles.label}>{t.champTitre}</Text>
+            <TextInput
+              style={styles.input}
+              value={formTitre}
+              onChangeText={setFormTitre}
+              placeholder={t.titrePlaceholder}
+              placeholderTextColor={COLORS.ardoise}
+            />
+
+            <DatePickerField label={t.dateDebut} value={formDate} onChange={setFormDate} />
+            <View style={{ height: SPACING.lg }} />
+
+            <Text style={styles.label}>{t.heure}</Text>
+            <TextInput
+              style={styles.input}
+              value={formHeure}
+              onChangeText={setFormHeure}
+              placeholder={t.heurePlaceholder}
+              placeholderTextColor={COLORS.ardoise}
+              keyboardType="numbers-and-punctuation"
+            />
+
+            <Text style={styles.label}>{t.parent}</Text>
+            <View style={styles.parentChoixLigne}>
+              {(['A', 'B'] as ParentRole[]).map((role) => (
+                <TouchableOpacity
+                  key={role}
+                  style={[
+                    styles.parentChoix,
+                    formParent === role && { backgroundColor: parents[role].couleur, borderColor: parents[role].couleur },
+                  ]}
+                  onPress={() => setFormParent(role)}
+                >
+                  <Text style={[styles.parentChoixTxt, formParent === role && { color: COLORS.blanc }]}>
+                    {parents[role].nom.split(' ')[0]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity style={styles.btnAnnuler} onPress={() => setModalAjoutVisible(false)}>
+                <Text style={styles.btnAnnulerTxt}>{t.annuler}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btnValider, !formTitre.trim() && styles.btnDisabled]}
+                onPress={soumettreEvenement}
+                disabled={!formTitre.trim()}
+              >
+                <Text style={styles.btnValiderTxt}>{t.confirmerAjout}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -563,4 +670,29 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.bordure, alignItems: 'center',
   },
   modalFermerTxt: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.semibold, color: COLORS.ardoise },
+
+  overlay: { flex: 1, justifyContent: 'flex-end' },
+  modalAjout: {
+    backgroundColor: COLORS.blanc,
+    borderTopLeftRadius: RADIUS.xl,
+    borderTopRightRadius: RADIUS.xl,
+    padding: SPACING.xl,
+    paddingBottom: SPACING.xxxl,
+  },
+  modalPoignee: { width: 36, height: 4, backgroundColor: COLORS.bordure, borderRadius: RADIUS.full, alignSelf: 'center', marginBottom: SPACING.lg },
+  modalAjoutTitre: { fontSize: TYPOGRAPHY.xl, fontWeight: TYPOGRAPHY.bold, color: COLORS.texte, marginBottom: SPACING.lg },
+  label: { fontSize: TYPOGRAPHY.xs, fontWeight: TYPOGRAPHY.semibold, color: COLORS.ardoise, letterSpacing: 1, marginBottom: SPACING.sm, textTransform: 'uppercase' },
+  input: { backgroundColor: COLORS.ivoire, borderRadius: RADIUS.md, padding: SPACING.md, fontSize: TYPOGRAPHY.sm, color: COLORS.texte, marginBottom: SPACING.lg },
+  parentChoixLigne: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.lg },
+  parentChoix: {
+    flex: 1, paddingVertical: SPACING.md, borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.bordure, alignItems: 'center',
+  },
+  parentChoixTxt: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.medium, color: COLORS.texte },
+  modalActions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.xs },
+  btnAnnuler: { flex: 1, padding: SPACING.lg, borderRadius: RADIUS.md, backgroundColor: COLORS.ivoire, alignItems: 'center' },
+  btnAnnulerTxt: { fontSize: TYPOGRAPHY.sm, color: COLORS.ardoise, fontWeight: TYPOGRAPHY.medium },
+  btnValider: { flex: 2, padding: SPACING.lg, borderRadius: RADIUS.md, backgroundColor: COLORS.vert, alignItems: 'center' },
+  btnDisabled: { opacity: 0.45 },
+  btnValiderTxt: { fontSize: TYPOGRAPHY.sm, color: COLORS.blanc, fontWeight: TYPOGRAPHY.semibold },
 });
