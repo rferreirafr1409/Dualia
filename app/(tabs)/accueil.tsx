@@ -3,10 +3,12 @@
 // Le "cockpit familial" — répond en 3 secondes, sans scroller, à quatre
 // questions : où sont mes enfants, qu'est-ce que j'ai aujourd'hui,
 // qu'est-ce qui nécessite mon attention, quel est le prochain changement
-// de garde. Chaque lien montre exactement ce qu'il promet — jamais un
-// module entier : la carte "Aujourd'hui" et "Voir la journée" ouvrent la
-// page dédiée aux activités de la semaine (pas le calendrier complet), et
-// "Revoir" ouvre le seul souvenir concerné (pas tout le journal).
+// de garde. Trois niveaux d'information distincts, sans doublon :
+//   AUJOURD'HUI (carte cockpit) = ce qui m'attend maintenant
+//   À VENIR CETTE SEMAINE = ce que je dois anticiper (hors aujourd'hui)
+//   AGENDA (onglet séparé) = consulter/gérer tout le calendrier
+// Chaque lien montre exactement ce qu'il promet — jamais un module
+// entier : "Revoir" ouvre le seul souvenir concerné (pas tout le journal).
 //
 // Échelle typographique strictement limitée à 4 niveaux :
 //   28 — titre principal ("Bonjour Ricardo")
@@ -18,12 +20,16 @@ import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { startOfWeek, endOfWeek, isToday, parseISO, format } from 'date-fns';
+import { fr, pt } from 'date-fns/locale';
 import { useStore } from '../../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { BrandMark } from '../../components/icons';
 import { TRADUCTIONS } from '../../constants/i18n';
 import SouvenirModal from '../../components/SouvenirModal';
 import type { JournalEntry, ParentRole } from '../../types';
+
+const LOCALES = { fr, pt };
 
 function trouverSouvenir(journalEntries: JournalEntry[]) {
   if (journalEntries.length === 0) return null;
@@ -55,9 +61,11 @@ export default function AccueilScreen() {
   const decisions = useStore((s) => s.decisions);
   const depenses = useStore((s) => s.depenses);
   const journalEntries = useStore((s) => s.journalEntries);
+  const evenementsCalendrier = useStore((s) => s.evenementsCalendrier);
   const parents = useStore((s) => s.parents);
   const parentActif = useStore((s) => s.parentActif);
   const t = TRADUCTIONS[langue];
+  const dateLocale = LOCALES[langue];
   const prenom = parents[parentActif]?.nom.split(' ')[0] ?? '';
 
   const [souvenirVisible, setSouvenirVisible] = useState(false);
@@ -72,9 +80,6 @@ export default function AccueilScreen() {
   const depensesNonReglees = depenses.filter((d) => !d.rembourse);
   const nbATraiter = decisionsEnAttente.length + (depensesNonReglees.length > 0 ? 1 : 0);
 
-  // Qui doit quoi à qui, uniquement sur les dépenses non réglées — même
-  // méthode de calcul (50/50 sur le total payé par chacun) que le module
-  // Finances, pour rester cohérent avec le solde qu'on y retrouve.
   const soldeNonRegle = useMemo(() => {
     let totalA = 0;
     let totalB = 0;
@@ -83,7 +88,7 @@ export default function AccueilScreen() {
       else totalB += d.montant;
     });
     const total = totalA + totalB;
-    const duA = total / 2 - totalA; // positif => B doit à A
+    const duA = total / 2 - totalA;
     const aJour = Math.abs(duA) < 0.005;
     const debiteur: ParentRole = duA > 0 ? 'B' : 'A';
     const crediteur: ParentRole = duA > 0 ? 'A' : 'B';
@@ -93,9 +98,22 @@ export default function AccueilScreen() {
   const souvenir = trouverSouvenir(journalEntries);
   const prochainEvenement = todayEvents.length > 0 ? todayEvents[0] : null;
 
+  const evenementsAVenir = useMemo(() => {
+    const debut = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const fin = endOfWeek(new Date(), { weekStartsOn: 1 });
+    return evenementsCalendrier
+      .filter((ev) => {
+        const d = parseISO(ev.date);
+        return d >= debut && d <= fin && !isToday(d);
+      })
+      .sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
+  }, [evenementsCalendrier]);
+
+  const evenementsAffiches = evenementsAVenir.slice(0, 3);
+  const nbAutres = Math.max(0, evenementsAVenir.length - 3);
+
   return (
     <View style={styles.screen}>
-      {/* 1. Header très compact */}
       <View style={styles.topbar}>
         <View style={styles.brand}>
           <View style={styles.brandMarkWrap}>
@@ -124,7 +142,6 @@ export default function AccueilScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* 2. Promesse Dualia — compacte, fond ivoire + accent vert */}
         <View style={styles.promesse}>
           <Text style={styles.promesseTitre}>{t.accueil.bannerTitre}</Text>
           <Text style={styles.promesseSous}>
@@ -133,7 +150,6 @@ export default function AccueilScreen() {
           <Text style={styles.promesseMeta}>{familyCard.prochainEchange}</Text>
         </View>
 
-        {/* 3. La vraie zone "maintenant" */}
         <Text style={styles.bonjour}>{t.accueil.bonjour} {prenom}</Text>
         <Text style={styles.sousBonjour}>{t.accueil.cockpitSousTitre}</Text>
 
@@ -144,7 +160,6 @@ export default function AccueilScreen() {
             <Text style={styles.trioCaption}>{t.accueil.cockpitAExaminer}</Text>
           </Pressable>
 
-          {/* Ouvre la page "activités de la semaine", pas le calendrier complet. */}
           <Pressable style={styles.trioCard} onPress={() => router.push('/semaine-activites' as any)}>
             <Text style={styles.trioLabel} numberOfLines={1}>{t.accueil.cockpitAujourdhui}</Text>
             <Text style={styles.trioValeur}>{todayEvents.length}</Text>
@@ -166,20 +181,39 @@ export default function AccueilScreen() {
           </Pressable>
         </View>
 
-        {/* 4. Agenda ultra-condensé — renvoie vers la page semaine, pas le calendrier */}
-        {prochainEvenement ? (
-          <Pressable style={styles.agendaLigne} onPress={() => router.push('/semaine-activites' as any)}>
-            <View style={styles.agendaDot} />
-            <Text style={styles.agendaTime}>{prochainEvenement.time}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.agendaTitre}>{prochainEvenement.title}</Text>
-              <Text style={styles.agendaWho}>{prochainEvenement.who}</Text>
+        {evenementsAffiches.length > 0 ? (
+          <>
+            <View style={styles.semaineHeader}>
+              <Text style={styles.sectionLabel}>{t.accueil.semaineAVenir}</Text>
+              <Pressable onPress={() => router.push('/semaine-activites' as any)}>
+                <Text style={styles.semaineLien}>{t.accueil.semaineLien} →</Text>
+              </Pressable>
             </View>
-            <Text style={styles.agendaLien}>{t.accueil.voirLaJournee} →</Text>
-          </Pressable>
+            <View style={styles.semaineCard}>
+              {evenementsAffiches.map((ev, index) => {
+                const d = parseISO(ev.date);
+                const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
+                const qui = ev.enfant || parents[ev.parentId]?.nom.split(' ')[0] || '';
+                return (
+                  <View
+                    key={ev.id}
+                    style={[styles.semaineLigne, index === evenementsAffiches.length - 1 && { borderBottomWidth: 0 }]}
+                  >
+                    <Text style={styles.semaineJour}>{format(d, 'EEE d', { locale: dateLocale })}</Text>
+                    <Text style={styles.semaineHeure}>{aUneHeure ? format(d, 'HH:mm') : '—'}</Text>
+                    <Text style={styles.semaineTitre} numberOfLines={1}>
+                      {ev.titre}{qui ? ` · ${qui}` : ''}
+                    </Text>
+                  </View>
+                );
+              })}
+              {nbAutres > 0 ? (
+                <Text style={styles.semaineAutres}>{t.accueil.autresSemaine(nbAutres)}</Text>
+              ) : null}
+            </View>
+          </>
         ) : null}
 
-        {/* 5. Un souvenir — discret, ouvre seulement ce souvenir-là */}
         {souvenir ? (
           <Pressable style={styles.souvenirLigne} onPress={() => setSouvenirVisible(true)}>
             <Ionicons name="heart-outline" size={16} color={COLORS.terracotta} />
@@ -272,21 +306,38 @@ const styles = StyleSheet.create({
   trioValeur: { fontFamily: FONTS.display, fontSize: 20, color: COLORS.vertProfond },
   trioCaption: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, marginTop: 3, textAlign: 'center' },
 
-  agendaLigne: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
-    borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.lg,
+  sectionLabel: {
+    fontFamily: FONTS.bodySemibold, fontSize: 12, letterSpacing: 0.6,
+    textTransform: 'uppercase', color: COLORS.ardoise,
   },
-  agendaDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.vert, marginRight: SPACING.sm },
-  agendaTime: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.ardoise, marginRight: SPACING.sm, minWidth: 42 },
-  agendaTitre: { fontFamily: FONTS.bodyMedium, fontSize: 16, color: COLORS.texte },
-  agendaWho: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, marginTop: 1 },
-  agendaLien: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.vert, marginLeft: SPACING.sm },
+  semaineHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginTop: SPACING.xl, marginBottom: SPACING.md,
+  },
+  semaineLien: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vert },
+  semaineCard: {
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
+    borderRadius: RADIUS.md, paddingHorizontal: SPACING.md,
+  },
+  semaineLigne: {
+    flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md,
+    borderBottomWidth: 1, borderBottomColor: COLORS.bordure, gap: SPACING.sm,
+  },
+  semaineJour: {
+    fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vertProfond,
+    textTransform: 'capitalize', minWidth: 52,
+  },
+  semaineHeure: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise, minWidth: 42 },
+  semaineTitre: { flex: 1, fontFamily: FONTS.bodyMedium, fontSize: 14.5, color: COLORS.texte },
+  semaineAutres: {
+    fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise,
+    paddingVertical: SPACING.sm, fontStyle: 'italic',
+  },
 
   souvenirLigne: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.ivoireFonce, borderRadius: RADIUS.md,
-    padding: SPACING.md, marginTop: SPACING.md,
+    padding: SPACING.md, marginTop: SPACING.xl,
   },
   souvenirEyebrow: {
     fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.terracotta,
