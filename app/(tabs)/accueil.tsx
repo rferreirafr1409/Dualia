@@ -27,6 +27,7 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { BrandMark } from '../../components/icons';
 import { TRADUCTIONS } from '../../constants/i18n';
 import SouvenirModal from '../../components/SouvenirModal';
+import JourneeModal from '../../components/JourneeModal';
 import type { JournalEntry, ParentRole } from '../../types';
 
 const LOCALES = { fr, pt };
@@ -69,6 +70,7 @@ export default function AccueilScreen() {
   const prenom = parents[parentActif]?.nom.split(' ')[0] ?? '';
 
   const [souvenirVisible, setSouvenirVisible] = useState(false);
+  const [journeeVisible, setJourneeVisible] = useState(false);
 
   const autreRole: ParentRole = parentActif === 'A' ? 'B' : 'A';
   const initialeMoi = initialeParent(parents[parentActif]?.nom);
@@ -80,15 +82,20 @@ export default function AccueilScreen() {
   const depensesNonReglees = depenses.filter((d) => !d.rembourse);
   const nbATraiter = decisionsEnAttente.length + (depensesNonReglees.length > 0 ? 1 : 0);
 
+  // Solde "qui doit à qui" — net exact des parts de chaque dépense non
+  // réglée (pas un écart par rapport à une moyenne globale), pour
+  // représenter un mouvement d'argent précis. Même méthode que le module
+  // Finances, pour ne jamais afficher deux chiffres différents.
   const soldeNonRegle = useMemo(() => {
-    let totalA = 0;
-    let totalB = 0;
+    let duAVersB = 0;
+    let duBVersA = 0;
     depensesNonReglees.forEach((d) => {
-      if (d.auteurId === 'A') totalA += d.montant;
-      else totalB += d.montant;
+      const partA = d.partA ?? d.montant / 2;
+      const partB = d.partB ?? d.montant / 2;
+      if (d.auteurId === 'A') duBVersA += partB;
+      else duAVersB += partA;
     });
-    const total = totalA + totalB;
-    const duA = total / 2 - totalA;
+    const duA = duBVersA - duAVersB; // positif => B doit à A
     const aJour = Math.abs(duA) < 0.005;
     const debiteur: ParentRole = duA > 0 ? 'B' : 'A';
     const crediteur: ParentRole = duA > 0 ? 'A' : 'B';
@@ -160,7 +167,7 @@ export default function AccueilScreen() {
             <Text style={styles.trioCaption}>{t.accueil.cockpitAExaminer}</Text>
           </Pressable>
 
-          <Pressable style={styles.trioCard} onPress={() => router.push('/semaine-activites' as any)}>
+          <Pressable style={styles.trioCard} onPress={() => setJourneeVisible(true)}>
             <Text style={styles.trioLabel} numberOfLines={1}>{t.accueil.cockpitAujourdhui}</Text>
             <Text style={styles.trioValeur}>{todayEvents.length}</Text>
             <Text style={styles.trioCaption} numberOfLines={1}>
@@ -171,7 +178,7 @@ export default function AccueilScreen() {
           <Pressable style={styles.trioCard} onPress={() => router.push('/finances' as any)}>
             <Text style={styles.trioLabel} numberOfLines={1}>{t.accueil.attention.financesTitre}</Text>
             <Text style={styles.trioValeur} numberOfLines={1} adjustsFontSizeToFit>
-              {soldeNonRegle.aJour ? '0 €' : `${soldeNonRegle.montant.toFixed(0)} €`}
+              {soldeNonRegle.aJour ? '0,00 €' : `${soldeNonRegle.montant.toFixed(2).replace('.', ',')} €`}
             </Text>
             <Text style={styles.trioCaption} numberOfLines={1}>
               {soldeNonRegle.aJour
@@ -234,6 +241,7 @@ export default function AccueilScreen() {
         entry={souvenir?.entry ?? null}
         ilYaUnAn={souvenir?.ilYaUnAn ?? false}
       />
+      <JourneeModal visible={journeeVisible} onClose={() => setJourneeVisible(false)} />
     </View>
   );
 }
