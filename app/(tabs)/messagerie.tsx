@@ -64,8 +64,9 @@ export default function MessagerieScreen() {
   const messagesAnalyses = useStore((s) => s.messagesAnalyses);
   const marquerMessageAnalyse = useStore((s) => s.marquerMessageAnalyse);
   const ignorerSuggestion = useStore((s) => s.ignorerSuggestion);
-
-  const [suggestions, setSuggestions] = React.useState<Record<string, { titre: string; date: string; enfant: string | null }>>({});
+  const suggestions = useStore((s) => s.suggestionsMessages);
+  const ajouterSuggestionMessage = useStore((s) => s.ajouterSuggestionMessage);
+  const retirerSuggestionMessage = useStore((s) => s.retirerSuggestionMessage);
 
   React.useEffect(() => {
     messages.forEach((msg) => {
@@ -79,10 +80,7 @@ export default function MessagerieScreen() {
         .then((r) => r.json())
         .then((data) => {
           if (data.evenementDetecte && data.date) {
-            setSuggestions((prev) => ({
-              ...prev,
-              [msg.id]: { titre: data.titre || 'Evenement', date: data.date, enfant: data.enfant },
-            }));
+            ajouterSuggestionMessage(msg.id, { titre: data.titre || 'Evenement', date: data.date, enfant: data.enfant });
           }
         })
         .catch(() => {});
@@ -100,12 +98,12 @@ export default function MessagerieScreen() {
       enfant: sug.enfant || undefined,
       sourceMessageId: msgId,
     });
-    setSuggestions((prev) => { const next = { ...prev }; delete next[msgId]; return next; });
+    retirerSuggestionMessage(msgId);
   };
 
   const ignorerCetteSuggestion = (msgId: string) => {
     ignorerSuggestion(msgId);
-    setSuggestions((prev) => { const next = { ...prev }; delete next[msgId]; return next; });
+    retirerSuggestionMessage(msgId);
   };
 
   const formaliser = (contenu: string) => {
@@ -168,7 +166,7 @@ export default function MessagerieScreen() {
                   </View>
                   </View>
                                 ) : null}
-                              code "app\(tabs)\calendrier.tsx"              <Pressable
+                              <Pressable
                     style={[styles.formaliserBtn, fromMe && styles.formaliserBtnMe]}
                     onPress={() => formaliser(msg.contenu)}
                   >

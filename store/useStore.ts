@@ -626,9 +626,16 @@ interface DualiaStore {
   ajouterEvenement: (ev: EvenementGarde) => void;
   evenementsCalendrier: EvenementCalendrier[];
   ajouterEvenementCalendrier: (ev: EvenementCalendrier) => void;
-  ignorerSuggestion: (messageId: string) => void;
+   ignorerSuggestion: (messageId: string) => void;
   messagesAnalyses: string[];
   marquerMessageAnalyse: (id: string) => void;
+  // Suggestions d'événement détectées par l'IA dans un message (en attente
+  // de Confirmer/Ignorer) — vit dans le store global (pas en state local de
+  // l'écran Messages) pour que le compteur "À traiter" de l'accueil puisse
+  // les voir même sans avoir ouvert l'écran Messages dans cette session.
+  suggestionsMessages: Record<string, { titre: string; date: string; enfant: string | null }>;
+  ajouterSuggestionMessage: (msgId: string, sug: { titre: string; date: string; enfant: string | null }) => void;
+  retirerSuggestionMessage: (msgId: string) => void;
   supprimerEvenement: (id: string) => void;
   ajouterDecision: (d: Decision) => void;
   mettreAJourDecision: (id: string, updates: Partial<Decision>) => void;
@@ -762,6 +769,15 @@ export const useStore = create<DualiaStore>()(
       messagesAnalyses: [],
       marquerMessageAnalyse: (id) =>
         set((state) => ({ messagesAnalyses: [...state.messagesAnalyses, id] })),
+      suggestionsMessages: {},
+      ajouterSuggestionMessage: (msgId, sug) =>
+        set((state) => ({ suggestionsMessages: { ...state.suggestionsMessages, [msgId]: sug } })),
+      retirerSuggestionMessage: (msgId) =>
+        set((state) => {
+          const next = { ...state.suggestionsMessages };
+          delete next[msgId];
+          return { suggestionsMessages: next };
+        }),
 
   supprimerEvenement: (id) =>
     set((state) => ({ evenements: state.evenements.filter((e) => e.id !== id) })),
@@ -1533,7 +1549,8 @@ export const useStore = create<DualiaStore>()(
         langue: state.langue,
         evenements: state.evenements,
         evenementsCalendrier: state.evenementsCalendrier,
-        messagesAnalyses: state.messagesAnalyses,
+               messagesAnalyses: state.messagesAnalyses,
+        suggestionsMessages: state.suggestionsMessages,
         cadreFamilial: state.cadreFamilial,
         propositionsRepartition: state.propositionsRepartition,
         enfants: state.enfants,

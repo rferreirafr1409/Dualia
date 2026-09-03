@@ -16,6 +16,7 @@ export default function FamilleScreen() {
   const t = TRADUCTIONS[langue].famille;
 
   const items: { icone: IoniconName; couleur: string; fond: string; titre: string; desc: string; route: string }[] = [
+    { icone: 'checkmark-circle-outline', couleur: COLORS.or, fond: '#FBF3DF', titre: t.decisions, desc: t.decisionsDesc, route: '/decisions' },
     { icone: 'book-outline', couleur: COLORS.vert, fond: '#EEF1F0', titre: t.journal, desc: t.journalDesc, route: '/journal' },
     { icone: 'medkit-outline', couleur: COLORS.terracotta, fond: '#F7EEE9', titre: t.sante, desc: t.santeDesc, route: '/enfants' },
     { icone: 'wallet-outline', couleur: COLORS.or, fond: '#FBF3DF', titre: t.finances, desc: t.financesDesc, route: '/finances' },
