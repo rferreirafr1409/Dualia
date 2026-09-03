@@ -65,6 +65,7 @@ export default function AccueilScreen() {
   const evenementsCalendrier = useStore((s) => s.evenementsCalendrier);
   const parents = useStore((s) => s.parents);
   const parentActif = useStore((s) => s.parentActif);
+  const suggestionsMessages = useStore((s) => s.suggestionsMessages);
   const t = TRADUCTIONS[langue];
   const dateLocale = LOCALES[langue];
   const prenom = parents[parentActif]?.nom.split(' ')[0] ?? '';
@@ -80,10 +81,13 @@ export default function AccueilScreen() {
     (d) => d.statut === 'proposée' || d.statut === 'en_attente'
   );
   const depensesNonReglees = depenses.filter((d) => !d.rembourse);
-    // Ne compte que les vraies décisions en attente : le "+1" pour les
-  // dépenses non réglées a été retiré, car il n'avait nulle part où
-  // atterrir en cliquant (Échanges ne montre que Conversations/Décisions).
-  const nbATraiter = decisionsEnAttente.length;
+  // "À traiter" compte les décisions en attente ET les suggestions
+  // d'événement détectées dans un message (en attente de Confirmer/
+  // Ignorer) — toutes deux de vraies choses à traiter, contrairement à
+  // l'ancien "+1" pour les dépenses non réglées qui n'avait nulle part où
+  // atterrir en cliquant.
+  const nbSuggestionsMessages = Object.keys(suggestionsMessages).length;
+  const nbATraiter = decisionsEnAttente.length + nbSuggestionsMessages;
 
   // Solde "qui doit à qui" — net exact des parts de chaque dépense non
   // réglée (pas un écart par rapport à une moyenne globale), pour
@@ -164,7 +168,7 @@ export default function AccueilScreen() {
         <Text style={styles.sousBonjour}>{t.accueil.cockpitSousTitre}</Text>
 
         <View style={styles.trio}>
-          <Pressable style={styles.trioCard} onPress={() => router.push('/echanges' as any)}>
+          <Pressable style={styles.trioCard} onPress={() => router.push('/decisions' as any)}>
             <Text style={styles.trioLabel} numberOfLines={1}>{t.accueil.cockpitATraiter}</Text>
             <Text style={styles.trioValeur}>{nbATraiter}</Text>
             <Text style={styles.trioCaption}>{t.accueil.cockpitAExaminer}</Text>

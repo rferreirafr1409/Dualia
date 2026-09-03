@@ -344,9 +344,11 @@ export const TRADUCTIONS = {
       ajoutSouvenir: 'Souvenir',
       ajoutDocument: 'Document',
     },
-    famille: {
+      famille: {
       titre: 'Famille',
       sousTitre: 'Tout ce qui concerne votre famille',
+      decisions: 'Décisions',
+      decisionsDesc: 'Propositions à valider',
       journal: 'Souvenirs & Journal',
       journalDesc: 'Vos moments partagés',
       sante: 'Santé & contacts',
@@ -740,9 +742,11 @@ export const TRADUCTIONS = {
       ajoutSouvenir: 'Memória',
       ajoutDocument: 'Documento',
     },
-    famille: {
+      famille: {
       titre: 'Família',
       sousTitre: 'Tudo sobre a sua família',
+      decisions: 'Decisões',
+      decisionsDesc: 'Propostas a validar',
       journal: 'Memórias & Diário',
       journalDesc: 'Os vossos momentos partilhados',
       sante: 'Saúde & contactos',

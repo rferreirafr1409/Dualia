@@ -15,7 +15,7 @@ const TAB_LABELS: Record<string, { fr: string; pt: string }> = {
   accueil: { fr: "Aujourd'hui", pt: 'Hoje' },
   calendrier: { fr: 'Agenda', pt: 'Agenda' },
   decisions: { fr: 'Décisions', pt: 'Decisões' },
-  messagerie: { fr: 'Messagerie', pt: 'Mensagens' },
+  messagerie: { fr: 'Messages', pt: 'Mensagens' },
   journal: { fr: 'Journal', pt: 'Diário' },
   finances: { fr: 'Finances', pt: 'Finanças' },
   documents: { fr: 'Documents', pt: 'Documentos' },
@@ -25,7 +25,13 @@ const TAB_LABELS: Record<string, { fr: string; pt: string }> = {
   famille: { fr: 'Famille', pt: 'Família' },
 };
 
-const ONGLETS_VISIBLES = ['accueil', 'calendrier', 'echanges', 'famille'];
+// Seuls ces 4 onglets ont un bouton dans la barre du bas. "messagerie" (et
+// non plus "echanges") pour aller directement aux conversations — plus de
+// hub intermédiaire mélangeant Messages et Décisions. Les autres écrans
+// (decisions, finances, documents, journal, caf, enfants) restent des
+// routes normales, atteignables via router.push depuis "Famille" (et pour
+// Décisions, depuis la carte cockpit "À traiter" de l'accueil).
+const ONGLETS_VISIBLES = ['accueil', 'calendrier', 'messagerie', 'famille'];
 
 function ScrollableTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
@@ -167,9 +173,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="echanges"
+        name="messagerie"
         options={{
-          title: titre('echanges'),
+          title: titre('messagerie'),
           headerShown: false,
           tabBarIcon: ({ focused, color }) => (
             <Ionicons name={focused ? 'chatbubbles' : ('chatbubbles-outline' as IoniconName)} size={22} color={color} />
@@ -188,7 +194,7 @@ export default function TabLayout() {
       />
 
       <Tabs.Screen name="decisions" options={{ title: titre('decisions'), href: null }} />
-      <Tabs.Screen name="messagerie" options={{ title: titre('messagerie'), href: null }} />
+      <Tabs.Screen name="echanges" options={{ title: titre('echanges'), headerShown: false, href: null }} />
       <Tabs.Screen name="journal" options={{ title: titre('journal'), headerShown: false, href: null }} />
       <Tabs.Screen name="finances" options={{ title: titre('finances'), headerShown: false, href: null }} />
       <Tabs.Screen name="documents" options={{ title: titre('documents'), headerShown: false, href: null }} />
