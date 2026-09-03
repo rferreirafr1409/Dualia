@@ -66,7 +66,7 @@ export default function DecisionsScreen() {
     { key: 'refusée', label: t.filtreRefusees },
   ];
 
-  const [filter, setFilter] = useState<'toutes' | StatutDecision>('toutes');
+    const [filter, setFilter] = useState<'toutes' | StatutDecision>('en_attente');
   const [modalVisible, setModalVisible] = useState(false);
   const [categoryModalVisible, setCategoryModalVisible] = useState(false);
   const [formTitre, setFormTitre] = useState('');
@@ -126,7 +126,16 @@ export default function DecisionsScreen() {
     router.push('/messagerie' as any);
   };
 
-  const filtered = filter === 'toutes' ? decisions : decisions.filter((d) => d.statut === filter);
+   // Le filtre "en_attente" (celui affiché par défaut) regroupe les deux
+  // statuts qui signifient réellement "en attente de traitement" — sinon
+  // les décisions "proposée" (comme celles créées via un message) restent
+  // invisibles alors qu'elles réclament une action, comme "en_attente".
+  const filtered =
+    filter === 'toutes'
+      ? decisions
+      : filter === 'en_attente'
+      ? decisions.filter((d) => d.statut === 'en_attente' || d.statut === 'proposée')
+      : decisions.filter((d) => d.statut === filter);
 
   return (
     <View style={styles.screen}>
@@ -158,9 +167,7 @@ export default function DecisionsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Section Jugement de divorce — extraction automatique + capsules */}
-        <Text style={styles.sectionTitle}>{t.jugementSectionTitre}</Text>
-        <JugementUpload />
+     
 
         {filtered.length === 0 ? (
           <Text style={styles.emptyText}>{t.vide}</Text>

@@ -100,7 +100,7 @@ export const TRADUCTIONS = {
       aujourdhuiLabel: "Aujourd'hui",
     },
     decisions: {
-      titre: 'Décisions',
+      titre: 'À traiter',
       sousTitre: "Horodatage eIDAS · Règlement (UE) n°910/2014",
       nouvelle: '+ Nouvelle',
       filtreToutes: 'Toutes',
@@ -344,10 +344,10 @@ export const TRADUCTIONS = {
       ajoutSouvenir: 'Souvenir',
       ajoutDocument: 'Document',
     },
-      famille: {
+    famille: {
       titre: 'Famille',
       sousTitre: 'Tout ce qui concerne votre famille',
-      decisions: 'Décisions',
+      decisions: 'À traiter',
       decisionsDesc: 'Propositions à valider',
       journal: 'Souvenirs & Journal',
       journalDesc: 'Vos moments partagés',
@@ -498,7 +498,7 @@ export const TRADUCTIONS = {
       aujourdhuiLabel: 'Hoje',
     },
     decisions: {
-      titre: 'Decisões',
+      titre: 'A tratar',
       sousTitre: 'Registo temporal eIDAS · Regulamento (UE) n.º 910/2014',
       nouvelle: '+ Nova',
       filtreToutes: 'Todas',
@@ -742,10 +742,10 @@ export const TRADUCTIONS = {
       ajoutSouvenir: 'Memória',
       ajoutDocument: 'Documento',
     },
-      famille: {
+    famille: {
       titre: 'Família',
       sousTitre: 'Tudo sobre a sua família',
-      decisions: 'Decisões',
+      decisions: 'A tratar',
       decisionsDesc: 'Propostas a validar',
       journal: 'Memórias & Diário',
       journalDesc: 'Os vossos momentos partilhados',
