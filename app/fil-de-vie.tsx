@@ -77,7 +77,7 @@ export default function FilDeVieScreen() {
             return (
               <View key={m.id} style={styles.carte}>
                 {m.photoUrl ? (
-                  <Image source={{ uri: m.photoUrl }} style={styles.photo} />
+                                    <Image source={{ uri: m.photoUrl }} style={styles.photo} resizeMode="contain" />
                 ) : null}
                 <View style={styles.carteCorps}>
                   <View style={styles.carteHeader}>
