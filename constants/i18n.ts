@@ -94,10 +94,19 @@ export const TRADUCTIONS = {
       heure: 'Heure (optionnel)',
       heurePlaceholder: 'Ex : 09:00',
     },
-    semaine: {
+       semaine: {
       titre: 'Activités de la semaine',
       aucuneActivite: 'Aucune activité cette semaine',
       aujourdhuiLabel: "Aujourd'hui",
+    },
+    histoireEnfant: {
+      titre: (prenom: string) => `L'histoire de ${prenom}`,
+      sousTitre: 'Ses souvenirs, ses moments',
+      chronologie: 'Chronologie',
+      capsules: 'Capsules',
+      aucunSouvenir: 'Aucun souvenir pour le moment',
+      aucuneCapsule: 'Aucune capsule programmée',
+      voirHistoire: 'Voir son histoire',
     },
     decisions: {
       titre: 'À traiter',
@@ -496,6 +505,15 @@ export const TRADUCTIONS = {
       titre: 'Atividades da semana',
       aucuneActivite: 'Nenhuma atividade esta semana',
       aujourdhuiLabel: 'Hoje',
+    },
+    histoireEnfant: {
+      titre: (prenom: string) => `A história de ${prenom}`,
+      sousTitre: 'As suas memórias, os seus momentos',
+      chronologie: 'Cronologia',
+      capsules: 'Cápsulas',
+      aucunSouvenir: 'Nenhuma memória por enquanto',
+      aucuneCapsule: 'Nenhuma cápsula agendada',
+      voirHistoire: 'Ver a sua história',
     },
     decisions: {
       titre: 'A tratar',

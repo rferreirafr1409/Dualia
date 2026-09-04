@@ -40,6 +40,7 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="validation-cadre" options={{ presentation: 'modal' }} />
         <Stack.Screen name="semaine-activites" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="enfant-histoire" options={{ presentation: 'modal' }} />
         <Stack.Screen name="creer-espace" />
         <Stack.Screen name="rejoindre" />
         <Stack.Screen name="connexion" />
