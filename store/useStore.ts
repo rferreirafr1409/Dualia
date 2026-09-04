@@ -603,13 +603,11 @@ const DOCUMENTS_PT: DocumentItem[] = [
 const FAMILY_CARD_FR = {
   enfants: 'Emma & Léo',
   localisation: 'En famille — Paris',
-  prochainEchange: 'Prochain échange dans 7 j, chez Pierre',
 };
 
 const FAMILY_CARD_PT = {
   enfants: 'Emma & Léo',
   localisation: 'Em família — Lisboa',
-  prochainEchange: 'Próxima troca em 7 dias, com o Pierre',
 };
 
 interface DualiaStore {
