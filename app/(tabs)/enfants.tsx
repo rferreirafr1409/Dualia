@@ -1,6 +1,7 @@
 // app/(tabs)/enfants.tsx
 
 import { useState } from 'react';
+import { useRouter } from 'expo-router';
 import {
   View,
   Text,
@@ -38,6 +39,7 @@ const enfantVide = () => ({
 });
 
 export default function EnfantsScreen() {
+  const router = useRouter();
   const enfants = useStore((s) => s.enfants);
   const ajouterEnfant = useStore((s) => s.ajouterEnfant);
   const modifierEnfant = useStore((s) => s.modifierEnfant);
@@ -45,7 +47,8 @@ export default function EnfantsScreen() {
   const ajouterContactUrgence = useStore((s) => s.ajouterContactUrgence);
   const supprimerContactUrgence = useStore((s) => s.supprimerContactUrgence);
   const langue = useStore((s) => s.langue);
-  const t = TRADUCTIONS[langue].enfants;
+   const t = TRADUCTIONS[langue].enfants;
+  const tHistoire = TRADUCTIONS[langue].histoireEnfant;
 
   // ---------- Modal enfant (création / édition) ----------
   const [modalEnfantVisible, setModalEnfantVisible] = useState(false);
@@ -276,6 +279,14 @@ export default function EnfantsScreen() {
                   </View>
                 ))
               )}
+
+              <TouchableOpacity
+                style={styles.histoireBtn}
+                onPress={() => router.push({ pathname: '/enfant-histoire', params: { prenom: e.prenom } } as any)}
+              >
+                <Ionicons name="book-outline" size={15} color={COLORS.vert} />
+                <Text style={styles.histoireBtnTxt}>{tHistoire.voirHistoire}</Text>
+              </TouchableOpacity>
             </View>
           );
         })}
@@ -527,6 +538,13 @@ const styles = StyleSheet.create({
   },
   contactNom: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.medium, color: COLORS.texte },
   contactTel: { fontSize: TYPOGRAPHY.xs, color: COLORS.ardoise },
+
+  histoireBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    marginTop: SPACING.md, paddingVertical: SPACING.sm, borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.bordure,
+  },
+  histoireBtnTxt: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.semibold, color: COLORS.vert },
 
   fab: {
     position: 'absolute',
