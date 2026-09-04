@@ -53,6 +53,15 @@ function initialeParent(nomComplet: string | undefined): string {
   return prenom.length > 0 ? prenom.charAt(0).toUpperCase() : '?';
 }
 
+function parentDuJour(date: Date, evs: { dateDebut: string; dateFin: string; parentId: ParentRole }[]): ParentRole | null {
+  for (const ev of evs) {
+    const debut = new Date(ev.dateDebut);
+    const fin = new Date(ev.dateFin);
+    if (date >= debut && date <= fin) return ev.parentId;
+  }
+  return null;
+}
+
 export default function AccueilScreen() {
   const router = useRouter();
   const langue = useStore((s) => s.langue);
@@ -63,6 +72,7 @@ export default function AccueilScreen() {
   const journalEntries = useStore((s) => s.journalEntries);
   const moments = useStore((s) => s.moments);
   const evenementsCalendrier = useStore((s) => s.evenementsCalendrier);
+  const evenements = useStore((s) => s.evenements);
   const parents = useStore((s) => s.parents);
   const parentActif = useStore((s) => s.parentActif);
   const suggestionsMessages = useStore((s) => s.suggestionsMessages);
@@ -76,6 +86,24 @@ export default function AccueilScreen() {
   const autreRole: ParentRole = parentActif === 'A' ? 'B' : 'A';
   const initialeMoi = initialeParent(parents[parentActif]?.nom);
   const initialeAutre = initialeParent(parents[autreRole]?.nom);
+
+  // Vrai calcul du prochain changement de garde à partir du planning réel
+  // (le même que celui utilisé dans l'Agenda) — jamais un texte figé avec
+  // un nom au hasard.
+  const prochainEchangeTexte = useMemo(() => {
+    const roleAujourdhui = parentDuJour(new Date(), evenements);
+    for (let i = 1; i <= 30; i++) {
+      const jour = new Date();
+      jour.setDate(jour.getDate() + i);
+      jour.setHours(0, 0, 0, 0);
+      const role = parentDuJour(jour, evenements);
+      if (role && role !== roleAujourdhui) {
+        const nomAutre = parents[role]?.nom.split(' ')[0] ?? '';
+        return t.accueil.prochainEchangeTexte(i, nomAutre);
+      }
+    }
+    return null;
+  }, [evenements, parents, langue]);
 
   const decisionsEnAttente = decisions.filter(
     (d) => d.statut === 'proposée' || d.statut === 'en_attente'
@@ -191,7 +219,7 @@ export default function AccueilScreen() {
           <Text style={styles.promesseSous}>
             {familyCard.enfants} · {familyCard.localisation}
           </Text>
-          <Text style={styles.promesseMeta}>{familyCard.prochainEchange}</Text>
+          {prochainEchangeTexte ? <Text style={styles.promesseMeta}>{prochainEchangeTexte}</Text> : null}
         </View>
 
         <Text style={styles.bonjour}>{t.accueil.bonjour} {prenom}</Text>

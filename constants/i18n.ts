@@ -52,7 +52,13 @@ export const TRADUCTIONS = {
       voirLaJournee: 'Voir la journée',
       semaineAVenir: 'À venir cette semaine',
       semaineLien: 'Semaine',
-      autresSemaine: (n: number) => `+${n} autre${n > 1 ? 's' : ''} cette semaine`,
+            autresSemaine: (n: number) => `+${n} autre${n > 1 ? 's' : ''} cette semaine`,
+      prochainEchangeTexte: (jours: number, prenom: string) =>
+        jours === 0
+          ? `Échange aujourd'hui, chez ${prenom}`
+          : jours === 1
+          ? `Prochain échange demain, chez ${prenom}`
+          : `Prochain échange dans ${jours} j, chez ${prenom}`,
     },
     nav: {
       accueil: 'Accueil',
@@ -484,7 +490,13 @@ export const TRADUCTIONS = {
       voirLaJournee: 'Ver o dia',
       semaineAVenir: 'A seguir esta semana',
       semaineLien: 'Semana',
-      autresSemaine: (n: number) => `+${n} outro${n > 1 ? 's' : ''} esta semana`,
+            autresSemaine: (n: number) => `+${n} outro${n > 1 ? 's' : ''} esta semana`,
+      prochainEchangeTexte: (jours: number, prenom: string) =>
+        jours === 0
+          ? `Troca hoje, com o(a) ${prenom}`
+          : jours === 1
+          ? `Próxima troca amanhã, com o(a) ${prenom}`
+          : `Próxima troca em ${jours} dias, com o(a) ${prenom}`,
     },
     nav: {
       accueil: 'Início',
