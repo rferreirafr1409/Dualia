@@ -17,7 +17,7 @@
 //   13.5 — labels / métadonnées
 
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { startOfWeek, endOfWeek, isToday, parseISO, format } from 'date-fns';
@@ -61,6 +61,7 @@ export default function AccueilScreen() {
   const decisions = useStore((s) => s.decisions);
   const depenses = useStore((s) => s.depenses);
   const journalEntries = useStore((s) => s.journalEntries);
+  const moments = useStore((s) => s.moments);
   const evenementsCalendrier = useStore((s) => s.evenementsCalendrier);
   const parents = useStore((s) => s.parents);
   const parentActif = useStore((s) => s.parentActif);
@@ -140,6 +141,14 @@ export default function AccueilScreen() {
 
   const evenementsAffiches = evenementsAVenir.slice(0, 3);
   const nbAutres = Math.max(0, evenementsAVenir.length - 3);
+
+  // "Leur journée" — le Fil de vie, présent. Compact : un seul moment
+  // (le plus récent), pas un flux complet sur la Home.
+  const dernierMoment = moments.length > 0 ? moments[0] : null;
+  const nbNouveauxMoments = useMemo(
+    () => moments.filter((m) => isToday(parseISO(m.createdAt))).length,
+    [moments]
+  );
 
   return (
     <View style={styles.screen}>
@@ -244,6 +253,41 @@ export default function AccueilScreen() {
             </View>
           </>
         ) : null}
+
+        {/* Leur journée — le Fil de vie, compact. Un seul moment, jamais un
+            flux complet sur l'accueil : le clic ouvre le Fil en entier. */}
+        <View style={styles.journeeHeader}>
+          <Text style={styles.sectionLabel}>{t.filDeVie.leurJournee}</Text>
+          {nbNouveauxMoments > 0 ? (
+            <View style={styles.journeeBadge}>
+              <Text style={styles.journeeBadgeTxt}>{t.filDeVie.nouveauxMoments(nbNouveauxMoments)}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        {dernierMoment ? (
+          <Pressable style={styles.journeeCarte} onPress={() => router.push('/fil-de-vie' as any)}>
+            {dernierMoment.photoUrl ? (
+              <Image source={{ uri: dernierMoment.photoUrl }} style={styles.journeePhoto} />
+            ) : null}
+            <View style={styles.journeeCorps}>
+              <View style={{ flex: 1 }}>
+                {dernierMoment.texte ? (
+                  <Text style={styles.journeeTexte} numberOfLines={2}>{dernierMoment.texte}</Text>
+                ) : null}
+                <Text style={styles.journeeMeta}>
+                  {t.filDeVie.partagePar(parents[dernierMoment.auteurId]?.nom.split(' ')[0] ?? '')}
+                </Text>
+              </View>
+              <Text style={styles.journeeLien}>{t.filDeVie.voirLeFil}</Text>
+            </View>
+          </Pressable>
+        ) : (
+          <Pressable style={styles.journeeVide} onPress={() => router.push('/partager-moment' as any)}>
+            <Text style={styles.journeeVideTxte}>{t.filDeVie.proposePartager}</Text>
+            <Text style={styles.journeeVideCta}>{t.filDeVie.partagerCTA}</Text>
+          </Pressable>
+        )}
 
         {souvenir ? (
           <Pressable style={styles.souvenirLigne} onPress={() => setSouvenirVisible(true)}>
@@ -365,6 +409,27 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise,
     paddingVertical: SPACING.sm, fontStyle: 'italic',
   },
+
+  journeeHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    marginTop: SPACING.xl, marginBottom: SPACING.md,
+  },
+  journeeBadge: { backgroundColor: COLORS.terracotta, borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 2 },
+  journeeBadgeTxt: { fontFamily: FONTS.bodyBold, fontSize: 10.5, color: COLORS.blanc },
+  journeeCarte: {
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
+    borderRadius: RADIUS.md, overflow: 'hidden',
+  },
+  journeePhoto: { width: '100%', height: 130, backgroundColor: COLORS.ivoireFonce },
+  journeeCorps: { flexDirection: 'row', alignItems: 'flex-end', padding: SPACING.md, gap: SPACING.sm },
+  journeeTexte: { fontFamily: FONTS.bodyMedium, fontSize: 14.5, color: COLORS.texte },
+  journeeMeta: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, marginTop: 2 },
+  journeeLien: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vert },
+  journeeVide: {
+    backgroundColor: COLORS.ivoireFonce, borderRadius: RADIUS.md, padding: SPACING.lg, alignItems: 'center',
+  },
+  journeeVideTxte: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, marginBottom: SPACING.xs },
+  journeeVideCta: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.terracotta },
 
   souvenirLigne: {
     flexDirection: 'row', alignItems: 'center',
