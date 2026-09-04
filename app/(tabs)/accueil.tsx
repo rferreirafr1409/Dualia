@@ -121,7 +121,13 @@ export default function AccueilScreen() {
       .filter((ev) => isToday(parseISO(ev.date)))
       .sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
   }, [evenementsCalendrier]);
-  const prochainEvenement = evenementsAujourdhui.length > 0 ? evenementsAujourdhui[0] : null;
+
+  // Le compteur reste au nombre total d'événements du jour, même une fois
+  // leur heure passée (ils comptent jusqu'à minuit). Mais "Prochain XXhXX"
+  // ne doit désigner que le prochain événement encore à venir — jamais un
+  // événement déjà passé dans la journée.
+  const maintenant = new Date();
+  const prochainEvenement = evenementsAujourdhui.find((ev) => parseISO(ev.date) > maintenant) ?? null;
   const prochainHeureAffichee = useMemo(() => {
     if (!prochainEvenement) return null;
     const d = parseISO(prochainEvenement.date);
@@ -139,8 +145,8 @@ export default function AccueilScreen() {
       .sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
   }, [evenementsCalendrier]);
 
-  const evenementsAffiches = evenementsAVenir.slice(0, 3);
-  const nbAutres = Math.max(0, evenementsAVenir.length - 3);
+  const evenementsAffiches = evenementsAVenir.slice(0, 2);
+  const nbAutres = Math.max(0, evenementsAVenir.length - 2);
 
   // "Leur journée" — le Fil de vie, présent. Compact : un seul moment
   // (le plus récent), pas un flux complet sur la Home.
@@ -351,16 +357,16 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: COLORS.vert,
     borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.lg,
   },
   promesseTitre: { fontFamily: FONTS.bodySemibold, fontSize: 16, color: COLORS.vertProfond, marginBottom: 3 },
   promesseSous: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.texte },
   promesseMeta: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, marginTop: 1 },
 
   bonjour: { fontFamily: FONTS.display, fontSize: 28, color: COLORS.vertProfond },
-  sousBonjour: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, marginTop: 2, marginBottom: SPACING.lg },
+  sousBonjour: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, marginTop: 2, marginBottom: SPACING.md },
 
   trio: { flexDirection: 'row', gap: SPACING.sm },
   trioCard: {
@@ -369,10 +375,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.bordure,
     borderRadius: RADIUS.md,
-    paddingVertical: SPACING.md,
+    paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.sm,
     alignItems: 'center',
-    minHeight: 92,
+    minHeight: 78,
     justifyContent: 'center',
   },
   trioLabel: {
@@ -388,7 +394,7 @@ const styles = StyleSheet.create({
   },
   semaineHeader: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: SPACING.xl, marginBottom: SPACING.md,
+    marginTop: SPACING.lg, marginBottom: SPACING.sm,
   },
   semaineLien: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vert },
   semaineCard: {
@@ -396,7 +402,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.md, paddingHorizontal: SPACING.md,
   },
   semaineLigne: {
-    flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.md,
+    flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm,
     borderBottomWidth: 1, borderBottomColor: COLORS.bordure, gap: SPACING.sm,
   },
   semaineJour: {
@@ -407,12 +413,12 @@ const styles = StyleSheet.create({
   semaineTitre: { flex: 1, fontFamily: FONTS.bodyMedium, fontSize: 14.5, color: COLORS.texte },
   semaineAutres: {
     fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise,
-    paddingVertical: SPACING.sm, fontStyle: 'italic',
+    paddingVertical: SPACING.xs, fontStyle: 'italic',
   },
 
   journeeHeader: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-    marginTop: SPACING.xl, marginBottom: SPACING.md,
+    marginTop: SPACING.lg, marginBottom: SPACING.sm,
   },
   journeeBadge: { backgroundColor: COLORS.terracotta, borderRadius: RADIUS.full, paddingHorizontal: SPACING.sm, paddingVertical: 2 },
   journeeBadgeTxt: { fontFamily: FONTS.bodyBold, fontSize: 10.5, color: COLORS.blanc },
@@ -434,7 +440,7 @@ const styles = StyleSheet.create({
   souvenirLigne: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: COLORS.ivoireFonce, borderRadius: RADIUS.md,
-    padding: SPACING.md, marginTop: SPACING.xl,
+    padding: SPACING.md, marginTop: SPACING.md,
   },
   souvenirEyebrow: {
     fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.terracotta,
