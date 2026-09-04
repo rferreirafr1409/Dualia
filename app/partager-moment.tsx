@@ -85,7 +85,11 @@ export default function PartagerMomentScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {photoUri ? (
             <View style={styles.photoWrap}>
-                           <Image source={{ uri: photoUri }} style={[styles.photo, { aspectRatio: photoRatio, height: undefined }]} />
+                                        <Image
+                source={{ uri: photoUri }}
+                style={[styles.photo, { aspectRatio: photoRatio, height: undefined }]}
+                resizeMode="contain"
+              />
               <Pressable style={styles.photoRetirer} onPress={() => setPhotoUri(null)}>
                 <Ionicons name="trash-outline" size={16} color={COLORS.blanc} />
               </Pressable>
