@@ -14,6 +14,7 @@ import {
   Platform,
   Alert,
   Linking,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,7 +26,15 @@ import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { TRADUCTIONS } from '../../constants/i18n';
 import DatePickerField from '../../components/DatePickerField';
 
+let ImagePicker: typeof import('expo-image-picker') | null = null;
+try {
+  ImagePicker = require('expo-image-picker');
+} catch {
+  ImagePicker = null;
+}
+
 const ACCENT = '#B5927C';
+const GROUPES_SANGUINS = ['O+', 'O-', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-'];
 
 const enfantVide = () => ({
   prenom: '',
@@ -36,6 +45,8 @@ const enfantVide = () => ({
   allergies: '',
   groupeSanguin: '',
   mutuelle: '',
+  photoUri: null as string | null,
+  photoUrl: undefined as string | undefined,
 });
 
 export default function EnfantsScreen() {
@@ -72,40 +83,62 @@ export default function EnfantsScreen() {
       allergies: e.allergies ?? '',
       groupeSanguin: e.groupeSanguin ?? '',
       mutuelle: e.mutuelle ?? '',
+      photoUri: null,
+      photoUrl: e.photoUrl,
     });
     setModalEnfantVisible(true);
   };
 
-  const soumettreEnfant = () => {
-    if (!form.prenom.trim()) return;
-
-    if (enfantEnEdition) {
-      modifierEnfant(enfantEnEdition, {
-        prenom: form.prenom.trim(),
-        dateNaissance: form.dateNaissance ? form.dateNaissance.toISOString() : undefined,
-        ecole: form.ecole.trim() || undefined,
-        medecinTraitant: form.medecinTraitant.trim() || undefined,
-        medecinTelephone: form.medecinTelephone.trim() || undefined,
-        allergies: form.allergies.trim() || undefined,
-        groupeSanguin: form.groupeSanguin.trim() || undefined,
-        mutuelle: form.mutuelle.trim() || undefined,
-      });
-    } else {
-      const nouvel: Enfant = {
-        id: `enfant-${Date.now()}`,
-        prenom: form.prenom.trim(),
-        dateNaissance: form.dateNaissance ? form.dateNaissance.toISOString() : undefined,
-        ecole: form.ecole.trim() || undefined,
-        medecinTraitant: form.medecinTraitant.trim() || undefined,
-        medecinTelephone: form.medecinTelephone.trim() || undefined,
-        allergies: form.allergies.trim() || undefined,
-        groupeSanguin: form.groupeSanguin.trim() || undefined,
-        mutuelle: form.mutuelle.trim() || undefined,
-        contactsUrgence: [],
-      };
-      ajouterEnfant(nouvel);
+  const choisirPhotoEnfant = async () => {
+    if (!ImagePicker) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const resultat = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
+    if (!resultat.canceled && resultat.assets[0]) {
+      setForm((f) => ({ ...f, photoUri: resultat.assets[0].uri }));
     }
-    setModalEnfantVisible(false);
+  };
+
+  const [envoiEnfant, setEnvoiEnfant] = useState(false);
+
+  const soumettreEnfant = async () => {
+    if (!form.prenom.trim()) return;
+    setEnvoiEnfant(true);
+    try {
+      if (enfantEnEdition) {
+        await modifierEnfant(
+          enfantEnEdition,
+          {
+            prenom: form.prenom.trim(),
+            dateNaissance: form.dateNaissance ? form.dateNaissance.toISOString() : undefined,
+            ecole: form.ecole.trim() || undefined,
+            medecinTraitant: form.medecinTraitant.trim() || undefined,
+            medecinTelephone: form.medecinTelephone.trim() || undefined,
+            allergies: form.allergies.trim() || undefined,
+            groupeSanguin: form.groupeSanguin.trim() || undefined,
+            mutuelle: form.mutuelle.trim() || undefined,
+          },
+          form.photoUri ?? undefined
+        );
+      } else {
+        const nouvel: Enfant = {
+          id: `enfant-${Date.now()}`,
+          prenom: form.prenom.trim(),
+          dateNaissance: form.dateNaissance ? form.dateNaissance.toISOString() : undefined,
+          ecole: form.ecole.trim() || undefined,
+          medecinTraitant: form.medecinTraitant.trim() || undefined,
+          medecinTelephone: form.medecinTelephone.trim() || undefined,
+          allergies: form.allergies.trim() || undefined,
+          groupeSanguin: form.groupeSanguin.trim() || undefined,
+          mutuelle: form.mutuelle.trim() || undefined,
+          contactsUrgence: [],
+        };
+        await ajouterEnfant(nouvel, form.photoUri ?? undefined);
+      }
+      setModalEnfantVisible(false);
+    } finally {
+      setEnvoiEnfant(false);
+    }
   };
 
   const demanderSuppressionEnfant = (e: Enfant) => {
@@ -195,7 +228,11 @@ export default function EnfantsScreen() {
             <View key={e.id} style={styles.carte}>
               <View style={styles.carteHeader}>
                 <View style={styles.avatar}>
-                  <Text style={styles.avatarTxt}>{e.prenom.charAt(0).toUpperCase()}</Text>
+                  {e.photoUrl ? (
+                    <Image source={{ uri: e.photoUrl }} style={styles.avatarPhoto} />
+                  ) : (
+                    <Text style={styles.avatarTxt}>{e.prenom.charAt(0).toUpperCase()}</Text>
+                  )}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.prenom}>{e.prenom}</Text>
@@ -316,6 +353,17 @@ export default function EnfantsScreen() {
             <View style={styles.modalPoignee} />
             <Text style={styles.modalTitre}>{t.modalTitreAjout}</Text>
 
+            <TouchableOpacity style={styles.photoBtn} onPress={choisirPhotoEnfant}>
+              {form.photoUri || form.photoUrl ? (
+                <Image source={{ uri: form.photoUri ?? form.photoUrl }} style={styles.photoApercu} />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <Ionicons name="camera-outline" size={22} color={COLORS.ardoise} />
+                </View>
+              )}
+              <Text style={styles.photoBtnTxt}>{t.photo}</Text>
+            </TouchableOpacity>
+
             <Text style={styles.label}>{t.prenom}</Text>
             <TextInput
               style={styles.input}
@@ -370,13 +418,17 @@ export default function EnfantsScreen() {
             />
 
             <Text style={styles.label}>{t.groupeSanguin}</Text>
-            <TextInput
-              style={styles.input}
-              value={form.groupeSanguin}
-              onChangeText={(v) => setForm((f) => ({ ...f, groupeSanguin: v }))}
-              placeholder="Ex : O+"
-              placeholderTextColor={COLORS.ardoise}
-            />
+            <View style={styles.groupesLigne}>
+              {GROUPES_SANGUINS.map((g) => (
+                <TouchableOpacity
+                  key={g}
+                  style={[styles.groupeChoix, form.groupeSanguin === g && styles.groupeChoixActif]}
+                  onPress={() => setForm((f) => ({ ...f, groupeSanguin: f.groupeSanguin === g ? '' : g }))}
+                >
+                  <Text style={[styles.groupeChoixTxt, form.groupeSanguin === g && styles.groupeChoixTxtActif]}>{g}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Text style={styles.label}>{t.mutuelle}</Text>
             <TextInput
@@ -392,9 +444,9 @@ export default function EnfantsScreen() {
                 <Text style={styles.btnAnnulerTxt}>{t.annuler}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.btnValider, !form.prenom.trim() && styles.btnDisabled]}
+                style={[styles.btnValider, (!form.prenom.trim() || envoiEnfant) && styles.btnDisabled]}
                 onPress={soumettreEnfant}
-                disabled={!form.prenom.trim()}
+                disabled={!form.prenom.trim() || envoiEnfant}
               >
                 <Text style={styles.btnValiderTxt}>
                   {enfantEnEdition ? t.enregistrer : t.ajouter}
@@ -512,7 +564,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#F7EEE9',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
+  avatarPhoto: { width: '100%', height: '100%' },
   avatarTxt: { fontSize: TYPOGRAPHY.md, fontWeight: TYPOGRAPHY.bold, color: COLORS.terracotta },
   prenom: { fontSize: TYPOGRAPHY.md, fontWeight: TYPOGRAPHY.semibold, color: COLORS.texte },
   age: { fontSize: TYPOGRAPHY.xs, color: COLORS.ardoise },
@@ -574,6 +628,23 @@ const styles = StyleSheet.create({
   modalTitre: { fontSize: TYPOGRAPHY.xl, fontWeight: TYPOGRAPHY.bold, color: COLORS.texte, marginBottom: SPACING.lg },
   label: { fontSize: TYPOGRAPHY.xs, fontWeight: TYPOGRAPHY.semibold, color: COLORS.ardoise, letterSpacing: 1, marginBottom: SPACING.sm, textTransform: 'uppercase' },
   input: { backgroundColor: COLORS.ivoireFonce, borderRadius: RADIUS.md, padding: SPACING.md, fontSize: TYPOGRAPHY.sm, color: COLORS.texte, marginBottom: SPACING.lg },
+
+  photoBtn: { alignItems: 'center', marginBottom: SPACING.lg },
+  photoApercu: { width: 76, height: 76, borderRadius: 38, backgroundColor: COLORS.ivoireFonce },
+  photoPlaceholder: {
+    width: 76, height: 76, borderRadius: 38, backgroundColor: COLORS.ivoireFonce,
+    alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.bordure, borderStyle: 'dashed',
+  },
+  photoBtnTxt: { fontSize: TYPOGRAPHY.xs, color: COLORS.ardoise, marginTop: SPACING.xs, fontWeight: TYPOGRAPHY.medium },
+
+  groupesLigne: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginBottom: SPACING.lg },
+  groupeChoix: {
+    width: '22%', paddingVertical: SPACING.sm, borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.bordure, alignItems: 'center', backgroundColor: COLORS.ivoireFonce,
+  },
+  groupeChoixActif: { backgroundColor: COLORS.terracotta, borderColor: COLORS.terracotta },
+  groupeChoixTxt: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.semibold, color: COLORS.texte },
+  groupeChoixTxtActif: { color: COLORS.blanc },
   actions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.xs },
   btnAnnuler: { flex: 1, padding: SPACING.lg, borderRadius: RADIUS.md, backgroundColor: COLORS.ivoireFonce, alignItems: 'center' },
   btnAnnulerTxt: { fontSize: TYPOGRAPHY.sm, color: COLORS.ardoise, fontWeight: TYPOGRAPHY.medium },

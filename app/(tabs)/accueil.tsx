@@ -73,6 +73,7 @@ export default function AccueilScreen() {
   const moments = useStore((s) => s.moments);
   const evenementsCalendrier = useStore((s) => s.evenementsCalendrier);
   const evenements = useStore((s) => s.evenements);
+  const enfants = useStore((s) => s.enfants);
   const parents = useStore((s) => s.parents);
   const parentActif = useStore((s) => s.parentActif);
   const suggestionsMessages = useStore((s) => s.suggestionsMessages);
@@ -90,6 +91,8 @@ export default function AccueilScreen() {
   // Vrai calcul du prochain changement de garde à partir du planning réel
   // (le même que celui utilisé dans l'Agenda) — jamais un texte figé avec
   // un nom au hasard.
+  const nomsEnfants = enfants.length > 0 ? enfants.map((e) => e.prenom).join(' & ') : familyCard.enfants;
+
   const prochainEchangeTexte = useMemo(() => {
     const roleAujourdhui = parentDuJour(new Date(), evenements);
     for (let i = 1; i <= 30; i++) {
@@ -217,7 +220,7 @@ export default function AccueilScreen() {
         <View style={styles.promesse}>
           <Text style={styles.promesseTitre}>{t.accueil.bannerTitre}</Text>
           <Text style={styles.promesseSous}>
-            {familyCard.enfants} · {familyCard.localisation}
+            {nomsEnfants} · {familyCard.localisation}
           </Text>
           {prochainEchangeTexte ? <Text style={styles.promesseMeta}>{prochainEchangeTexte}</Text> : null}
         </View>
