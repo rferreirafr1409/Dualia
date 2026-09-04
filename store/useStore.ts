@@ -266,6 +266,7 @@ const enfantVersDB = (e: Enfant, familleId: string) => ({
   allergies: e.allergies || null,
   groupe_sanguin: e.groupeSanguin || null,
   mutuelle: e.mutuelle || null,
+  photo_url: e.photoUrl || null,
 });
 
 const enfantDepuisDB = (row: any, contacts: ContactUrgence[]): Enfant => ({
@@ -278,6 +279,7 @@ const enfantDepuisDB = (row: any, contacts: ContactUrgence[]): Enfant => ({
   allergies: row.allergies ?? undefined,
   groupeSanguin: row.groupe_sanguin ?? undefined,
   mutuelle: row.mutuelle ?? undefined,
+  photoUrl: row.photo_url ?? undefined,
   contactsUrgence: contacts,
 });
 
@@ -653,8 +655,8 @@ interface DualiaStore {
 
   // Essentiel de l'enfant — fiche + contacts d'urgence, un jeu par enfant.
   enfants: Enfant[];
-  ajouterEnfant: (e: Enfant) => void;
-  modifierEnfant: (id: string, updates: Partial<Enfant>) => void;
+  ajouterEnfant: (e: Enfant, photoUri?: string) => Promise<void>;
+  modifierEnfant: (id: string, updates: Partial<Enfant>, photoUri?: string) => Promise<void>;
   supprimerEnfant: (id: string) => void;
   ajouterContactUrgence: (c: ContactUrgence) => void;
   modifierContactUrgence: (id: string, updates: Partial<ContactUrgence>) => void;
@@ -1040,54 +1042,96 @@ export const useStore = create<DualiaStore>()(
   // ---------- Essentiel de l'enfant ----------
   enfants: [],
 
-  ajouterEnfant: (e) => {
-    set((state) => ({ enfants: [...state.enfants, e] }));
-
+  ajouterEnfant: async (e, photoUri) => {
     const familleId = get().familleId;
+
+    // Téléverse la photo AVANT l'insertion, comme pour un moment du Fil de
+    // vie : on n'a pas besoin de l'id réel de l'enfant pour ça, juste du
+    // nom du fichier.
+    let photoUrl = e.photoUrl;
+    if (photoUri && familleId) {
+      try {
+        const reponse = await fetch(photoUri);
+        const blob = await reponse.blob();
+        const nomFichier = `${familleId}/${Date.now()}.jpg`;
+        const { error: erreurUpload } = await supabase.storage
+          .from('enfants-photos')
+          .upload(nomFichier, blob, { contentType: 'image/jpeg' });
+        if (erreurUpload) {
+          console.error('[Dualia] Échec envoi photo enfant :', erreurUpload);
+        } else {
+          const { data } = supabase.storage.from('enfants-photos').getPublicUrl(nomFichier);
+          photoUrl = data.publicUrl;
+        }
+      } catch (err) {
+        console.error('[Dualia] Échec traitement photo enfant :', err);
+      }
+    }
+
+    const enfantAvecPhoto = { ...e, photoUrl };
+    set((state) => ({ enfants: [...state.enfants, enfantAvecPhoto] }));
+
     if (!familleId) {
       console.error("[Dualia] Enfant non synchronisé : aucune famille active.");
       return;
     }
-    supabase
+    const { data, error } = await supabase
       .from('enfants')
-      .insert(enfantVersDB(e, familleId))
+      .insert(enfantVersDB(enfantAvecPhoto, familleId))
       .select()
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) {
-          console.error('[Dualia] Échec synchronisation enfant :', error);
-          return;
-        }
-        set((state) => ({
-          enfants: state.enfants.map((en) =>
-            en === e || en.id === e.id ? { ...en, id: data.id } : en
-          ),
-        }));
-      });
+      .single();
+
+    if (error || !data) {
+      console.error('[Dualia] Échec synchronisation enfant :', error);
+      return;
+    }
+    set((state) => ({
+      enfants: state.enfants.map((en) =>
+        en === enfantAvecPhoto || en.id === e.id ? { ...en, id: data.id } : en
+      ),
+    }));
   },
 
-  modifierEnfant: (id, updates) => {
+  modifierEnfant: async (id, updates, photoUri) => {
+    const familleId = get().familleId;
+    let photoUrl = updates.photoUrl;
+    if (photoUri && familleId) {
+      try {
+        const reponse = await fetch(photoUri);
+        const blob = await reponse.blob();
+        const nomFichier = `${familleId}/${Date.now()}.jpg`;
+        const { error: erreurUpload } = await supabase.storage
+          .from('enfants-photos')
+          .upload(nomFichier, blob, { contentType: 'image/jpeg' });
+        if (erreurUpload) {
+          console.error('[Dualia] Échec envoi photo enfant :', erreurUpload);
+        } else {
+          const { data } = supabase.storage.from('enfants-photos').getPublicUrl(nomFichier);
+          photoUrl = data.publicUrl;
+        }
+      } catch (err) {
+        console.error('[Dualia] Échec traitement photo enfant :', err);
+      }
+    }
+    const updatesAvecPhoto = photoUrl !== undefined ? { ...updates, photoUrl } : updates;
+
     set((state) => ({
-      enfants: state.enfants.map((e) => (e.id === id ? { ...e, ...updates } : e)),
+      enfants: state.enfants.map((e) => (e.id === id ? { ...e, ...updatesAvecPhoto } : e)),
     }));
     const dbUpdates: Record<string, any> = {};
-    if (updates.prenom !== undefined) dbUpdates.prenom = updates.prenom;
-    if (updates.dateNaissance !== undefined)
-      dbUpdates.date_naissance = updates.dateNaissance ? updates.dateNaissance.split('T')[0] : null;
-    if (updates.ecole !== undefined) dbUpdates.ecole = updates.ecole || null;
-    if (updates.medecinTraitant !== undefined) dbUpdates.medecin_traitant = updates.medecinTraitant || null;
-    if (updates.medecinTelephone !== undefined) dbUpdates.medecin_telephone = updates.medecinTelephone || null;
-    if (updates.allergies !== undefined) dbUpdates.allergies = updates.allergies || null;
-    if (updates.groupeSanguin !== undefined) dbUpdates.groupe_sanguin = updates.groupeSanguin || null;
-    if (updates.mutuelle !== undefined) dbUpdates.mutuelle = updates.mutuelle || null;
+    if (updatesAvecPhoto.prenom !== undefined) dbUpdates.prenom = updatesAvecPhoto.prenom;
+    if (updatesAvecPhoto.dateNaissance !== undefined)
+      dbUpdates.date_naissance = updatesAvecPhoto.dateNaissance ? updatesAvecPhoto.dateNaissance.split('T')[0] : null;
+    if (updatesAvecPhoto.ecole !== undefined) dbUpdates.ecole = updatesAvecPhoto.ecole || null;
+    if (updatesAvecPhoto.medecinTraitant !== undefined) dbUpdates.medecin_traitant = updatesAvecPhoto.medecinTraitant || null;
+    if (updatesAvecPhoto.medecinTelephone !== undefined) dbUpdates.medecin_telephone = updatesAvecPhoto.medecinTelephone || null;
+    if (updatesAvecPhoto.allergies !== undefined) dbUpdates.allergies = updatesAvecPhoto.allergies || null;
+    if (updatesAvecPhoto.groupeSanguin !== undefined) dbUpdates.groupe_sanguin = updatesAvecPhoto.groupeSanguin || null;
+    if (updatesAvecPhoto.mutuelle !== undefined) dbUpdates.mutuelle = updatesAvecPhoto.mutuelle || null;
+    if (updatesAvecPhoto.photoUrl !== undefined) dbUpdates.photo_url = updatesAvecPhoto.photoUrl || null;
     if (Object.keys(dbUpdates).length === 0) return;
-    supabase
-      .from('enfants')
-      .update(dbUpdates)
-      .eq('id', id)
-      .then(({ error }) => {
-        if (error) console.error('[Dualia] Échec sync mise à jour enfant (distant) :', error);
-      });
+    const { error } = await supabase.from('enfants').update(dbUpdates).eq('id', id);
+    if (error) console.error('[Dualia] Échec sync mise à jour enfant (distant) :', error);
   },
 
   supprimerEnfant: (id) => {

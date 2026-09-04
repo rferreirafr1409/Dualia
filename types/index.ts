@@ -192,8 +192,10 @@ export interface Enfant {
   allergies?: string;
   groupeSanguin?: string;
   mutuelle?: string;
+  photoUrl?: string;
   contactsUrgence: ContactUrgence[];
 }
+
 // ---------- Le Fil de vie (moments du quotidien, présent) ----------
 // Volontairement simple : pas de commentaires, pas de compteur public —
 // juste une réaction cœur (aimePar, la liste des parents qui ont réagi).

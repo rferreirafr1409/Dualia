@@ -8,7 +8,7 @@
 // écran : ils ont déjà un point d'entrée clair ailleurs, et les dupliquer
 // ici n'ajoutait que de la charge cognitive.
 
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { differenceInYears, parseISO } from 'date-fns';
@@ -72,7 +72,11 @@ export default function FamilleScreen() {
               <View key={e.id} style={styles.enfantCard}>
                 <View style={styles.enfantHeader}>
                   <View style={styles.avatar}>
-                    <Text style={styles.avatarTxt}>{e.prenom.charAt(0).toUpperCase()}</Text>
+                    {e.photoUrl ? (
+                      <Image source={{ uri: e.photoUrl }} style={styles.avatarPhoto} />
+                    ) : (
+                      <Text style={styles.avatarTxt}>{e.prenom.charAt(0).toUpperCase()}</Text>
+                    )}
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.enfantPrenom}>{e.prenom}</Text>
@@ -140,8 +144,9 @@ const styles = StyleSheet.create({
   enfantHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.md },
   avatar: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.vert,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
   },
+  avatarPhoto: { width: '100%', height: '100%' },
   avatarTxt: { fontFamily: FONTS.bodyBold, fontSize: 17, color: COLORS.blanc },
   enfantPrenom: { fontSize: TYPOGRAPHY.lg, fontWeight: TYPOGRAPHY.semibold, color: COLORS.texte },
   enfantAge: { fontSize: TYPOGRAPHY.xs, color: COLORS.ardoise, marginTop: 1 },
