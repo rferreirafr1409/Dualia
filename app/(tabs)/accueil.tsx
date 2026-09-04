@@ -57,7 +57,6 @@ export default function AccueilScreen() {
   const router = useRouter();
   const langue = useStore((s) => s.langue);
   const setLangue = useStore((s) => s.setLangue);
-  const todayEvents = useStore((s) => s.todayEvents);
   const familyCard = useStore((s) => s.familyCard);
   const decisions = useStore((s) => s.decisions);
   const depenses = useStore((s) => s.depenses);
@@ -110,7 +109,23 @@ export default function AccueilScreen() {
   }, [depensesNonReglees]);
 
   const souvenir = trouverSouvenir(journalEntries);
-  const prochainEvenement = todayEvents.length > 0 ? todayEvents[0] : null;
+
+  // Une seule source de vérité pour "aujourd'hui" : les vrais événements du
+  // calendrier, filtrés sur la date du jour — jamais une liste fictive
+  // séparée. Un événement ajouté dans l'Agenda apparaît donc
+  // automatiquement ici, en disparaît le lendemain, et se retrouve dans
+  // "À venir cette semaine" les jours suivants.
+  const evenementsAujourdhui = useMemo(() => {
+    return evenementsCalendrier
+      .filter((ev) => isToday(parseISO(ev.date)))
+      .sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
+  }, [evenementsCalendrier]);
+  const prochainEvenement = evenementsAujourdhui.length > 0 ? evenementsAujourdhui[0] : null;
+  const prochainHeureAffichee = useMemo(() => {
+    if (!prochainEvenement) return null;
+    const d = parseISO(prochainEvenement.date);
+    return d.getHours() !== 0 || d.getMinutes() !== 0 ? format(d, 'HH:mm') : null;
+  }, [prochainEvenement]);
 
   const evenementsAVenir = useMemo(() => {
     const debut = startOfWeek(new Date(), { weekStartsOn: 1 });
@@ -176,9 +191,11 @@ export default function AccueilScreen() {
 
           <Pressable style={styles.trioCard} onPress={() => setJourneeVisible(true)}>
             <Text style={styles.trioLabel} numberOfLines={1}>{t.accueil.cockpitAujourdhui}</Text>
-            <Text style={styles.trioValeur}>{todayEvents.length}</Text>
+            <Text style={styles.trioValeur}>{evenementsAujourdhui.length}</Text>
             <Text style={styles.trioCaption} numberOfLines={1}>
-              {prochainEvenement ? t.accueil.cockpitProchain(prochainEvenement.time) : t.accueil.cockpitEvenements(todayEvents.length)}
+              {prochainHeureAffichee
+                ? t.accueil.cockpitProchain(prochainHeureAffichee)
+                : t.accueil.cockpitEvenements(evenementsAujourdhui.length)}
             </Text>
           </Pressable>
 
