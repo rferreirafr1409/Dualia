@@ -2,6 +2,7 @@
 
 import { View, Text, StyleSheet, Modal, Pressable, ScrollView } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { isToday, parseISO, format } from 'date-fns';
 import { useStore } from '../store/useStore';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
@@ -13,8 +14,16 @@ type Props = {
 
 export default function JourneeModal({ visible, onClose }: Props) {
   const langue = useStore((s) => s.langue);
-  const todayEvents = useStore((s) => s.todayEvents);
+  const evenementsCalendrier = useStore((s) => s.evenementsCalendrier);
+  const parents = useStore((s) => s.parents);
   const t = TRADUCTIONS[langue];
+
+  // Même source de vérité que "À venir cette semaine" et l'Agenda : les
+  // vrais événements du calendrier, filtrés sur aujourd'hui — jamais une
+  // liste fictive séparée.
+  const evenementsAujourdhui = evenementsCalendrier
+    .filter((ev) => isToday(parseISO(ev.date)))
+    .sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
 
   const dateAujourdhui = new Date().toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', {
     weekday: 'long', day: 'numeric', month: 'long',
@@ -36,19 +45,29 @@ export default function JourneeModal({ visible, onClose }: Props) {
           </View>
 
           <ScrollView style={{ maxHeight: 360 }}>
-            {todayEvents.length === 0 ? (
+            {evenementsAujourdhui.length === 0 ? (
               <Text style={styles.vide}>{t.calendrier.aucunEvenement}</Text>
             ) : (
-              todayEvents.map((event) => (
-                <View key={event.id} style={styles.ligne}>
-                  <View style={styles.dot} />
-                  <Text style={styles.time}>{event.time}</Text>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.evTitre}>{event.title}</Text>
-                    <Text style={styles.evWho}>{event.who}</Text>
+              evenementsAujourdhui.map((ev) => {
+                const d = parseISO(ev.date);
+                const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
+                const parent = ev.parentId ? parents[ev.parentId] : null;
+                const qui = ev.enfant
+                  ? parent
+                    ? `${ev.enfant} · ${parent.nom}`
+                    : ev.enfant
+                  : parent?.nom ?? '';
+                return (
+                  <View key={ev.id} style={styles.ligne}>
+                    <View style={[styles.dot, { backgroundColor: parent?.couleur ?? COLORS.vert }]} />
+                    <Text style={styles.time}>{aUneHeure ? format(d, 'HH:mm') : '—'}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.evTitre}>{ev.titre}</Text>
+                      {qui ? <Text style={styles.evWho}>{qui}</Text> : null}
+                    </View>
                   </View>
-                </View>
-              ))
+                );
+              })
             )}
           </ScrollView>
         </Pressable>
@@ -76,7 +95,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.bordure,
   },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.vert, marginRight: SPACING.sm },
+  dot: { width: 8, height: 8, borderRadius: 4, marginRight: SPACING.sm },
   time: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.ardoise, minWidth: 46 },
   evTitre: { fontFamily: FONTS.bodyMedium, fontSize: 16, color: COLORS.texte },
   evWho: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, marginTop: 1 },

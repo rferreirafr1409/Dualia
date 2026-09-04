@@ -584,18 +584,6 @@ const DOCUMENTS_PT: DocumentItem[] = [
   { id: 'doc6', nom: 'Certidão de nascimento — Léo', categorie: 'administratif', auteurId: 'B', date: iso(decale(-365 * 5)), certifie: true },
 ];
 
-const TODAY_EVENTS_FR = [
-  { id: '1', time: '09h00', title: 'Natation', who: 'Emma · avec Marie' },
-  { id: '2', time: '16h30', title: 'Devoirs', who: 'Léo · avec Pierre' },
-  { id: '3', time: '19h00', title: 'Repas en famille', who: 'Ensemble' },
-];
-
-const TODAY_EVENTS_PT = [
-  { id: '1', time: '09h00', title: 'Natação', who: 'Emma · com a Marie' },
-  { id: '2', time: '16h30', title: 'Trabalhos de casa', who: 'Léo · com o Pierre' },
-  { id: '3', time: '19h00', title: 'Jantar em família', who: 'Juntos' },
-];
-
 const FAMILY_CARD_FR = {
   enfants: 'Emma & Léo',
   localisation: 'En famille — Paris',
@@ -619,7 +607,6 @@ interface DualiaStore {
   parentActif: ParentRole;
   nouvelleDecisionDraft: string | null;
   langue: Langue;
-  todayEvents: typeof TODAY_EVENTS_FR;
   familyCard: typeof FAMILY_CARD_FR;
 
   setParentActif: (id: ParentRole) => void;
@@ -730,8 +717,7 @@ export const useStore = create<DualiaStore>()(
   parentActif: 'A',
   nouvelleDecisionDraft: null,
   langue: 'fr',
-  todayEvents: TODAY_EVENTS_FR,
-  familyCard: FAMILY_CARD_FR,
+   familyCard: FAMILY_CARD_FR,
 
   setParentActif: (id) => set({ parentActif: id }),
 
@@ -1002,8 +988,7 @@ export const useStore = create<DualiaStore>()(
         journalEntries: JOURNAL_PT,
         depenses: DEPENSES_PT,
         documents: DOCUMENTS_PT,
-        todayEvents: TODAY_EVENTS_PT,
-        familyCard: FAMILY_CARD_PT,
+              familyCard: FAMILY_CARD_PT,
       });
     } else {
       set({
@@ -1013,7 +998,6 @@ export const useStore = create<DualiaStore>()(
         journalEntries: JOURNAL_FR,
         depenses: DEPENSES_FR,
         documents: DOCUMENTS_FR,
-        todayEvents: TODAY_EVENTS_FR,
         familyCard: FAMILY_CARD_FR,
       });
     }
