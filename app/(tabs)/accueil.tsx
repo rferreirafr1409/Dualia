@@ -268,7 +268,7 @@ export default function AccueilScreen() {
         {dernierMoment ? (
           <Pressable style={styles.journeeCarte} onPress={() => router.push('/fil-de-vie' as any)}>
             {dernierMoment.photoUrl ? (
-              <Image source={{ uri: dernierMoment.photoUrl }} style={styles.journeePhoto} />
+              <Image source={{ uri: dernierMoment.photoUrl }} style={styles.journeePhoto} resizeMode="contain" />
             ) : null}
             <View style={styles.journeeCorps}>
               <View style={{ flex: 1 }}>

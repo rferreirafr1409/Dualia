@@ -27,6 +27,7 @@ export default function PartagerMomentScreen() {
   const t = TRADUCTIONS[langue].filDeVie;
 
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoRatio, setPhotoRatio] = useState<number>(4 / 3);
   const [texte, setTexte] = useState('');
   const [enfantChoisi, setEnfantChoisi] = useState<string | null>(null);
   const [envoi, setEnvoi] = useState(false);
@@ -35,12 +36,16 @@ export default function PartagerMomentScreen() {
     if (!ImagePicker) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) return;
-    const resultat = await ImagePicker.launchImageLibraryAsync({
-      quality: 0.6,
-      allowsEditing: true,
-    });
+    // Pas de recadrage forcé (allowsEditing) : on affiche la photo entière,
+    // telle que prise, jamais un cadrage automatique qui pourrait couper
+    // un visage.
+    const resultat = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
     if (!resultat.canceled && resultat.assets[0]) {
-      setPhotoUri(resultat.assets[0].uri);
+      const asset = resultat.assets[0];
+      setPhotoUri(asset.uri);
+      if (asset.width && asset.height) {
+        setPhotoRatio(asset.width / asset.height);
+      }
     }
   };
 
@@ -80,7 +85,7 @@ export default function PartagerMomentScreen() {
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           {photoUri ? (
             <View style={styles.photoWrap}>
-              <Image source={{ uri: photoUri }} style={styles.photo} />
+                           <Image source={{ uri: photoUri }} style={[styles.photo, { aspectRatio: photoRatio, height: undefined }]} />
               <Pressable style={styles.photoRetirer} onPress={() => setPhotoUri(null)}>
                 <Ionicons name="trash-outline" size={16} color={COLORS.blanc} />
               </Pressable>
