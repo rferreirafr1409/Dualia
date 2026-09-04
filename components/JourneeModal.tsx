@@ -51,6 +51,7 @@ export default function JourneeModal({ visible, onClose }: Props) {
               evenementsAujourdhui.map((ev) => {
                 const d = parseISO(ev.date);
                 const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
+                const estPasse = aUneHeure && d < new Date();
                 const parent = ev.parentId ? parents[ev.parentId] : null;
                 const qui = ev.enfant
                   ? parent
@@ -58,11 +59,11 @@ export default function JourneeModal({ visible, onClose }: Props) {
                     : ev.enfant
                   : parent?.nom ?? '';
                 return (
-                  <View key={ev.id} style={styles.ligne}>
-                    <View style={[styles.dot, { backgroundColor: parent?.couleur ?? COLORS.vert }]} />
-                    <Text style={styles.time}>{aUneHeure ? format(d, 'HH:mm') : '—'}</Text>
+                  <View key={ev.id} style={[styles.ligne, estPasse && styles.lignePassee]}>
+                    <View style={[styles.dot, { backgroundColor: estPasse ? COLORS.bordure : parent?.couleur ?? COLORS.vert }]} />
+                    <Text style={[styles.time, estPasse && styles.textePasse]}>{aUneHeure ? format(d, 'HH:mm') : '—'}</Text>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.evTitre}>{ev.titre}</Text>
+                      <Text style={[styles.evTitre, estPasse && styles.textePasse]}>{ev.titre}</Text>
                       {qui ? <Text style={styles.evWho}>{qui}</Text> : null}
                     </View>
                   </View>
@@ -95,6 +96,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: SPACING.md, borderBottomWidth: 1, borderBottomColor: COLORS.bordure,
   },
+  lignePassee: { opacity: 0.5 },
+  textePasse: { color: COLORS.ardoise },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: SPACING.sm },
   time: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.ardoise, minWidth: 46 },
   evTitre: { fontFamily: FONTS.bodyMedium, fontSize: 16, color: COLORS.texte },
