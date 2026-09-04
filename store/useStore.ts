@@ -7,7 +7,7 @@ import {
   EvenementCalendrier,
   JournalEntry, Depense, DocumentItem,
   CadreFamilial, ReglePartage, PropositionRepartition,
-  Enfant, ContactUrgence,
+  Enfant, ContactUrgence, Moment,
 } from '../types';
 import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
@@ -297,6 +297,22 @@ const contactUrgenceDepuisDB = (row: any): ContactUrgence => ({
   relation: row.relation ?? undefined,
   telephone: row.telephone,
   priorite: row.priorite ?? 0,
+});
+
+// ---------- Le Fil de vie : correspondance avec Supabase ----------
+// aime_par est stocké en base comme un tableau d'uuids (parents.id) ; on le
+// traduit en ParentRole[] via roleParUuid, comme pour les autres tables.
+
+const momentDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): Moment => ({
+  id: row.id,
+  auteurId: (row.auteur_id && roleParUuid[row.auteur_id]) || 'A',
+  enfant: row.enfant ?? undefined,
+  texte: row.texte ?? undefined,
+  photoUrl: row.photo_url ?? undefined,
+  aimePar: (row.aime_par ?? [])
+    .map((uuid: string) => roleParUuid[uuid])
+    .filter((role: ParentRole | undefined): role is ParentRole => !!role),
+  createdAt: row.created_at,
 });
 
 const genEvenementsGarde = (): EvenementGarde[] => {
@@ -613,7 +629,7 @@ interface DualiaStore {
   ajouterEvenement: (ev: EvenementGarde) => void;
   evenementsCalendrier: EvenementCalendrier[];
   ajouterEvenementCalendrier: (ev: EvenementCalendrier) => void;
-   ignorerSuggestion: (messageId: string) => void;
+  ignorerSuggestion: (messageId: string) => void;
   messagesAnalyses: string[];
   marquerMessageAnalyse: (id: string) => void;
   // Suggestions d'événement détectées par l'IA dans un message (en attente
@@ -645,6 +661,11 @@ interface DualiaStore {
   ajouterContactUrgence: (c: ContactUrgence) => void;
   modifierContactUrgence: (id: string, updates: Partial<ContactUrgence>) => void;
   supprimerContactUrgence: (id: string) => void;
+
+  // Le Fil de vie — moments partagés au quotidien.
+  moments: Moment[];
+  ajouterMoment: (params: { texte?: string; enfant?: string; photoUri?: string }) => Promise<void>;
+  reagirMoment: (momentId: string) => void;
 
   cadreFamilial: CadreFamilial | null;
   setCadreFamilial: (cadre: CadreFamilial) => void;
@@ -717,7 +738,7 @@ export const useStore = create<DualiaStore>()(
   parentActif: 'A',
   nouvelleDecisionDraft: null,
   langue: 'fr',
-   familyCard: FAMILY_CARD_FR,
+  familyCard: FAMILY_CARD_FR,
 
   setParentActif: (id) => set({ parentActif: id }),
 
@@ -988,7 +1009,7 @@ export const useStore = create<DualiaStore>()(
         journalEntries: JOURNAL_PT,
         depenses: DEPENSES_PT,
         documents: DOCUMENTS_PT,
-              familyCard: FAMILY_CARD_PT,
+        familyCard: FAMILY_CARD_PT,
       });
     } else {
       set({
@@ -1154,6 +1175,86 @@ export const useStore = create<DualiaStore>()(
       .eq('id', id)
       .then(({ error }) => {
         if (error) console.error('[Dualia] Échec sync suppression contact urgence (distant) :', error);
+      });
+  },
+
+  // ---------- Le Fil de vie ----------
+  moments: [],
+
+  ajouterMoment: async ({ texte, enfant, photoUri }) => {
+    const { familleId, parentActif, parents } = get();
+    if (!familleId) {
+      console.error('[Dualia] Moment non synchronisé : aucune famille active.');
+      return;
+    }
+
+    let photoUrl: string | undefined;
+    if (photoUri) {
+      try {
+        const reponse = await fetch(photoUri);
+        const blob = await reponse.blob();
+        const nomFichier = `${familleId}/${Date.now()}.jpg`;
+        const { error: erreurUpload } = await supabase.storage
+          .from('moments-photos')
+          .upload(nomFichier, blob, { contentType: 'image/jpeg' });
+        if (erreurUpload) {
+          console.error('[Dualia] Échec envoi photo du moment :', erreurUpload);
+        } else {
+          const { data } = supabase.storage.from('moments-photos').getPublicUrl(nomFichier);
+          photoUrl = data.publicUrl;
+        }
+      } catch (e) {
+        console.error('[Dualia] Échec traitement photo du moment :', e);
+      }
+    }
+
+    const auteurUuid = parents[parentActif]?.uuid;
+    const { data, error } = await supabase
+      .from('moments')
+      .insert({
+        famille_id: familleId,
+        auteur_id: auteurUuid ?? null,
+        enfant: enfant || null,
+        texte: texte || null,
+        photo_url: photoUrl || null,
+      })
+      .select()
+      .single();
+
+    if (error || !data) {
+      console.error('[Dualia] Échec synchronisation moment :', error);
+      throw error ?? new Error('Échec de création du moment');
+    }
+
+    const roleParUuidLocal: Record<string, ParentRole> = {};
+    Object.values(parents).forEach((p) => {
+      if (p.uuid) roleParUuidLocal[p.uuid] = p.id;
+    });
+
+    set((state) => ({
+      moments: [momentDepuisDB(data, roleParUuidLocal), ...state.moments],
+    }));
+  },
+
+  reagirMoment: (momentId) => {
+    const { parentActif, parents } = get();
+    set((state) => ({
+      moments: state.moments.map((m) => {
+        if (m.id !== momentId) return m;
+        const dejaAime = m.aimePar.includes(parentActif);
+        return {
+          ...m,
+          aimePar: dejaAime ? m.aimePar.filter((r) => r !== parentActif) : [...m.aimePar, parentActif],
+        };
+      }),
+    }));
+
+    const monUuid = parents[parentActif]?.uuid;
+    if (!monUuid) return;
+    supabase
+      .rpc('toggle_aime_moment', { p_moment_id: momentId, p_parent_id: monUuid })
+      .then(({ error }: { error: any }) => {
+        if (error) console.error('[Dualia] Échec sync réaction moment (distant) :', error);
       });
   },
 
@@ -1518,6 +1619,21 @@ export const useStore = create<DualiaStore>()(
         ),
       });
     }
+
+    // Charge le Fil de vie — les moments les plus récents en premier.
+    const { data: momentsDB, error: erreurMoments } = await supabase
+      .from('moments')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .order('created_at', { ascending: false });
+
+    if (erreurMoments) {
+      console.error('[Dualia] Échec chargement Fil de vie :', erreurMoments);
+    } else if (momentsDB && momentsDB.length > 0) {
+      set({
+        moments: momentsDB.map((row: any) => momentDepuisDB(row, roleParUuid)),
+      });
+    }
   },
 }),
     {
@@ -1533,11 +1649,12 @@ export const useStore = create<DualiaStore>()(
         langue: state.langue,
         evenements: state.evenements,
         evenementsCalendrier: state.evenementsCalendrier,
-               messagesAnalyses: state.messagesAnalyses,
+        messagesAnalyses: state.messagesAnalyses,
         suggestionsMessages: state.suggestionsMessages,
         cadreFamilial: state.cadreFamilial,
         propositionsRepartition: state.propositionsRepartition,
         enfants: state.enfants,
+        moments: state.moments,
       }),
     }
   )

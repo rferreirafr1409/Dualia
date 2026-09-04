@@ -194,3 +194,16 @@ export interface Enfant {
   mutuelle?: string;
   contactsUrgence: ContactUrgence[];
 }
+// ---------- Le Fil de vie (moments du quotidien, présent) ----------
+// Volontairement simple : pas de commentaires, pas de compteur public —
+// juste une réaction cœur (aimePar, la liste des parents qui ont réagi).
+
+export interface Moment {
+  id: string;
+  auteurId: ParentRole;
+  enfant?: string;
+  texte?: string;
+  photoUrl?: string;
+  aimePar: ParentRole[];
+  createdAt: string;
+}
