@@ -409,6 +409,8 @@ export const TRADUCTIONS = {
       cadreFamilialDesc: 'Règles issues de votre convention',
       accesTiers: 'Accès partagés',
       accesTiersDesc: 'Grands-parents, nounous, école',
+      agendaScolaire: 'Agenda scolaire',
+      agendaScolaireDesc: 'Devoirs, contrôles, sorties',
     },
     caf: {
       titre: 'CAF / Fiscal',
@@ -857,6 +859,8 @@ export const TRADUCTIONS = {
       cadreFamilialDesc: 'Regras da vossa convenção',
       accesTiers: 'Acessos partilhados',
       accesTiersDesc: 'Avós, amas, escola',
+      agendaScolaire: 'Agenda escolar',
+      agendaScolaireDesc: 'Trabalhos de casa, testes, saídas',
     },
     caf: {
       titre: 'Segurança Social / Fiscal',

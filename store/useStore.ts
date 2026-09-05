@@ -7,7 +7,7 @@ import {
   EvenementCalendrier,
   JournalEntry, Depense, DocumentItem,
   CadreFamilial, ReglePartage, PropositionRepartition,
-  Enfant, ContactUrgence, Moment, Tiers,
+  Enfant, ContactUrgence, Moment, Tiers, AgendaScolaireItem,
 } from '../types';
 import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
@@ -277,6 +277,32 @@ const tiersDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): Tiers
   role: row.role,
   statut: row.statut,
   invitePar: (row.invite_par && roleParUuid[row.invite_par]) || 'A',
+  creeLe: row.cree_le,
+});
+
+// ---------- Agenda scolaire : correspondance avec Supabase ----------
+
+const agendaScolaireVersDB = (a: AgendaScolaireItem, familleId: string, auteurUuid?: string) => ({
+  famille_id: familleId,
+  type: a.type,
+  titre: a.titre,
+  description: a.description ?? null,
+  date_echeance: a.dateEcheance,
+  enfant: a.enfant ?? null,
+  auteur_id: auteurUuid ?? null,
+  fait: a.fait,
+  cree_le: a.creeLe,
+});
+
+const agendaScolaireDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): AgendaScolaireItem => ({
+  id: row.id,
+  type: row.type,
+  titre: row.titre,
+  description: row.description ?? undefined,
+  dateEcheance: row.date_echeance,
+  enfant: row.enfant ?? undefined,
+  auteurId: (row.auteur_id && roleParUuid[row.auteur_id]) || 'A',
+  fait: row.fait ?? false,
   creeLe: row.cree_le,
 });
 
@@ -674,6 +700,11 @@ interface DualiaStore {
   tiers: Tiers[];
   inviterTiers: (tr: Tiers) => void;
   revoquerTiers: (id: string) => void;
+
+  // ---------- Agenda scolaire ----------
+  agendaScolaire: AgendaScolaireItem[];
+  ajouterAgendaScolaire: (a: AgendaScolaireItem) => void;
+  basculerAgendaScolaireFait: (id: string) => void;
   horodaterDecision: (id: string) => void;
   ajouterJournal: (entry: JournalEntry) => void;
   likerEntree: (id: string) => void;
@@ -928,6 +959,51 @@ export const useStore = create<DualiaStore>()(
       .eq('id', id)
       .then(({ error }) => {
         if (error) console.error('[Dualia] Échec révocation accès tiers (distant) :', error);
+      });
+  },
+
+  agendaScolaire: [],
+
+  ajouterAgendaScolaire: (a) => {
+    set((state) => ({ agendaScolaire: [...state.agendaScolaire, a] }));
+
+    const { familleId, parents } = get();
+    if (!familleId) {
+      console.error('[Dualia] Agenda scolaire non synchronisé : aucune famille active.');
+      return;
+    }
+    const auteurUuid = parents[a.auteurId]?.uuid;
+    supabase
+      .from('agenda_scolaire')
+      .insert(agendaScolaireVersDB(a, familleId, auteurUuid))
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.error('[Dualia] Échec synchronisation agenda scolaire :', error);
+          return;
+        }
+        set((state) => ({
+          agendaScolaire: state.agendaScolaire.map((item) =>
+            item === a || item.id === a.id ? { ...item, id: data.id } : item
+          ),
+        }));
+      });
+  },
+
+  basculerAgendaScolaireFait: (id) => {
+    const item = get().agendaScolaire.find((a) => a.id === id);
+    if (!item) return;
+    const nouveauFait = !item.fait;
+    set((state) => ({
+      agendaScolaire: state.agendaScolaire.map((a) => (a.id === id ? { ...a, fait: nouveauFait } : a)),
+    }));
+    supabase
+      .from('agenda_scolaire')
+      .update({ fait: nouveauFait })
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec mise à jour agenda scolaire (distant) :', error);
       });
   },
 
@@ -1701,6 +1777,20 @@ export const useStore = create<DualiaStore>()(
     } else if (tiersDB && tiersDB.length > 0) {
       set({
         tiers: tiersDB.map((row: any) => tiersDepuisDB(row, roleParUuid)),
+      });
+    }
+
+    const { data: agendaScolaireDB, error: erreurAgendaScolaire } = await supabase
+      .from('agenda_scolaire')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .order('date_echeance', { ascending: true });
+
+    if (erreurAgendaScolaire) {
+      console.error('[Dualia] Échec chargement agenda scolaire :', erreurAgendaScolaire);
+    } else if (agendaScolaireDB && agendaScolaireDB.length > 0) {
+      set({
+        agendaScolaire: agendaScolaireDB.map((row: any) => agendaScolaireDepuisDB(row, roleParUuid)),
       });
     }
 

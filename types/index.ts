@@ -233,3 +233,22 @@ export interface Tiers {
   invitePar: ParentRole;
   creeLe: string;
 }
+
+// ---------- Agenda scolaire (devoirs, absences, sorties, contrôles) ----------
+// Table dédiée plutôt qu'extension de JournalEntry : JournalEntry porte des
+// champs propres au Fil de vie (emoji, liked, récit croisé) qui n'ont pas
+// de sens ici — les mélanger aurait ajouté de la dette, pas évité.
+
+export type TypeAgendaScolaire = 'devoir' | 'absence' | 'sortie' | 'controle';
+
+export interface AgendaScolaireItem {
+  id: string;
+  type: TypeAgendaScolaire;
+  titre: string;
+  description?: string;
+  dateEcheance: string;
+  enfant?: string;
+  auteurId: ParentRole;
+  fait: boolean;
+  creeLe: string;
+}
