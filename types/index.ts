@@ -54,6 +54,12 @@ export interface Message {
   contenu: string;
   dateEnvoi: string;
   statut: StatutMessage;
+  // ---- Modération à l'envoi (filtre + reformulation IA) ----
+  // contenuOriginal n'est renseigné que si l'expéditeur a choisi la
+  // reformulation proposée : contenu devient alors le texte adouci envoyé,
+  // et contenuOriginal garde une trace de ce qui avait été tapé au départ.
+  contenuOriginal?: string;
+  alerteDetectee?: boolean;
 }
 export type EnfantTag = 'Emma' | 'Léo' | 'Tous';
 export interface JournalEntry {

@@ -9,6 +9,7 @@ import { ExportIcon } from '../../components/icons';
 import { TRADUCTIONS } from '../../constants/i18n';
 
 const PARSE_MESSAGE_URL = 'https://dualia-backend.vercel.app/api/parse-message';
+const MODERATE_MESSAGE_URL = 'https://dualia-backend.vercel.app/api/moderate-message';
 
 const fetchAvecRetry = async (url: string, options: RequestInit, tentatives = 2): Promise<Response> => {
   for (let i = 0; i < tentatives; i++) {
@@ -47,17 +48,58 @@ export default function MessagerieScreen() {
   const t = TRADUCTIONS[langue].messagerie;
   const ajouterMessage = useStore((s) => s.ajouterMessage);
   const [texteEnvoi, setTexteEnvoi] = React.useState('');
+  // ---- Modération à l'envoi (filtre + reformulation IA) ----
+  const [verificationEnCours, setVerificationEnCours] = React.useState(false);
+  const [alerte, setAlerte] = React.useState<{ texteOriginal: string; reformulation: string } | null>(null);
 
-  const envoyerMessage = () => {
-    if (!texteEnvoi.trim()) return;
+  const envoyerTexte = (contenu: string, contenuOriginal?: string, alerteDetectee?: boolean) => {
     ajouterMessage({
       id: 'msg-' + Date.now(),
       expediteurId: parentActif,
-      contenu: texteEnvoi.trim(),
+      contenu,
       dateEnvoi: new Date().toISOString(),
       statut: 'envoyé',
+      contenuOriginal,
+      alerteDetectee,
     });
     setTexteEnvoi('');
+    setAlerte(null);
+  };
+
+  const envoyerMessage = async () => {
+    const texte = texteEnvoi.trim();
+    if (!texte || verificationEnCours) return;
+
+    setVerificationEnCours(true);
+    try {
+      const reponse = await fetchAvecRetry(MODERATE_MESSAGE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ texte, langue }),
+      });
+      const data = await reponse.json();
+      if (data.alerteDetectee && data.reformulation) {
+        setAlerte({ texteOriginal: texte, reformulation: data.reformulation });
+        return; // on attend le choix du parent avant d'envoyer quoi que ce soit
+      }
+    } catch {
+      // Si la modération est indisponible (backend en panne, réseau…), on
+      // n'empêche jamais l'envoi du message : ce garde-fou est une aide,
+      // pas un blocage.
+    } finally {
+      setVerificationEnCours(false);
+    }
+    envoyerTexte(texte);
+  };
+
+  const envoyerTelQuel = () => {
+    if (!alerte) return;
+    envoyerTexte(alerte.texteOriginal);
+  };
+
+  const envoyerReformule = () => {
+    if (!alerte) return;
+    envoyerTexte(alerte.reformulation, alerte.texteOriginal, true);
   };
   const evenementsCalendrier = useStore((s) => s.evenementsCalendrier);
   const ajouterEvenementCalendrier = useStore((s) => s.ajouterEvenementCalendrier);
@@ -179,6 +221,26 @@ export default function MessagerieScreen() {
           );
         })}
       </ScrollView>
+        {alerte ? (
+          <View style={styles.moderationCard}>
+            <Text style={styles.moderationLabel}>
+              {langue === 'pt' ? 'Talvez seja melhor com um tom mais calmo :' : 'Peut-être plus apaisé ainsi :'}
+            </Text>
+            <Text style={styles.moderationTexte}>{alerte.reformulation}</Text>
+            <View style={styles.suggestionBtns}>
+              <Pressable style={styles.suggestionBtnIgnorer} onPress={envoyerTelQuel}>
+                <Text style={styles.suggestionBtnIgnorerText}>
+                  {langue === 'pt' ? 'Enviar assim mesmo' : 'Envoyer tel quel'}
+                </Text>
+              </Pressable>
+              <Pressable style={styles.suggestionBtnConfirmer} onPress={envoyerReformule}>
+                <Text style={styles.suggestionBtnConfirmerText}>
+                  {langue === 'pt' ? 'Usar esta versão' : 'Utiliser cette version'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
         <View style={styles.saisieZone}>
           <TextInput
             style={styles.saisieInput}
@@ -187,9 +249,12 @@ export default function MessagerieScreen() {
             placeholder={langue === 'pt' ? 'Escrever uma mensagem...' : 'Ecrire un message...'}
             placeholderTextColor={COLORS.ardoise}
             multiline
+            editable={!verificationEnCours}
           />
-          <Pressable style={styles.saisieBtnEnvoyer} onPress={envoyerMessage}>
-            <Text style={styles.saisieBtnEnvoyerText}>Envoyer</Text>
+          <Pressable style={styles.saisieBtnEnvoyer} onPress={envoyerMessage} disabled={verificationEnCours}>
+            <Text style={styles.saisieBtnEnvoyerText}>
+              {verificationEnCours ? '…' : 'Envoyer'}
+            </Text>
           </Pressable>
         </View>
     </View>
@@ -230,8 +295,11 @@ const styles = StyleSheet.create({
   suggestionBtnIgnorerText: { fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.ardoise },
   suggestionBtnConfirmer: { backgroundColor: COLORS.vert, paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
   suggestionBtnConfirmerText: { fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.blanc },
+  moderationCard: { backgroundColor: COLORS.ivoire, borderWidth: 1, borderColor: COLORS.terracotta, borderRadius: 10, padding: 10, marginHorizontal: SPACING.xl, marginBottom: 8 },
+  moderationLabel: { fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.terracotta, marginBottom: 4 },
+  moderationTexte: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, marginBottom: 8, fontStyle: 'italic' },
   saisieZone: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: SPACING.xl, paddingVertical: SPACING.md, backgroundColor: COLORS.blanc, borderTopWidth: 1, borderTopColor: COLORS.bordure },
   saisieInput: { flex: 1, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 10, fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.vertProfond, maxHeight: 100 },
   saisieBtnEnvoyer: { backgroundColor: COLORS.vert, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
   saisieBtnEnvoyerText: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.blanc }
-});
+}); 

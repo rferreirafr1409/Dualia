@@ -219,6 +219,8 @@ const messageVersDB = (m: Message, familleId: string, expediteurUuid?: string) =
   contenu: m.contenu,
   date_envoi: m.dateEnvoi,
   statut: m.statut,
+  contenu_original: m.contenuOriginal ?? null,
+  alerte_detectee: m.alerteDetectee ?? false,
 });
 
 const messageDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): Message => ({
@@ -227,6 +229,8 @@ const messageDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): Mes
   contenu: row.contenu,
   dateEnvoi: row.date_envoi,
   statut: row.statut,
+  contenuOriginal: row.contenu_original ?? undefined,
+  alerteDetectee: row.alerte_detectee ?? false,
 });
 
 // ---------- Documents : correspondance avec Supabase ----------
