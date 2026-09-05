@@ -7,7 +7,7 @@ import {
   EvenementCalendrier,
   JournalEntry, Depense, DocumentItem,
   CadreFamilial, ReglePartage, PropositionRepartition,
-  Enfant, ContactUrgence, Moment,
+  Enfant, ContactUrgence, Moment, Tiers,
 } from '../types';
 import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
@@ -256,6 +256,28 @@ const documentDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): Do
   date: row.date,
   certifie: row.certifie ?? false,
   note: row.note ?? undefined,
+});
+
+// ---------- Tiers (accès grands-parents / nounous / école) : correspondance avec Supabase ----------
+
+const tiersVersDB = (tr: Tiers, familleId: string, inviteParUuid?: string) => ({
+  famille_id: familleId,
+  nom: tr.nom,
+  email: tr.email,
+  role: tr.role,
+  statut: tr.statut,
+  invite_par: inviteParUuid ?? null,
+  cree_le: tr.creeLe,
+});
+
+const tiersDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): Tiers => ({
+  id: row.id,
+  nom: row.nom,
+  email: row.email,
+  role: row.role,
+  statut: row.statut,
+  invitePar: (row.invite_par && roleParUuid[row.invite_par]) || 'A',
+  creeLe: row.cree_le,
 });
 
 // ---------- Essentiel de l'enfant : correspondance avec Supabase ----------
@@ -647,6 +669,11 @@ interface DualiaStore {
   ajouterDecision: (d: Decision) => void;
   mettreAJourDecision: (id: string, updates: Partial<Decision>) => void;
   ajouterMessage: (m: Message) => void;
+
+  // ---------- Accès tiers (grands-parents, nounous, école) ----------
+  tiers: Tiers[];
+  inviterTiers: (tr: Tiers) => void;
+  revoquerTiers: (id: string) => void;
   horodaterDecision: (id: string) => void;
   ajouterJournal: (entry: JournalEntry) => void;
   likerEntree: (id: string) => void;
@@ -861,6 +888,46 @@ export const useStore = create<DualiaStore>()(
             msg === m || msg.id === m.id ? { ...msg, id: data.id } : msg
           ),
         }));
+      });
+  },
+
+  tiers: [],
+
+  inviterTiers: (tr) => {
+    set((state) => ({ tiers: [...state.tiers, tr] }));
+
+    const { familleId, parents } = get();
+    if (!familleId) {
+      console.error('[Dualia] Accès tiers non synchronisé : aucune famille active.');
+      return;
+    }
+    const inviteParUuid = parents[tr.invitePar]?.uuid;
+    supabase
+      .from('tiers')
+      .insert(tiersVersDB(tr, familleId, inviteParUuid))
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          console.error('[Dualia] Échec synchronisation accès tiers :', error);
+          return;
+        }
+        set((state) => ({
+          tiers: state.tiers.map((t) => (t === tr || t.id === tr.id ? { ...t, id: data.id } : t)),
+        }));
+      });
+  },
+
+  revoquerTiers: (id) => {
+    set((state) => ({
+      tiers: state.tiers.map((t) => (t.id === id ? { ...t, statut: 'revoque' } : t)),
+    }));
+    supabase
+      .from('tiers')
+      .update({ statut: 'revoque' })
+      .eq('id', id)
+      .then(({ error }) => {
+        if (error) console.error('[Dualia] Échec révocation accès tiers (distant) :', error);
       });
   },
 
@@ -1620,6 +1687,20 @@ export const useStore = create<DualiaStore>()(
     } else if (messagesDB && messagesDB.length > 0) {
       set({
         messages: messagesDB.map((row: any) => messageDepuisDB(row, roleParUuid)),
+      });
+    }
+
+    const { data: tiersDB, error: erreurTiers } = await supabase
+      .from('tiers')
+      .select('*')
+      .eq('famille_id', moi.famille_id)
+      .order('cree_le', { ascending: false });
+
+    if (erreurTiers) {
+      console.error('[Dualia] Échec chargement accès tiers :', erreurTiers);
+    } else if (tiersDB && tiersDB.length > 0) {
+      set({
+        tiers: tiersDB.map((row: any) => tiersDepuisDB(row, roleParUuid)),
       });
     }
 

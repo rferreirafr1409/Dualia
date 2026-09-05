@@ -49,6 +49,7 @@ export default function FamilleScreen() {
     { icone: 'shield-checkmark-outline', couleur: COLORS.vertProfond, fond: '#E8ECEB', titre: t.cadreFamilial, desc: t.cadreFamilialDesc, route: '/validation-cadre' },
     { icone: 'folder-outline', couleur: COLORS.ardoise, fond: '#EEF1F0', titre: t.documents, desc: t.documentsDesc, route: '/documents' },
     { icone: 'business-outline', couleur: COLORS.or, fond: '#FBF3DF', titre: t.administratif, desc: t.administratifDesc, route: '/caf' },
+    { icone: 'people-outline', couleur: COLORS.terracotta, fond: '#F3E9E4', titre: t.accesTiers, desc: t.accesTiersDesc, route: '/acces-tiers' },
   ];
 
   return (

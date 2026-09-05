@@ -215,3 +215,21 @@ export interface Moment {
   aimePar: ParentRole[];
   createdAt: string;
 }
+
+// ---------- Accès tiers (grands-parents, nounous, école) ----------
+// Volontairement 3 rôles prédéfinis en V1 plutôt que des permissions
+// personnalisables : plus simple à comprendre pour l'utilisateur, plus
+// simple à sécuriser côté RLS Supabase.
+
+export type RoleTiers = 'grand_parent' | 'nounou' | 'ecole_tiers';
+export type StatutTiers = 'invite' | 'actif' | 'revoque';
+
+export interface Tiers {
+  id: string;
+  nom: string;
+  email: string;
+  role: RoleTiers;
+  statut: StatutTiers;
+  invitePar: ParentRole;
+  creeLe: string;
+}

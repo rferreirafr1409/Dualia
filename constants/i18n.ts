@@ -407,6 +407,8 @@ export const TRADUCTIONS = {
       notreFamille: 'NOTRE FAMILLE',
       cadreFamilial: 'Cadre familial',
       cadreFamilialDesc: 'Règles issues de votre convention',
+      accesTiers: 'Accès partagés',
+      accesTiersDesc: 'Grands-parents, nounous, école',
     },
     caf: {
       titre: 'CAF / Fiscal',
@@ -853,6 +855,8 @@ export const TRADUCTIONS = {
       notreFamille: 'A NOSSA FAMÍLIA',
       cadreFamilial: 'Enquadramento familiar',
       cadreFamilialDesc: 'Regras da vossa convenção',
+      accesTiers: 'Acessos partilhados',
+      accesTiersDesc: 'Avós, amas, escola',
     },
     caf: {
       titre: 'Segurança Social / Fiscal',
