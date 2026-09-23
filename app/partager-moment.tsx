@@ -6,7 +6,7 @@ import {
   Image, ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
@@ -21,6 +21,10 @@ try {
 
 export default function PartagerMomentScreen() {
   const router = useRouter();
+  // enfant : enfantId passé depuis "Son histoire" (fil-de-vie.tsx) quand on
+  // partage un moment depuis la vue contextuelle d'un enfant précis —
+  // pré-sélectionne cet enfant plutôt que de repartir sur "Tous".
+  const params = useLocalSearchParams<{ enfant?: string }>();
   const langue = useStore((s) => s.langue);
   const enfants = useStore((s) => s.enfants);
   const ajouterMoment = useStore((s) => s.ajouterMoment);
@@ -29,7 +33,7 @@ export default function PartagerMomentScreen() {
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoRatio, setPhotoRatio] = useState<number>(4 / 3);
   const [texte, setTexte] = useState('');
-  const [enfantChoisi, setEnfantChoisi] = useState<string | null>(null);
+  const [enfantChoisi, setEnfantChoisi] = useState<string | null>(params.enfant ?? null);
   const [envoi, setEnvoi] = useState(false);
 
   const choisirPhoto = async () => {
@@ -58,7 +62,7 @@ export default function PartagerMomentScreen() {
     try {
       await ajouterMoment({
         texte: texte.trim() || undefined,
-        enfant: enfantChoisi ?? undefined,
+        enfantId: enfantChoisi ?? undefined,
         photoUri: photoUri ?? undefined,
       });
       router.back();
@@ -127,10 +131,10 @@ export default function PartagerMomentScreen() {
                 {enfants.map((e) => (
                   <Pressable
                     key={e.id}
-                    style={[styles.enfantChoix, enfantChoisi === e.prenom && styles.enfantChoixActif]}
-                    onPress={() => setEnfantChoisi(e.prenom)}
+                    style={[styles.enfantChoix, enfantChoisi === e.id && styles.enfantChoixActif]}
+                    onPress={() => setEnfantChoisi(e.id)}
                   >
-                    <Text style={[styles.enfantChoixTxt, enfantChoisi === e.prenom && styles.enfantChoixTxtActif]}>
+                    <Text style={[styles.enfantChoixTxt, enfantChoisi === e.id && styles.enfantChoixTxtActif]}>
                       {e.prenom}
                     </Text>
                   </Pressable>

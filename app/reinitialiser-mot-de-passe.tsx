@@ -9,6 +9,15 @@
 // Router ne démarre et ne touche potentiellement à l'URL. C'est une lecture
 // synchrone, faite dans l'initialiseur de useState, donc dès le premier
 // rendu — sans dépendre d'un useEffect ni de l'état de l'URL à cet instant.
+//
+// La règle de mot de passe vient de constants/motDePasse.ts, partagée avec
+// creer-espace.tsx et rejoindre.tsx.
+//
+// Les erreurs d'enregistrement sont affichées telles qu'elles sont, traduites
+// en français. La version précédente répondait « le lien a peut-être expiré »
+// à TOUTE erreur, y compris un mot de passe trop court ou ayant fuité : le
+// parent cherchait alors un problème de lien là où il fallait juste changer
+// de mot de passe.
 
 import React, { useState } from 'react';
 import {
@@ -17,6 +26,7 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -60,6 +70,12 @@ export default function ReinitialiserMotDePasseScreen() {
   const [tokens] = useState(() => lireTokens());
   const [etatEcran, setEtatEcran] = useState<EtatEcran>(tokens ? 'pret_a_confirmer' : 'echec');
 
+  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse) : null;
+  const erreurConfirmation =
+    confirmation.length > 0 && motDePasse !== confirmation
+      ? 'Les deux mots de passe ne correspondent pas.'
+      : null;
+
   const confirmerEtEtablirSession = async () => {
     if (!tokens) {
       setEtatEcran('echec');
@@ -71,6 +87,8 @@ export default function ReinitialiserMotDePasseScreen() {
     setChargement(false);
 
     if (error) {
+      // Ici, et seulement ici, un lien expiré est la cause probable :
+      // c'est l'étape qui consomme réellement le jeton reçu par email.
       setEtatEcran('echec');
       return;
     }
@@ -80,12 +98,13 @@ export default function ReinitialiserMotDePasseScreen() {
   };
 
   const enregistrerNouveauMotDePasse = async () => {
-    if (motDePasse.length < 6) {
-      alertCompat('Mot de passe trop court', 'Choisis un mot de passe d\u2019au moins 6 caractères.');
+    const probleme = validerMotDePasse(motDePasse);
+    if (probleme) {
+      alertCompat('Mot de passe trop faible', probleme);
       return;
     }
     if (motDePasse !== confirmation) {
-      alertCompat('Les mots de passe ne correspondent pas', 'Vérifie la saisie dans les deux champs.');
+      alertCompat('Les mots de passe ne correspondent pas', 'Vérifiez la saisie dans les deux champs.');
       return;
     }
 
@@ -93,13 +112,13 @@ export default function ReinitialiserMotDePasseScreen() {
     try {
       const { error } = await supabase.auth.updateUser({ password: motDePasse });
       if (error) throw error;
-      alertCompat('Mot de passe mis à jour', 'Vous pouvez maintenant vous reconnecter.');
+      alertCompat('Mot de passe mis à jour', 'Votre nouveau mot de passe est enregistré.');
       router.replace('/(tabs)/accueil');
     } catch (err: any) {
-      alertCompat(
-        'Impossible de mettre à jour le mot de passe',
-        'Le lien a peut-être expiré. Demandez-en un nouveau depuis l\u2019écran de connexion.'
-      );
+      // Le motif réel est affiché, traduit en français. La session vient
+      // d'être établie à l'étape précédente : l'échec ici vient presque
+      // toujours du mot de passe lui-même, pas du lien.
+      alertCompat('Mot de passe refusé', traduireErreurAuth(err?.message));
     } finally {
       setChargement(false);
     }
@@ -152,23 +171,29 @@ export default function ReinitialiserMotDePasseScreen() {
 
         <Text style={styles.label}>Nouveau mot de passe</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
           value={motDePasse}
           onChangeText={setMotDePasse}
-          placeholder="6 caractères minimum"
+          placeholder={AIDE_MOT_DE_PASSE}
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
         />
+        <Text style={[styles.aide, !!erreurMotDePasse && styles.aideErreur]}>
+          {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
+        </Text>
 
         <Text style={styles.label}>Confirmer le mot de passe</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, !!erreurConfirmation && styles.inputErreur]}
           value={confirmation}
           onChangeText={setConfirmation}
           placeholder="Ressaisissez le mot de passe"
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
         />
+        {erreurConfirmation ? (
+          <Text style={[styles.aide, styles.aideErreur]}>{erreurConfirmation}</Text>
+        ) : null}
 
         <Pressable style={styles.boutonPrincipal} onPress={enregistrerNouveauMotDePasse} disabled={chargement}>
           {chargement ? (
@@ -192,6 +217,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: RADIUS.md,
     paddingHorizontal: 12, paddingVertical: 12, fontFamily: FONTS.body, fontSize: 15, color: COLORS.vertProfond,
   },
+  inputErreur: { borderColor: COLORS.terracotta },
+  aide: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, lineHeight: 16, marginTop: 6 },
+  aideErreur: { color: COLORS.terracotta },
   boutonPrincipal: {
     backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center',
     marginTop: SPACING.xl,

@@ -1,49 +1,81 @@
 ﻿// app/(tabs)/journal.tsx
 
 import React, { useState, useMemo } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert, Image, ActivityIndicator } from 'react-native';
+import { useLocalSearchParams } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { LockIcon, HeartIcon } from '../../components/icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import DatePickerField from '../../components/DatePickerField';
-import { EnfantTag } from '../../types';
+import JournalMemoryImage from '../../components/JournalMemoryImage';
 import { TRADUCTIONS } from '../../constants/i18n';
+import { JournalEntry } from '../../types';
+
+let ImagePicker: typeof import('expo-image-picker') | null = null;
+try {
+  ImagePicker = require('expo-image-picker');
+} catch {
+  ImagePicker = null;
+}
 
 const EMOJIS = ['📸', '🎒', '🎂', '🌳', '🚲', '💌', '⚽', '🎨', '🏖️', '🎓', '🎄', '🌟'];
+const TOUS = 'Tous';
 
-function formatDate(isoDate: string, langue: 'fr' | 'pt') {
+function formatDate(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
   const d = new Date(isoDate);
-  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(
+    langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR',
+    { day: 'numeric', month: 'long', year: 'numeric' }
+  );
 }
 
 export default function JournalScreen() {
+  // enfant : prénom d'un enfant, passé depuis la fiche "L'Essentiel" pour
+  // pré-filtrer le journal sur ses souvenirs.
+  const params = useLocalSearchParams<{ enfant?: string }>();
   const entries = useStore((s) => s.journalEntries);
+  const enfants = useStore((s) => s.enfants);
   const parents = useStore((s) => s.parents);
   const parentActif = useStore((s) => s.parentActif);
   const ajouterJournal = useStore((s) => s.ajouterJournal);
+  const modifierJournal = useStore((s) => s.modifierJournal);
+  const supprimerJournal = useStore((s) => s.supprimerJournal);
   const likerEntree = useStore((s) => s.likerEntree);
   const ajouterRecitCroise = useStore((s) => s.ajouterRecitCroise);
   const langue = useStore((s) => s.langue);
   const t = TRADUCTIONS[langue].journal;
 
-  const FILTRES: { key: 'tous' | EnfantTag | 'capsules'; label: string }[] = [
-    { key: 'tous', label: t.filtreTous },
-    { key: 'Emma', label: 'Emma' },
-    { key: 'Léo', label: 'Léo' },
+  // Prénoms réels des enfants du foyer, plus "Tous" et le filtre capsules —
+  // remplace l'ancienne liste figée ('Emma'/'Léo') par les vrais enfants.
+  const FILTRES: { key: string; label: string }[] = [
+    { key: TOUS, label: t.filtreTous },
+    ...enfants.map((e) => ({ key: e.prenom, label: e.prenom })),
     { key: 'capsules', label: t.filtreCapsules },
   ];
 
-  const [filtre, setFiltre] = useState<'tous' | EnfantTag | 'capsules'>('tous');
+  const [filtre, setFiltre] = useState<string>(params.enfant || 'tous');
+
+  // Comportement accordéon : un seul souvenir ouvert à la fois. Ouvrir un
+  // souvenir referme automatiquement le précédent — évite d'empiler
+  // plusieurs grandes photos les unes sous les autres.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   const [modalVisible, setModalVisible] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [formTitre, setFormTitre] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [formEmoji, setFormEmoji] = useState(EMOJIS[0]);
-  const [formEnfant, setFormEnfant] = useState<EnfantTag>('Tous');
+  const [formEnfant, setFormEnfant] = useState<string>(TOUS);
   const [formCapsule, setFormCapsule] = useState(false);
   const [formDateRevelation, setFormDateRevelation] = useState<Date | null>(null);
+  const [formPhotoUri, setFormPhotoUri] = useState<string | null>(null);
+  const [formPhotoUrlExistante, setFormPhotoUrlExistante] = useState<string | null>(null);
+  const [envoi, setEnvoi] = useState(false);
 
   const [recitModalId, setRecitModalId] = useState<string | null>(null);
   const [recitTexte, setRecitTexte] = useState('');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const maintenant = new Date();
 
@@ -53,17 +85,51 @@ export default function JournalScreen() {
     return entries.filter((e) => e.enfant === filtre);
   }, [entries, filtre]);
 
+  const toggleExpand = (id: string) => {
+    setExpandedId((current) => (current === id ? null : id));
+  };
+
   const openModal = () => {
+    setEditId(null);
     setFormTitre('');
     setFormDescription('');
     setFormEmoji(EMOJIS[0]);
-    setFormEnfant('Tous');
+    // Reprend le filtre actif (ex. "Marlon") plutôt que de toujours revenir
+    // à "Tous" — si tu es en train de consulter les souvenirs de Marlon,
+    // le nouveau souvenir doit logiquement lui être associé par défaut.
+    setFormEnfant(filtre !== 'tous' && filtre !== 'capsules' ? filtre : TOUS);
     setFormCapsule(false);
     setFormDateRevelation(null);
+    setFormPhotoUri(null);
+    setFormPhotoUrlExistante(null);
     setModalVisible(true);
   };
 
-  const submitEntry = () => {
+  const openEditModal = (entry: JournalEntry) => {
+    setEditId(entry.id);
+    setFormTitre(entry.titre);
+    setFormDescription(entry.description);
+    setFormEmoji(entry.emoji || EMOJIS[0]);
+    setFormEnfant((entry.enfant as string) || TOUS);
+    setFormCapsule(!!entry.dateRevelation);
+    setFormDateRevelation(entry.dateRevelation ? new Date(entry.dateRevelation) : null);
+    setFormPhotoUri(null);
+    setFormPhotoUrlExistante(entry.photoUrl ?? null);
+    setModalVisible(true);
+  };
+
+  const choisirPhoto = async () => {
+    if (!ImagePicker) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) return;
+    const resultat = await ImagePicker.launchImageLibraryAsync({ quality: 0.6 });
+    if (!resultat.canceled && resultat.assets[0]) {
+      setFormPhotoUri(resultat.assets[0].uri);
+      setFormPhotoUrlExistante(null);
+    }
+  };
+
+  const submitEntry = async () => {
     if (!formTitre.trim()) {
       Alert.alert(t.titreRequisTitre, t.titreRequisMsg);
       return;
@@ -72,18 +138,40 @@ export default function JournalScreen() {
       Alert.alert(t.dateRequiseTitre, t.dateRequiseMsg);
       return;
     }
-    ajouterJournal({
-      id: `j-${Date.now()}`,
-      titre: formTitre.trim(),
-      description: formDescription.trim(),
-      emoji: formEmoji,
-      auteurId: parentActif,
-      date: new Date().toISOString(),
-      liked: false,
-      enfant: formEnfant,
-      dateRevelation: formCapsule && formDateRevelation ? formDateRevelation.toISOString() : undefined,
-    });
-    setModalVisible(false);
+    setEnvoi(true);
+    try {
+      if (editId) {
+        await modifierJournal(
+          editId,
+          {
+            titre: formTitre.trim(),
+            description: formDescription.trim(),
+            emoji: formEmoji,
+            enfant: formEnfant as any,
+            dateRevelation: formCapsule && formDateRevelation ? formDateRevelation.toISOString() : undefined,
+          },
+          formPhotoUri ?? undefined
+        );
+      } else {
+        await ajouterJournal(
+          {
+            id: `j-${Date.now()}`,
+            titre: formTitre.trim(),
+            description: formDescription.trim(),
+            emoji: formEmoji,
+            auteurId: parentActif,
+            date: new Date().toISOString(),
+            liked: false,
+            enfant: formEnfant as any,
+            dateRevelation: formCapsule && formDateRevelation ? formDateRevelation.toISOString() : undefined,
+          },
+          formPhotoUri ?? undefined
+        );
+      }
+      setModalVisible(false);
+    } finally {
+      setEnvoi(false);
+    }
   };
 
   const openRecitModal = (id: string) => {
@@ -95,6 +183,13 @@ export default function JournalScreen() {
     if (!recitTexte.trim() || !recitModalId) return;
     ajouterRecitCroise(recitModalId, recitTexte.trim());
     setRecitModalId(null);
+  };
+
+  const confirmerSuppression = () => {
+    if (!confirmDeleteId) return;
+    supprimerJournal(confirmDeleteId);
+    if (expandedId === confirmDeleteId) setExpandedId(null);
+    setConfirmDeleteId(null);
   };
 
   return (
@@ -110,16 +205,27 @@ export default function JournalScreen() {
           </Pressable>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={styles.filterRowContent}>
-          {FILTRES.map((f) => {
-            const active = filtre === f.key;
-            return (
-              <Pressable key={f.key} onPress={() => setFiltre(f.key)} style={[styles.filterPill, active && styles.filterPillActive]}>
-                <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{f.label}</Text>
-              </Pressable>
-            );
-          })}
-        </ScrollView>
+        <View style={styles.filterAndCollapseRow}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterRow} contentContainerStyle={styles.filterRowContent}>
+            {FILTRES.map((f) => {
+              const active = filtre === f.key || (filtre === 'tous' && f.key === TOUS);
+              return (
+                <Pressable
+                  key={f.key}
+                  onPress={() => setFiltre(f.key === TOUS ? 'tous' : f.key)}
+                  style={[styles.filterPill, active && styles.filterPillActive]}
+                >
+                  <Text style={[styles.filterPillText, active && styles.filterPillTextActive]}>{f.label}</Text>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+          {expandedId ? (
+            <Pressable style={styles.collapseAllBtn} onPress={() => setExpandedId(null)}>
+              <Text style={styles.collapseAllBtnText}>Tout replier</Text>
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -145,50 +251,126 @@ export default function JournalScreen() {
             );
           }
 
-          return (
-            <View key={entry.id} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <View style={styles.emojiWrap}>
-                  <Text style={styles.emoji}>{entry.emoji}</Text>
-                </View>
-                <View style={styles.cardHeaderText}>
-                  <Text style={styles.cardTitle}>{entry.titre}</Text>
-                  <Text style={styles.cardMeta}>{author} . {formatDate(entry.date, langue)}</Text>
-                </View>
-                {entry.enfant ? (
-                  <View style={styles.enfantPill}>
-                    <Text style={styles.enfantPillText}>{entry.enfant}</Text>
+          const isExpanded = expandedId === entry.id;
+
+          if (!isExpanded) {
+            // Souvenir replié : vignette carrée (cover, aperçu uniquement),
+            // titre, date, enfant, auteur, et un extrait du texte.
+            return (
+              <Pressable key={entry.id} style={styles.rowCollapsed} onPress={() => toggleExpand(entry.id)}>
+                {entry.photoUrl ? (
+                  <Image source={{ uri: entry.photoUrl }} style={styles.thumbnail} resizeMode="cover" />
+                ) : (
+                  <View style={styles.thumbnailEmoji}>
+                    <Text style={styles.emoji}>{entry.emoji}</Text>
                   </View>
-                ) : null}
-              </View>
-
-              {entry.description ? (
-                <Text style={styles.cardDescription}>{entry.description}</Text>
-              ) : null}
-
-              {entry.recitCroise ? (
-                <View style={styles.recitBox}>
-                  <Text style={styles.recitLabel}>{t.regardCroise}</Text>
-                  <Text style={styles.recitText}>{entry.recitCroise}</Text>
-                </View>
-              ) : (
-                <Pressable style={styles.recitBtn} onPress={() => openRecitModal(entry.id)}>
-                  <Text style={styles.recitBtnText}>{t.ajouterRegard}</Text>
-                </Pressable>
-              )}
-
-              <View style={styles.cardFoot}>
-                <Pressable style={styles.likeBtn} onPress={() => likerEntree(entry.id)}>
-                  <HeartIcon size={16} color={entry.liked ? COLORS.terracotta : COLORS.ardoise} filled={entry.liked} strokeWidth={1.8} />
-                  <Text style={[styles.likeText, entry.liked && { color: COLORS.terracotta }]}>
-                    {entry.liked ? t.jaime : t.aimer}
+                )}
+                <View style={styles.rowCollapsedTexte}>
+                  <View style={styles.rowCollapsedHeader}>
+                    <Text style={styles.rowCollapsedTitre} numberOfLines={1}>{entry.titre}</Text>
+                    {entry.enfant ? (
+                      <View style={styles.enfantPillSmall}>
+                        <Text style={styles.enfantPillText}>{entry.enfant}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.rowCollapsedMeta} numberOfLines={1}>
+                    {formatDate(entry.date, langue)} · {author}
                   </Text>
-                </Pressable>
-                {entry.dateRevelation ? (
-                  <Text style={styles.wasCapsuleText}>{t.capsuleOuverte(formatDate(entry.dateRevelation, langue))}</Text>
+                  {entry.description ? (
+                    <Text style={styles.rowCollapsedExtrait} numberOfLines={1}>{entry.description}</Text>
+                  ) : null}
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
+              </Pressable>
+            );
+          }
+
+          return (
+            <Pressable key={entry.id} style={styles.card} onPress={() => toggleExpand(entry.id)}>
+              {entry.photoUrl ? (
+                <View style={styles.cardPhotoWrap}>
+                  <JournalMemoryImage uri={entry.photoUrl} maxHeight={420} borderRadius={0} />
+                </View>
+              ) : null}
+              <View style={styles.cardBody}>
+                <View style={styles.cardHeader}>
+                  <View style={styles.emojiWrap}>
+                    <Text style={styles.emoji}>{entry.emoji}</Text>
+                  </View>
+                  <View style={styles.cardHeaderText}>
+                    <Text style={styles.cardTitle}>{entry.titre}</Text>
+                    <Text style={styles.cardMeta}>{author} . {formatDate(entry.date, langue)}</Text>
+                  </View>
+                  {entry.enfant ? (
+                    <View style={styles.enfantPill}>
+                      <Text style={styles.enfantPillText}>{entry.enfant}</Text>
+                    </View>
+                  ) : null}
+                </View>
+
+                {entry.description ? (
+                  <Text style={styles.cardDescription}>{entry.description}</Text>
                 ) : null}
+
+                {entry.recitCroise ? (
+                  <View style={styles.recitBox}>
+                    <Text style={styles.recitLabel}>{t.regardCroise}</Text>
+                    <Text style={styles.recitText}>{entry.recitCroise}</Text>
+                  </View>
+                ) : (
+                  <Pressable
+                    style={styles.recitBtn}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      openRecitModal(entry.id);
+                    }}
+                  >
+                    <Text style={styles.recitBtnText}>{t.ajouterRegard}</Text>
+                  </Pressable>
+                )}
+
+                <View style={styles.cardFoot}>
+                  <Pressable
+                    style={styles.likeBtn}
+                    onPress={(e) => {
+                      e.stopPropagation?.();
+                      likerEntree(entry.id);
+                    }}
+                  >
+                    <HeartIcon size={16} color={entry.liked ? COLORS.terracotta : COLORS.ardoise} filled={entry.liked} strokeWidth={1.8} />
+                    <Text style={[styles.likeText, entry.liked && { color: COLORS.terracotta }]}>
+                      {entry.liked ? t.jaime : t.aimer}
+                    </Text>
+                  </Pressable>
+                  <View style={styles.cardFootActions}>
+                    {entry.dateRevelation ? (
+                      <Text style={styles.wasCapsuleText}>{t.capsuleOuverte(formatDate(entry.dateRevelation, langue))}</Text>
+                    ) : null}
+                    <Pressable
+                      style={styles.iconActionBtn}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        openEditModal(entry);
+                      }}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="pencil-outline" size={16} color={COLORS.ardoise} />
+                    </Pressable>
+                    <Pressable
+                      style={styles.iconActionBtn}
+                      onPress={(e) => {
+                        e.stopPropagation?.();
+                        setConfirmDeleteId(entry.id);
+                      }}
+                      hitSlop={8}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={COLORS.ardoise} />
+                    </Pressable>
+                  </View>
+                </View>
               </View>
-            </View>
+            </Pressable>
           );
         })}
       </ScrollView>
@@ -197,7 +379,28 @@ export default function JournalScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>{t.modalTitre}</Text>
+              <Text style={styles.modalTitle}>{editId ? 'Modifier le souvenir' : t.modalTitre}</Text>
+
+              <Text style={styles.fieldLabel}>Photo (optionnel)</Text>
+              {formPhotoUri || formPhotoUrlExistante ? (
+                <View style={styles.photoWrap}>
+                  <JournalMemoryImage uri={formPhotoUri ?? formPhotoUrlExistante!} maxHeight={260} />
+                  <Pressable
+                    style={styles.photoRetirer}
+                    onPress={() => {
+                      setFormPhotoUri(null);
+                      setFormPhotoUrlExistante(null);
+                    }}
+                  >
+                    <Ionicons name="trash-outline" size={16} color={COLORS.blanc} />
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable style={styles.photoBtn} onPress={choisirPhoto}>
+                  <Ionicons name="camera-outline" size={22} color={COLORS.vert} />
+                  <Text style={styles.photoBtnTxt}>Ajouter une photo</Text>
+                </Pressable>
+              )}
 
               <Text style={styles.fieldLabel}>{t.champTitre}</Text>
               <TextInput
@@ -233,7 +436,7 @@ export default function JournalScreen() {
 
               <Text style={styles.fieldLabel}>{t.concerne}</Text>
               <View style={styles.pillRow}>
-                {(['Tous', 'Emma', 'Léo'] as EnfantTag[]).map((tag) => {
+                {[TOUS, ...enfants.map((e) => e.prenom)].map((tag) => {
                   const active = formEnfant === tag;
                   return (
                     <Pressable key={tag} onPress={() => setFormEnfant(tag)} style={[styles.pill, active && styles.pillActive]}>
@@ -255,11 +458,11 @@ export default function JournalScreen() {
               ) : null}
 
               <View style={styles.modalActions}>
-                <Pressable style={[styles.modalBtn, styles.modalBtnCancel]} onPress={() => setModalVisible(false)}>
+                <Pressable style={[styles.modalBtn, styles.modalBtnCancel]} onPress={() => setModalVisible(false)} disabled={envoi}>
                   <Text style={styles.modalBtnCancelText}>{t.annuler}</Text>
                 </Pressable>
-                <Pressable style={[styles.modalBtn, styles.modalBtnSubmit]} onPress={submitEntry}>
-                  <Text style={styles.modalBtnSubmitText}>{t.publier}</Text>
+                <Pressable style={[styles.modalBtn, styles.modalBtnSubmit, envoi && { opacity: 0.6 }]} onPress={submitEntry} disabled={envoi}>
+                  {envoi ? <ActivityIndicator color={COLORS.blanc} /> : <Text style={styles.modalBtnSubmitText}>{editId ? 'Enregistrer' : t.publier}</Text>}
                 </Pressable>
               </View>
             </ScrollView>
@@ -292,6 +495,23 @@ export default function JournalScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={!!confirmDeleteId} animationType="fade" transparent onRequestClose={() => setConfirmDeleteId(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmCard}>
+            <Text style={styles.modalTitle}>Supprimer ce souvenir ?</Text>
+            <Text style={styles.recitHint}>Cette action est définitive et ne peut pas être annulée.</Text>
+            <View style={styles.modalActions}>
+              <Pressable style={[styles.modalBtn, styles.modalBtnCancel]} onPress={() => setConfirmDeleteId(null)}>
+                <Text style={styles.modalBtnCancelText}>{t.annuler}</Text>
+              </Pressable>
+              <Pressable style={[styles.modalBtn, styles.modalBtnDelete]} onPress={confirmerSuppression}>
+                <Text style={styles.modalBtnSubmitText}>Supprimer</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -304,7 +524,8 @@ const styles = StyleSheet.create({
   subtitle: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise, marginTop: 3 },
   newBtn: { backgroundColor: COLORS.vertProfond, paddingHorizontal: 14, paddingVertical: 9, borderRadius: RADIUS.full },
   newBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ivoire },
-  filterRow: { marginTop: SPACING.md },
+  filterAndCollapseRow: { flexDirection: 'row', alignItems: 'center', marginTop: SPACING.md, gap: SPACING.sm },
+  filterRow: { flexGrow: 0, flexShrink: 1 },
   filterRowContent: { gap: SPACING.sm, paddingRight: SPACING.xl },
   filterPill: {
     paddingHorizontal: 14, paddingVertical: 7, borderRadius: RADIUS.full,
@@ -313,13 +534,40 @@ const styles = StyleSheet.create({
   filterPillActive: { backgroundColor: COLORS.vertProfond, borderColor: COLORS.vertProfond },
   filterPillText: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.ardoise },
   filterPillTextActive: { color: COLORS.ivoire },
+  collapseAllBtn: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: RADIUS.full,
+    backgroundColor: COLORS.ivoireFonce,
+  },
+  collapseAllBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise },
   content: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xxxl * 2 },
   emptyText: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise, marginTop: SPACING.xl, textAlign: 'center' },
+
+  // Ligne repliée : vignette + texte + chevron
+  rowCollapsed: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
+    borderRadius: RADIUS.lg, padding: SPACING.sm, marginTop: SPACING.sm,
+  },
+  thumbnail: { width: 56, height: 56, borderRadius: RADIUS.md, backgroundColor: COLORS.ivoireFonce },
+  thumbnailEmoji: {
+    width: 56, height: 56, borderRadius: RADIUS.md, backgroundColor: 'rgba(201,168,76,0.14)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  rowCollapsedTexte: { flex: 1 },
+  rowCollapsedHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+  rowCollapsedTitre: { fontFamily: FONTS.bodySemibold, fontSize: 14.5, color: COLORS.vertProfond, flexShrink: 1 },
+  rowCollapsedMeta: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, marginTop: 1 },
+  rowCollapsedExtrait: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.texte, marginTop: 2 },
+  enfantPillSmall: { backgroundColor: 'rgba(45,106,79,0.1)', paddingHorizontal: 7, paddingVertical: 2, borderRadius: RADIUS.full },
+
+  // Carte déployée
   card: {
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
-    borderRadius: RADIUS.lg, padding: SPACING.lg + 1, marginTop: SPACING.md,
+    borderRadius: RADIUS.lg, marginTop: SPACING.sm, overflow: 'hidden',
   },
-  cardLocked: { alignItems: 'center', paddingVertical: SPACING.xl, backgroundColor: 'rgba(107,127,122,0.06)' },
+  cardPhotoWrap: { width: '100%' },
+  cardBody: { padding: SPACING.lg + 1 },
+  cardLocked: { alignItems: 'center', paddingVertical: SPACING.xl, backgroundColor: 'rgba(107,127,122,0.06)', marginTop: SPACING.sm, borderRadius: RADIUS.lg },
   lockedIconWrap: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.blanc,
     alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.sm,
@@ -348,6 +596,8 @@ const styles = StyleSheet.create({
   recitBtn: { marginTop: SPACING.md },
   recitBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.vert },
   cardFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: SPACING.md },
+  cardFootActions: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
+  iconActionBtn: { padding: 2 },
   likeBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   likeText: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise },
   wasCapsuleText: { fontFamily: FONTS.body, fontSize: 10.5, color: COLORS.or },
@@ -355,6 +605,9 @@ const styles = StyleSheet.create({
   modalCard: {
     backgroundColor: COLORS.ivoire, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
     padding: SPACING.xl, paddingBottom: SPACING.xxxl, maxHeight: '85%',
+  },
+  confirmCard: {
+    backgroundColor: COLORS.ivoire, borderRadius: RADIUS.xl, margin: SPACING.xl, padding: SPACING.xl,
   },
   modalTitle: { fontFamily: FONTS.display, fontSize: 19, color: COLORS.vertProfond },
   recitHint: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, marginTop: 4 },
@@ -364,6 +617,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 10, fontFamily: FONTS.body, fontSize: 14, color: COLORS.vertProfond,
   },
   inputMultiline: { minHeight: 80, textAlignVertical: 'top' },
+  photoBtn: {
+    height: 120, borderRadius: RADIUS.md, borderWidth: 1.5, borderColor: COLORS.bordure, borderStyle: 'dashed',
+    alignItems: 'center', justifyContent: 'center', gap: 6, backgroundColor: COLORS.blanc,
+  },
+  photoBtnTxt: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vert },
+  photoWrap: { borderRadius: RADIUS.md, overflow: 'hidden' },
+  photoRetirer: {
+    position: 'absolute', top: 8, right: 8,
+    backgroundColor: 'rgba(28,43,37,0.6)', borderRadius: RADIUS.full, padding: 6,
+  },
   emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   emojiOption: {
     width: 44, height: 44, borderRadius: RADIUS.md, alignItems: 'center', justifyContent: 'center',
@@ -388,9 +651,10 @@ const styles = StyleSheet.create({
   checkboxMark: { color: COLORS.blanc, fontSize: 12, fontFamily: FONTS.bodyBold },
   capsuleToggleText: { fontFamily: FONTS.bodyMedium, fontSize: 13, color: COLORS.vertProfond },
   modalActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xl },
-  modalBtn: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: RADIUS.md },
+  modalBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: RADIUS.md, minHeight: 44 },
   modalBtnCancel: { borderWidth: 1, borderColor: COLORS.bordure },
   modalBtnCancelText: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.ardoise },
   modalBtnSubmit: { backgroundColor: COLORS.vert },
+  modalBtnDelete: { backgroundColor: COLORS.terracotta },
   modalBtnSubmitText: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.blanc },
 });

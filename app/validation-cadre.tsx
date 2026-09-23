@@ -10,33 +10,66 @@
 // Décisions) pour calculer quoi que ce soit automatiquement.
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
-import type { CategorieRegle, NiveauConfiance, ReglePartage } from '../types';
-
-const LABELS_CATEGORIE: Record<CategorieRegle, string> = {
-  fraisMedicaux: 'Frais médicaux non remboursés',
-  fraisScolaires: 'Frais scolaires',
-  activitesExtra: 'Activités extrascolaires',
-  autre: 'Autre',
-};
-
-const LABELS_CONFIANCE: Record<NiveauConfiance, { label: string; couleur: string }> = {
-  haute: { label: 'Confiance élevée', couleur: COLORS.vert },
-  moyenne: { label: 'Confiance moyenne', couleur: COLORS.or },
-  basse: { label: 'Confiance basse', couleur: COLORS.terracotta },
-};
+import { TRADUCTIONS } from '../constants/i18n';
+import DatePickerField from '../components/DatePickerField';
+import type { CategorieRegle, NiveauConfiance, ReglePartage, ParentRole } from '../types';
 
 export default function ValidationCadreScreen() {
   const router = useRouter();
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].validationCadre;
+  const localeDate = langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
+
+  const LABELS_CATEGORIE: Record<CategorieRegle, string> = {
+    fraisMedicaux: t.categorieFraisMedicaux,
+    fraisScolaires: t.categorieFraisScolaires,
+    activitesExtra: t.categorieActivitesExtra,
+    autre: t.categorieAutre,
+  };
+
+  const LABELS_CONFIANCE: Record<NiveauConfiance, { label: string; couleur: string }> = {
+    haute: { label: t.confianceHaute, couleur: COLORS.vert },
+    moyenne: { label: t.confianceMoyenne, couleur: COLORS.or },
+    basse: { label: t.confianceBasse, couleur: COLORS.terracotta },
+  };
+
   const cadreFamilial = useStore((s) => s.cadreFamilial);
   const validerRegle = useStore((s) => s.validerRegle);
   const rejeterRegle = useStore((s) => s.rejeterRegle);
   const modifierRegle = useStore((s) => s.modifierRegle);
   const finaliserCadreFamilial = useStore((s) => s.finaliserCadreFamilial);
+  const parents = useStore((s) => s.parents);
+  const genererCalendrierAlterne = useStore((s) => s.genererCalendrierAlterne);
+  const genererCalendrierGardeWeekend = useStore((s) => s.genererCalendrierGardeWeekend);
+  const genererDatesSpeciales = useStore((s) => s.genererDatesSpeciales);
+  const genererVacancesScolaires = useStore((s) => s.genererVacancesScolaires);
+  const setGenreParental = useStore((s) => s.setGenreParental);
+
+  const [dateDebutGarde, setDateDebutGarde] = useState<Date | null>(null);
+  const [parentQuiCommence, setParentQuiCommence] = useState<ParentRole>('A');
+  const [calendrierGenere, setCalendrierGenere] = useState(false);
+  const [datesGenereesMessage, setDatesGenereesMessage] = useState<string | null>(null);
+  const [vacancesGenereesMessage, setVacancesGenereesMessage] = useState<string | null>(null);
+
+  const confirmerGenerationVacances = () => {
+    const { genere } = genererVacancesScolaires();
+    setVacancesGenereesMessage(`${genere} repères ajoutés au calendrier (zone C, Créteil).`);
+  };
+
+  const confirmerGenerationDatesSpeciales = () => {
+    if (!cadreFamilial?.datesSpeciales) return;
+    const anneeCourante = new Date().getFullYear();
+    const { genere, ignorees } = genererDatesSpeciales(cadreFamilial.datesSpeciales, anneeCourante, 3);
+    const messageIgnorees = ignorees.length > 0
+      ? ` ${ignorees.join(', ')} : date mobile, à ajouter toi-même une fois connue.`
+      : '';
+    setDatesGenereesMessage(`${genere} date${genere > 1 ? 's' : ''} ajoutée${genere > 1 ? 's' : ''} au calendrier (3 prochaines années).${messageIgnorees}`);
+  };
 
   const [modifModalRegle, setModifModalRegle] = useState<ReglePartage | null>(null);
   const [partAInput, setPartAInput] = useState('');
@@ -48,14 +81,11 @@ export default function ValidationCadreScreen() {
           <Pressable onPress={() => router.back()} hitSlop={10}>
             <Ionicons name="close" size={22} color={COLORS.vertProfond} />
           </Pressable>
-          <Text style={styles.topbarTitre}>Cadre familial</Text>
+          <Text style={styles.topbarTitre}>{t.titre}</Text>
           <View style={{ width: 22 }} />
         </View>
         <View style={styles.videWrap}>
-          <Text style={styles.videTexte}>
-            Aucune convention n'a encore été analysée. Importez un document depuis l'écran Décisions
-            pour commencer.
-          </Text>
+          <Text style={styles.videTexte}>{t.videTexte}</Text>
         </View>
       </View>
     );
@@ -66,6 +96,45 @@ export default function ValidationCadreScreen() {
   const nbVerifiees = regles.filter((r) => r.validation.statut !== 'a_verifier').length;
   const toutEstVerifie = nbTotal > 0 && nbVerifiees === nbTotal;
   const dejaValide = cadreFamilial.statut === 'valide';
+
+  // Détection volontairement simple : on ne propose la génération
+  // automatique du calendrier QUE quand le texte du jugement mentionne
+  // explicitement une résidence alternée, OU une garde exclusive avec un
+  // rythme de week-end régulier détecté — dans tous les autres cas, le
+  // motif n'est pas assez régulier pour être généré fiablement à partir du
+  // seul texte libre extrait.
+  const texteGarde = `${cadreFamilial.garde?.residencePrincipale || ''} ${cadreFamilial.garde?.droitVisiteHebergementDescription || ''}`.toLowerCase();
+  const resideceAlterneeDetectee = texteGarde.includes('altern');
+  const gardeWeekendDetectee = !resideceAlterneeDetectee && !!cadreFamilial.garde?.weekendParite;
+
+  // Tentative de rattachement automatique du parent résident, à partir du
+  // genre déclaré sur chaque parent (voir setGenreParental). Sans ces
+  // infos, impossible de savoir de façon fiable si "au domicile de la
+  // mère" désigne le parent A ou B — on redemande alors manuellement.
+  const genreDetecteDansTexte: 'mere' | 'pere' | null = texteGarde.includes('mère') || texteGarde.includes('mere')
+    ? 'mere'
+    : texteGarde.includes('père') || texteGarde.includes('pere')
+    ? 'pere'
+    : null;
+  const parentResidentAuto = genreDetecteDansTexte
+    ? ((['A', 'B'] as ParentRole[]).find((id) => parents[id].genreParental === genreDetecteDansTexte) ?? null)
+    : null;
+
+  const genresManquants = !parents.A.genreParental || !parents.B.genreParental;
+
+  const confirmerGenerationCalendrier = () => {
+    if (!dateDebutGarde) return;
+    const parentAUtiliser = parentResidentAuto || parentQuiCommence;
+    if (resideceAlterneeDetectee) {
+      genererCalendrierAlterne(dateDebutGarde.toISOString(), parentAUtiliser, 12);
+    } else {
+      genererCalendrierGardeWeekend(dateDebutGarde.toISOString(), parentAUtiliser, 12);
+    }
+    setCalendrierGenere(true);
+    const message = t.calendrierGenereMsg;
+    if (Platform.OS === 'web') window.alert(message);
+    else Alert.alert(t.calendrierGenereTitre, message);
+  };
 
   const ouvrirModif = (regle: ReglePartage) => {
     setModifModalRegle(regle);
@@ -86,15 +155,13 @@ export default function ValidationCadreScreen() {
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="close" size={22} color={COLORS.vertProfond} />
         </Pressable>
-        <Text style={styles.topbarTitre}>Cadre familial</Text>
+        <Text style={styles.topbarTitre}>{t.titre}</Text>
         <View style={{ width: 22 }} />
       </View>
 
       {nbTotal > 0 && (
         <View style={styles.progressionWrap}>
-          <Text style={styles.progressionTexte}>
-            {nbVerifiees} / {nbTotal} règle{nbTotal > 1 ? 's' : ''} vérifiée{nbVerifiees > 1 ? 's' : ''}
-          </Text>
+          <Text style={styles.progressionTexte}>{t.progressionTexte(nbVerifiees, nbTotal)}</Text>
           <View style={styles.progressionBarreFond}>
             <View
               style={[
@@ -109,17 +176,90 @@ export default function ValidationCadreScreen() {
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {cadreFamilial.pension && (
           <View style={styles.pensionCard}>
-            <Text style={styles.pensionEyebrow}>PENSION ALIMENTAIRE</Text>
-            <Text style={styles.pensionMontant}>{cadreFamilial.pension.montant} € / mois</Text>
-            <Text style={styles.pensionMeta}>Périodicité : {cadreFamilial.pension.periodicite}</Text>
+            <Text style={styles.pensionEyebrow}>{t.pensionEyebrow}</Text>
+            <Text style={styles.pensionMontant}>{cadreFamilial.pension.montant} {t.pensionParMois}</Text>
+            {cadreFamilial.pension.montantParEnfant && cadreFamilial.pension.nombreEnfantsConcernes ? (
+              <Text style={styles.pensionMeta}>
+                {t.pensionParEnfant(cadreFamilial.pension.montantParEnfant, cadreFamilial.pension.nombreEnfantsConcernes)}
+              </Text>
+            ) : null}
+            <Text style={styles.pensionMeta}>{t.pensionPeriodicite(cadreFamilial.pension.periodicite)}</Text>
+          </View>
+        )}
+
+        {cadreFamilial.datesSpeciales && cadreFamilial.datesSpeciales.length > 0 && (
+          <View style={styles.datesCard}>
+            <Text style={styles.datesEyebrow}>{t.datesEyebrow}</Text>
+            {cadreFamilial.datesSpeciales.map((d, i) => (
+              <View key={i} style={styles.dateLigne}>
+                <Text style={styles.dateOccasion}>{d.occasion}</Text>
+                <Text style={styles.dateParent}>
+                  {d.parent === 'A' ? parents.A.nom : d.parent === 'B' ? parents.B.nom : '—'}
+                </Text>
+              </View>
+            ))}
+            <Text style={styles.datesResultat}>
+              {dejaValide ? t.datesResultatValide : t.datesResultatEnAttente}
+            </Text>
+          </View>
+        )}
+
+        {(resideceAlterneeDetectee || gardeWeekendDetectee) && (
+          <View style={styles.gardeCard}>
+            <Text style={styles.gardeEyebrow}>
+              {resideceAlterneeDetectee ? t.gardeEyebrowAlternee : t.gardeEyebrowRythme}
+            </Text>
+            <Text style={styles.gardeTexte}>
+              {resideceAlterneeDetectee
+                ? t.gardeTexteAlternee
+                : t.gardeTexteRythme(cadreFamilial.garde?.weekendParite || '')}
+              {' '}
+              {dejaValide ? t.gardeSuiteValide : t.gardeSuiteEnAttente}
+            </Text>
+
+            {dejaValide ? (
+              <View style={styles.gardeConfirmation}>
+                <Ionicons name="checkmark-circle" size={18} color={COLORS.vert} />
+                <Text style={styles.gardeConfirmationTexte}>{t.gardeConfirmationTexte}</Text>
+              </View>
+            ) : (
+              <>
+                {parentResidentAuto ? (
+                  <Text style={styles.gardeAutoDetecte}>
+                    {t.gardeAutoDetecte(parents[parentResidentAuto].nom)}
+                  </Text>
+                ) : (
+                  genresManquants && (
+                    <View style={styles.genreSetup}>
+                      <Text style={styles.genreSetupTexte}>{t.genreSetupTexte(parents.A.nom)}</Text>
+                      {(['A', 'B'] as ParentRole[]).map((id) => (
+                        <View key={id} style={styles.genreSetupLigne}>
+                          <Text style={styles.genreSetupNom}>{parents[id].nom}</Text>
+                          <View style={{ flexDirection: 'row', gap: 6 }}>
+                            {(['mere', 'pere'] as const).map((g) => (
+                              <Pressable
+                                key={g}
+                                style={[styles.genreChip, parents[id].genreParental === g && styles.genreChipActif]}
+                                onPress={() => setGenreParental(id, g)}
+                              >
+                                <Text style={[styles.genreChipTexte, parents[id].genreParental === g && styles.genreChipTexteActif]}>
+                                  {g === 'mere' ? t.genreMere : t.genrePere}
+                                </Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  )
+                )}
+              </>
+            )}
           </View>
         )}
 
         {regles.length === 0 && (
-          <Text style={styles.videTexte}>
-            Aucune règle de répartition n'a été identifiée avec une précision suffisante dans votre
-            document. Vous pourrez en ajouter manuellement depuis Finances.
-          </Text>
+          <Text style={styles.videTexte}>{t.reglesVideTexte}</Text>
         )}
 
         {regles.map((regle) => {
@@ -132,24 +272,21 @@ export default function ValidationCadreScreen() {
 
               <View style={styles.repartitionRow}>
                 <Text style={styles.repartitionTexte}>
-                  {estDefautNonPrecise ? 'Répartition proposée par défaut : ' : 'Répartition détectée : '}
+                  {estDefautNonPrecise ? t.repartitionDefaut : t.repartitionDetectee}
                   <Text style={styles.repartitionValeur}>{regle.partA} % / {regle.partB} %</Text>
                 </Text>
               </View>
 
               {estDefautNonPrecise && (
-                <Text style={styles.avertissementDefaut}>
-                  Aucun pourcentage n'était précisé dans votre document. Dualia propose la répartition
-                  standard 50/50 — à valider ou modifier.
-                </Text>
+                <Text style={styles.avertissementDefaut}>{t.avertissementDefaut}</Text>
               )}
 
               {regle.clauseSource?.reference || regle.clauseSource?.extrait ? (
                 <View style={styles.clauseBox}>
                   {regle.clauseSource.reference && (
                     <Text style={styles.clauseReference}>
-                      Source : {regle.clauseSource.reference}
-                      {regle.clauseSource.page ? ` · page ${regle.clauseSource.page}` : ''}
+                      {t.clauseSource(regle.clauseSource.reference)}
+                      {regle.clauseSource.page ? t.clauseSourcePage(String(regle.clauseSource.page)) : ''}
                     </Text>
                   )}
                   {regle.clauseSource.extrait && (
@@ -166,13 +303,13 @@ export default function ValidationCadreScreen() {
               {regle.validation.statut === 'a_verifier' ? (
                 <View style={styles.actionsRow}>
                   <Pressable style={styles.btnValider} onPress={() => validerRegle(regle.id)}>
-                    <Text style={styles.btnValiderTexte}>Valider</Text>
+                    <Text style={styles.btnValiderTexte}>{t.valider}</Text>
                   </Pressable>
                   <Pressable style={styles.btnSecondaire} onPress={() => ouvrirModif(regle)}>
-                    <Text style={styles.btnSecondaireTexte}>Modifier</Text>
+                    <Text style={styles.btnSecondaireTexte}>{t.modifier}</Text>
                   </Pressable>
                   <Pressable style={styles.btnSecondaire} onPress={() => rejeterRegle(regle.id)}>
-                    <Text style={styles.btnSecondaireTexte}>Rejeter</Text>
+                    <Text style={styles.btnSecondaireTexte}>{t.rejeter}</Text>
                   </Pressable>
                 </View>
               ) : (
@@ -183,7 +320,7 @@ export default function ValidationCadreScreen() {
                     color={regle.validation.statut === 'validee' ? COLORS.vert : COLORS.ardoise}
                   />
                   <Text style={styles.statutFinalTexte}>
-                    {regle.validation.statut === 'validee' ? 'Validée' : 'Non retenue'}
+                    {regle.validation.statut === 'validee' ? t.valideeStatut : t.nonRetenueStatut}
                   </Text>
                 </View>
               )}
@@ -195,8 +332,7 @@ export default function ValidationCadreScreen() {
           <View style={styles.dejaValideBox}>
             <Ionicons name="shield-checkmark" size={16} color={COLORS.vert} />
             <Text style={styles.dejaValideTexte}>
-              Ce cadre familial est validé et utilisé par Dualia depuis le{' '}
-              {cadreFamilial.valideLe ? new Date(cadreFamilial.valideLe).toLocaleDateString('fr-FR') : ''}.
+              {t.dejaValideTexte(cadreFamilial.valideLe ? new Date(cadreFamilial.valideLe).toLocaleDateString(localeDate) : '')}
             </Text>
           </View>
         )}
@@ -211,15 +347,15 @@ export default function ValidationCadreScreen() {
             router.back();
           }}
         >
-          <Text style={styles.btnFinaliserTexte}>Terminer la vérification</Text>
+          <Text style={styles.btnFinaliserTexte}>{t.btnFinaliser}</Text>
         </Pressable>
       )}
 
       <Modal visible={!!modifModalRegle} animationType="fade" transparent onRequestClose={() => setModifModalRegle(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitre}>Modifier la répartition</Text>
-            <Text style={styles.modalLabel}>Part A (%)</Text>
+            <Text style={styles.modalTitre}>{t.modalTitre}</Text>
+            <Text style={styles.modalLabel}>{t.modalLabel}</Text>
             <TextInput
               style={styles.modalInput}
               value={partAInput}
@@ -229,14 +365,14 @@ export default function ValidationCadreScreen() {
               placeholderTextColor={COLORS.ardoise}
             />
             <Text style={styles.modalHint}>
-              Part B sera automatiquement {100 - (parseInt(partAInput, 10) || 0)} %.
+              {t.modalHint(100 - (parseInt(partAInput, 10) || 0))}
             </Text>
             <View style={styles.modalActions}>
               <Pressable style={styles.modalBtnAnnuler} onPress={() => setModifModalRegle(null)}>
-                <Text style={styles.modalBtnAnnulerTexte}>Annuler</Text>
+                <Text style={styles.modalBtnAnnulerTexte}>{t.annuler}</Text>
               </Pressable>
               <Pressable style={styles.modalBtnConfirmer} onPress={confirmerModif}>
-                <Text style={styles.modalBtnConfirmerTexte}>Confirmer</Text>
+                <Text style={styles.modalBtnConfirmerTexte}>{t.confirmer}</Text>
               </Pressable>
             </View>
           </View>
@@ -269,6 +405,47 @@ const styles = StyleSheet.create({
   pensionEyebrow: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.or, letterSpacing: 0.6, marginBottom: 4 },
   pensionMontant: { fontFamily: FONTS.display, fontSize: 22, color: COLORS.blanc },
   pensionMeta: { fontFamily: FONTS.body, fontSize: 12.5, color: 'rgba(255,255,255,0.7)', marginTop: 2 },
+
+  datesCard: {
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.terracotta, borderRadius: RADIUS.lg,
+    padding: SPACING.lg, marginBottom: SPACING.lg,
+  },
+  datesEyebrow: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.terracotta, letterSpacing: 0.6, marginBottom: SPACING.sm },
+  dateLigne: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: COLORS.bordure },
+  dateOccasion: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.vertProfond },
+  dateParent: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise },
+  datesResultat: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vert, marginTop: SPACING.sm, lineHeight: 18 },
+  datesGenererBtn: { backgroundColor: COLORS.terracotta, borderRadius: RADIUS.md, paddingVertical: 12, alignItems: 'center', marginTop: SPACING.md },
+  datesGenererBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.blanc },
+  datesGenererBtnSecondaire: { borderWidth: 1, borderColor: COLORS.terracotta, borderRadius: RADIUS.md, paddingVertical: 12, alignItems: 'center', marginTop: SPACING.sm },
+  datesGenererBtnSecondaireTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.terracotta },
+  gardeAutoDetecte: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.vert, marginTop: SPACING.sm, marginBottom: SPACING.sm },
+  genreSetup: { backgroundColor: COLORS.ivoire, borderRadius: RADIUS.md, padding: SPACING.sm, marginTop: SPACING.sm, marginBottom: SPACING.sm },
+  genreSetupTexte: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, marginBottom: 8, lineHeight: 16 },
+  genreSetupLigne: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  genreSetupNom: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond },
+  genreChip: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: COLORS.bordure },
+  genreChipActif: { backgroundColor: COLORS.vert, borderColor: COLORS.vert },
+  genreChipTexte: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.ardoise },
+  genreChipTexteActif: { color: COLORS.blanc },
+
+  gardeCard: {
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.vert, borderRadius: RADIUS.lg,
+    padding: SPACING.lg, marginBottom: SPACING.lg,
+  },
+  gardeEyebrow: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.vert, letterSpacing: 0.6, marginBottom: 6 },
+  gardeTexte: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.vertProfond, lineHeight: 19, marginBottom: SPACING.md },
+  gardeLabel: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise, marginBottom: 6, marginTop: SPACING.sm },
+  gardeParentRow: { flexDirection: 'row', gap: 8, marginBottom: SPACING.md },
+  gardeParentChip: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.bordure },
+  gardeParentChipActif: { backgroundColor: COLORS.vert, borderColor: COLORS.vert },
+  gardeParentChipTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.ardoise },
+  gardeParentChipTexteActif: { color: COLORS.blanc },
+  gardeGenererBtn: { backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 13, alignItems: 'center' },
+  gardeGenererBtnDesactive: { opacity: 0.4 },
+  gardeGenererBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.blanc },
+  gardeConfirmation: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  gardeConfirmationTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.vert },
 
   regleCard: {
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,

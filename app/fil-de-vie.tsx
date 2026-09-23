@@ -1,20 +1,32 @@
 // app/fil-de-vie.tsx
+//
+// "Son histoire" — vue AGRÉGÉE des moments d'un enfant, jamais une source
+// de données séparée : les moments restent stockés dans "moments" (store),
+// filtrés par enfantId. Deux façons d'arriver ici :
+// - via ?enfant=id, depuis la fiche "L'Essentiel" d'un enfant (vue
+//   contextuelle : titre "L'histoire de [prénom]", pas de sélecteur, un
+//   retour explicite)
+// - depuis l'onglet Journal général, sans filtre, avec les chips manuels
+//   pour naviguer entre "Tous"/chaque enfant
 
 import { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { isToday, isYesterday, parseISO, format } from 'date-fns';
-import { fr, pt } from 'date-fns/locale';
+import { fr, pt, es, enGB } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 
-const LOCALES = { fr, pt };
+const LOCALES = { fr, pt, es, en: enGB };
 
 export default function FilDeVieScreen() {
   const router = useRouter();
+  // enfant : enfantId passé depuis la fiche "L'Essentiel" pour arriver
+  // directement filtré, en vue contextuelle, sur cet enfant.
+  const params = useLocalSearchParams<{ enfant?: string }>();
   const langue = useStore((s) => s.langue);
   const dateLocale = LOCALES[langue];
   const moments = useStore((s) => s.moments);
@@ -24,14 +36,15 @@ export default function FilDeVieScreen() {
   const reagirMoment = useStore((s) => s.reagirMoment);
   const t = TRADUCTIONS[langue].filDeVie;
 
-  const [filtre, setFiltre] = useState<string | null>(null);
+  const [filtreEnfantId, setFiltreEnfantId] = useState<string | null>(params.enfant ?? null);
 
-  const filtres = [t.tous, ...enfants.map((e) => e.prenom)];
+  const enfantFiltre = filtreEnfantId ? enfants.find((e) => e.id === filtreEnfantId) ?? null : null;
+  const modeContextuel = !!params.enfant && !!enfantFiltre;
 
   const filtered = useMemo(() => {
-    if (!filtre || filtre === t.tous) return moments;
-    return moments.filter((m) => m.enfant === filtre);
-  }, [moments, filtre, t.tous]);
+    if (!filtreEnfantId) return moments;
+    return moments.filter((m) => m.enfantId === filtreEnfantId);
+  }, [moments, filtreEnfantId]);
 
   const labelJour = (iso: string) => {
     const d = parseISO(iso);
@@ -40,6 +53,10 @@ export default function FilDeVieScreen() {
     return format(d, 'EEEE d MMMM', { locale: dateLocale });
   };
 
+  const partagerRoute = modeContextuel
+    ? { pathname: '/partager-moment', params: { enfant: filtreEnfantId! } }
+    : '/partager-moment';
+
   return (
     <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
       <View style={styles.header}>
@@ -47,25 +64,36 @@ export default function FilDeVieScreen() {
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitre}>{t.titre}</Text>
-          <Text style={styles.headerSous}>{t.sousTitre}</Text>
+          {modeContextuel ? (
+            <Text style={styles.headerTitre}>{t.histoireDe(enfantFiltre!.prenom)}</Text>
+          ) : (
+            <>
+              <Text style={styles.headerTitre}>{t.titre}</Text>
+              <Text style={styles.headerSous}>{t.sousTitre}</Text>
+            </>
+          )}
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtresScroll} contentContainerStyle={styles.filtresContent}>
-        {filtres.map((f) => {
-          const actif = filtre === f || (!filtre && f === t.tous);
-          return (
+      {!modeContextuel ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtresScroll} contentContainerStyle={styles.filtresContent}>
+          <Pressable
+            style={[styles.filtrePill, !filtreEnfantId && styles.filtrePillActif]}
+            onPress={() => setFiltreEnfantId(null)}
+          >
+            <Text style={[styles.filtrePillTxt, !filtreEnfantId && styles.filtrePillTxtActif]}>{t.tous}</Text>
+          </Pressable>
+          {enfants.map((e) => (
             <Pressable
-              key={f}
-              style={[styles.filtrePill, actif && styles.filtrePillActif]}
-              onPress={() => setFiltre(f === t.tous ? null : f)}
+              key={e.id}
+              style={[styles.filtrePill, filtreEnfantId === e.id && styles.filtrePillActif]}
+              onPress={() => setFiltreEnfantId(e.id)}
             >
-              <Text style={[styles.filtrePillTxt, actif && styles.filtrePillTxtActif]}>{f}</Text>
+              <Text style={[styles.filtrePillTxt, filtreEnfantId === e.id && styles.filtrePillTxtActif]}>{e.prenom}</Text>
             </Pressable>
-          );
-        })}
-      </ScrollView>
+          ))}
+        </ScrollView>
+      ) : null}
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {filtered.length === 0 ? (
@@ -74,10 +102,11 @@ export default function FilDeVieScreen() {
           filtered.map((m) => {
             const auteur = parents[m.auteurId]?.nom.split(' ')[0] ?? '';
             const jaime = m.aimePar.includes(parentActif);
+            const prenomEnfant = m.enfantId ? enfants.find((e) => e.id === m.enfantId)?.prenom : undefined;
             return (
               <View key={m.id} style={styles.carte}>
                 {m.photoUrl ? (
-                                    <Image source={{ uri: m.photoUrl }} style={styles.photo} resizeMode="contain" />
+                  <Image source={{ uri: m.photoUrl }} style={styles.photo} resizeMode="contain" />
                 ) : null}
                 <View style={styles.carteCorps}>
                   <View style={styles.carteHeader}>
@@ -86,9 +115,9 @@ export default function FilDeVieScreen() {
                         {labelJour(m.createdAt)} · {t.partagePar(auteur)}
                       </Text>
                     </View>
-                    {m.enfant ? (
+                    {!modeContextuel && prenomEnfant ? (
                       <View style={styles.enfantPill}>
-                        <Text style={styles.enfantPillTxt}>{m.enfant}</Text>
+                        <Text style={styles.enfantPillTxt}>{prenomEnfant}</Text>
                       </View>
                     ) : null}
                   </View>
@@ -108,7 +137,7 @@ export default function FilDeVieScreen() {
         <View style={{ height: SPACING.xxxl }} />
       </ScrollView>
 
-      <Pressable style={styles.fab} onPress={() => router.push('/partager-moment' as any)}>
+      <Pressable style={styles.fab} onPress={() => router.push(partagerRoute as any)}>
         <Ionicons name="add" size={20} color={COLORS.blanc} />
         <Text style={styles.fabTxt}>{t.partager}</Text>
       </Pressable>

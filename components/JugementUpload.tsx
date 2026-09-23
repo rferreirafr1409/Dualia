@@ -11,6 +11,14 @@
 // Le résultat est présenté sous forme de "capsules" thématiques distinctes
 // (garde / pension / réévaluation / divers) car ce sont des sujets
 // juridiquement et fonctionnellement indépendants les uns des autres.
+//
+// Sélection de fichier : voir lib/pickerFichierPDF.native.ts et
+// lib/pickerFichierPDF.web.ts — la résolution par extension de fichier
+// (faite par Metro au moment du build) garantit que expo-document-picker
+// n'est jamais présent dans le bundle web, qui utilise à la place un
+// <input type="file"> HTML natif. L'import direct d'expo-document-picker
+// dans ce fichier cassait le bundle web entier ("Cannot use 'import.meta'
+// outside a module") — c'est ce qui a été corrigé ici.
 
 import React, { useState } from 'react';
 import {
@@ -23,11 +31,11 @@ import {
   Platform,
   Alert,
 } from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { useStore } from '../store/useStore';
 import { TRADUCTIONS } from '../constants/i18n';
+import { choisirFichierPDF } from '../lib/pickerFichierPDF';
 import type { CadreFamilial, ReglePartage } from '../types';
 
 const BACKEND_URL = 'https://dualia-backend.vercel.app';
@@ -115,7 +123,10 @@ function construireCadreFamilial(resultat: any): CadreFamilial {
       partA: 50,
       partB: 50,
       clauseSource: {
-        extrait: fraisExtra.condition || (fraisExtra.postes_mentionnes || []).join(', ') || undefined,
+        // texte_source = citation verbatim exigée par le backend (règle 4 du prompt) —
+        // préférée à "condition"/"postes_mentionnes", qui sont des champs structurés,
+        // pas la citation exacte du document. Confirmé le 08/09/2026.
+        extrait: fraisExtra.texte_source || fraisExtra.condition || (fraisExtra.postes_mentionnes || []).join(', ') || undefined,
       },
       conditions: {
         accordPrealable: fraisExtra.participation_pere_convenue === true ? true : undefined,
@@ -139,6 +150,12 @@ function construireCadreFamilial(resultat: any): CadreFamilial {
         ? {
             montant: pension.montant_initial_eur,
             periodicite: periodiciteMap[String(pension.periodicite || '').toLowerCase()] ?? 'autre',
+            // Exigence AIPD (risque "Modification non désirée", 08/09/2026) : la pension ne
+            // doit jamais s'afficher sans sa source, au même titre que les règles de partage
+            // ci-dessous. Champ confirmé le 08/09/2026 via api/extract-jugement.js :
+            // pension_alimentaire.texte_source (citation verbatim exigée par le prompt système,
+            // règle 4). Pas de "reference"/"page" distincts dans le schéma actuel du backend.
+            clauseSource: pension.texte_source ? { extrait: pension.texte_source } : undefined,
           }
         : undefined,
     documentSource: {
@@ -150,7 +167,15 @@ function construireCadreFamilial(resultat: any): CadreFamilial {
   };
 }
 
-export default function JugementUpload() {
+type JugementUploadProps = {
+  /** Appelé une fois le cadre familial synchronisé, juste avant la navigation
+   * vers /validation-cadre — permet à l'écran appelant (ex. la modal dans
+   * documents.tsx) de se fermer proprement. Optionnel : le composant reste
+   * utilisable seul, sans parent modal. */
+  onTermine?: () => void;
+};
+
+export default function JugementUpload({ onTermine }: JugementUploadProps) {
   const router = useRouter();
   const synchroniserCadreFamilial = useStore((s) => s.synchroniserCadreFamilial);
   const langue = useStore((s) => s.langue);
@@ -169,7 +194,7 @@ export default function JugementUpload() {
     setResultat(null);
   };
 
-  const lirePdfEnBase64 = async (asset: any): Promise<string> => {
+  const lirePdfEnBase64 = async (asset: { uri: string }): Promise<string> => {
     if (Platform.OS === 'web') {
       const response = await fetch(asset.uri);
       const blob = await response.blob();
@@ -191,15 +216,11 @@ export default function JugementUpload() {
   const choisirEtTraiterPdf = async () => {
     reinitialiser();
 
-    const pick = await DocumentPicker.getDocumentAsync({
-      type: 'application/pdf',
-      copyToCacheDirectory: true,
-    });
-
-    if (pick.canceled || !pick.assets?.[0]) return;
+    const pick = await choisirFichierPDF();
+    if (!pick) return;
 
     try {
-      const pdfBase64 = await lirePdfEnBase64(pick.assets[0]);
+      const pdfBase64 = await lirePdfEnBase64(pick);
 
       // Étape 1 : PDF -> texte
       setStatut('extraction_texte');
@@ -245,6 +266,7 @@ export default function JugementUpload() {
     setSynchronisationEnCours(true);
     try {
       await synchroniserCadreFamilial(cadre);
+      onTermine?.();
       router.push('/validation-cadre' as any);
     } catch (e: any) {
       const message = e?.message ?? 'Une erreur est survenue.';

@@ -5,6 +5,17 @@
 // ne servent qu'à la CRÉATION initiale du compte (via signUp) — un lien
 // d'invitation est à usage unique et ne peut donc pas servir de moyen de
 // reconnexion après la première fois.
+//
+// Après une connexion réussie, on appelle explicitement
+// initialiserSession() du store AVANT de naviguer vers l'accueil : sans
+// ça, l'écran d'accueil se monte avec les données par défaut (jamais
+// remplacées), et affiche "Marie/Pierre" au lieu du vrai espace familial
+// de l'utilisateur, même si l'authentification a parfaitement réussi.
+//
+// Tout le monde ne se connecte pas comme parent : une nounou, un
+// grand-parent ou une école ont un accès tiers, pas un espace familial.
+// initialiserSession() le détecte ; on regarde ensuite où l'envoyer, sinon
+// une nounou parfaitement authentifiée atterrissait sur un accueil vide.
 
 import React, { useState } from 'react';
 import {
@@ -12,6 +23,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
+import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 
 function alertCompat(titre: string, message?: string) {
@@ -24,6 +36,7 @@ function alertCompat(titre: string, message?: string) {
 
 export default function ConnexionScreen() {
   const router = useRouter();
+  const initialiserSession = useStore((s) => s.initialiserSession);
   const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
   const [chargement, setChargement] = useState(false);
@@ -41,6 +54,18 @@ export default function ConnexionScreen() {
         password: motDePasse,
       });
       if (error) throw error;
+
+      // Charge les vraies données (espace familial, parents, enfants...)
+      // avant de naviguer — sans quoi l'accueil afficherait encore les
+      // valeurs par défaut jamais remplacées.
+      await initialiserSession();
+
+      const { familleId, accesTiers } = useStore.getState();
+      if (!familleId && accesTiers) {
+        router.replace('/espace-tiers' as any);
+        return;
+      }
+
       router.replace('/(tabs)/accueil');
     } catch (err: any) {
       // Message volontairement générique : ne pas révéler si c'est l'email
@@ -68,6 +93,7 @@ export default function ConnexionScreen() {
           placeholderTextColor={COLORS.ardoise}
           autoCapitalize="none"
           keyboardType="email-address"
+          returnKeyType="next"
         />
 
         <Text style={styles.label}>Mot de passe</Text>
@@ -78,6 +104,8 @@ export default function ConnexionScreen() {
           placeholder="Votre mot de passe"
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
+          returnKeyType="go"
+          onSubmitEditing={seConnecter}
         />
 
         <Pressable onPress={() => router.push('/mot-de-passe-oublie' as any)}>

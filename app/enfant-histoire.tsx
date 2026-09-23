@@ -5,18 +5,23 @@ import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { format, parseISO } from 'date-fns';
-import { fr, pt } from 'date-fns/locale';
+import { fr, pt, es, enGB } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 import { LockIcon, HeartIcon } from '../components/icons';
+import JournalMemoryImage from '../components/JournalMemoryImage';
+import MemoryAccordionRow from '../components/MemoryAccordionRow';
 
-const LOCALES = { fr, pt };
+const LOCALES = { fr, pt, es, en: enGB };
 
-function formatDate(isoDate: string, langue: 'fr' | 'pt') {
+function formatDate(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
   const d = new Date(isoDate);
-  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(
+    langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR',
+    { day: 'numeric', month: 'long', year: 'numeric' }
+  );
 }
 
 export default function EnfantHistoireScreen() {
@@ -29,9 +34,8 @@ export default function EnfantHistoireScreen() {
   const t = TRADUCTIONS[langue].histoireEnfant;
 
   const [onglet, setOnglet] = useState<'chronologie' | 'capsules'>('chronologie');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // Un enfant voit aussi les souvenirs marqués "Tous" (les deux enfants) —
-  // pas seulement ceux qui portent son prénom exact.
   const entreesEnfant = useMemo(
     () => entries.filter((e) => e.enfant === prenom || e.enfant === 'Tous'),
     [entries, prenom]
@@ -57,8 +61,6 @@ export default function EnfantHistoireScreen() {
 
   const liste = onglet === 'chronologie' ? chronologie : capsules;
 
-  // Regroupe par mois ("Septembre 2026"), dans l'ordre où les entrées
-  // arrivent (déjà triées du plus récent au plus ancien).
   const groupes = useMemo(() => {
     const map = new Map<string, typeof liste>();
     liste.forEach((entry) => {
@@ -68,6 +70,12 @@ export default function EnfantHistoireScreen() {
     });
     return Array.from(map.entries());
   }, [liste, dateLocale]);
+
+  const toggleExpand = (id: string) => setExpandedId((c) => (c === id ? null : id));
+
+  const ajouterSouvenir = () => {
+    router.push({ pathname: '/(tabs)/journal', params: { enfant: prenom ?? '' } } as any);
+  };
 
   return (
     <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
@@ -79,6 +87,11 @@ export default function EnfantHistoireScreen() {
           <Text style={styles.headerTitre}>{t.titre(prenom ?? '')}</Text>
           <Text style={styles.headerSous}>{t.sousTitre}</Text>
         </View>
+        {expandedId ? (
+          <Pressable style={styles.collapseAllBtn} onPress={() => setExpandedId(null)}>
+            <Text style={styles.collapseAllBtnText}>Tout replier</Text>
+          </Pressable>
+        ) : null}
       </View>
 
       <View style={styles.onglets}>
@@ -123,26 +136,45 @@ export default function EnfantHistoireScreen() {
                   );
                 }
 
+                const isExpanded = expandedId === entry.id;
+
                 return (
-                  <View key={entry.id} style={styles.ligne}>
-                    <View style={styles.iconWrap}>
-                      <Text style={styles.emoji}>{entry.emoji}</Text>
+                  <MemoryAccordionRow
+                    key={entry.id}
+                    isExpanded={isExpanded}
+                    onToggle={() => toggleExpand(entry.id)}
+                    photoUrl={entry.photoUrl}
+                    emoji={entry.emoji}
+                    titre={entry.titre}
+                    meta={`${formatDate(entry.date, langue)} · ${author}`}
+                    extrait={entry.description}
+                  >
+                    {entry.photoUrl ? (
+                      <JournalMemoryImage uri={entry.photoUrl} maxHeight={420} borderRadius={0} />
+                    ) : null}
+                    <View style={styles.expandedBody}>
+                      {entry.description ? (
+                        <Text style={styles.expandedDescription}>{entry.description}</Text>
+                      ) : null}
+                      {entry.liked ? (
+                        <View style={styles.likedRow}>
+                          <HeartIcon size={15} color={COLORS.terracotta} filled strokeWidth={1.8} />
+                        </View>
+                      ) : null}
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.ligneTitre}>{entry.titre}</Text>
-                      <Text style={styles.ligneMeta}>
-                        {formatDate(entry.date, langue)} · {author}
-                      </Text>
-                    </View>
-                    {entry.liked ? <HeartIcon size={15} color={COLORS.terracotta} filled strokeWidth={1.8} /> : null}
-                  </View>
+                  </MemoryAccordionRow>
                 );
               })}
             </View>
           ))
         )}
-        <View style={{ height: SPACING.xxxl }} />
+        <View style={{ height: SPACING.xxxl + 60 }} />
       </ScrollView>
+
+      <Pressable style={styles.fab} onPress={ajouterSouvenir}>
+        <Ionicons name="add" size={20} color={COLORS.blanc} />
+        <Text style={styles.fabTxt}>Ajouter un souvenir</Text>
+      </Pressable>
     </SafeAreaView>
   );
 }
@@ -156,6 +188,11 @@ const styles = StyleSheet.create({
   retourBtn: { padding: SPACING.xs, marginTop: 2 },
   headerTitre: { fontFamily: FONTS.display, fontSize: 20, color: COLORS.vertProfond },
   headerSous: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, marginTop: 2 },
+  collapseAllBtn: {
+    paddingHorizontal: 12, paddingVertical: 7, borderRadius: RADIUS.full,
+    backgroundColor: COLORS.ivoireFonce, marginTop: 2,
+  },
+  collapseAllBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise },
 
   onglets: {
     flexDirection: 'row', marginHorizontal: SPACING.lg, marginBottom: SPACING.md,
@@ -175,18 +212,9 @@ const styles = StyleSheet.create({
     color: COLORS.ardoise, marginBottom: SPACING.sm,
   },
 
-  ligne: {
-    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
-    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
-    borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.sm,
-  },
-  iconWrap: {
-    width: 38, height: 38, borderRadius: RADIUS.md, backgroundColor: COLORS.ivoireFonce,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  emoji: { fontSize: 18 },
-  ligneTitre: { fontFamily: FONTS.bodyMedium, fontSize: 15, color: COLORS.texte },
-  ligneMeta: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, marginTop: 1 },
+  expandedBody: { padding: SPACING.lg },
+  expandedDescription: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.vertProfond, lineHeight: 19 },
+  likedRow: { marginTop: SPACING.sm },
 
   ligneLocked: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
@@ -197,4 +225,14 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   ligneTitreLocked: { fontFamily: FONTS.bodyMedium, fontSize: 15, color: COLORS.ardoise, fontStyle: 'italic' },
+  ligneMeta: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, marginTop: 1 },
+
+  fab: {
+    position: 'absolute', bottom: SPACING.xl, alignSelf: 'center',
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: COLORS.vert, borderRadius: RADIUS.full,
+    paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 5,
+  },
+  fabTxt: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.blanc },
 });

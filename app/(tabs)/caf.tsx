@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,12 +9,14 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { useStore } from '../../store/useStore';
+import { supabase } from '../../constants/supabase';
 import { TRADUCTIONS } from '../../constants/i18n';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -24,6 +26,77 @@ const ACCENT = '#B5927C';
 export default function CafScreen() {
   const langue = useStore((s) => s.langue);
   const t = TRADUCTIONS[langue].caf;
+  const cadreFamilial = useStore((s) => s.cadreFamilial);
+
+  // Relie enfin le montant réel extrait du jugement (une fois le cadre
+  // validé) à ce module — jusqu'ici il restait affiché uniquement sur
+  // l'écran de validation, sans jamais remonter ici où il a le plus de sens.
+  const pensionReelle =
+    cadreFamilial?.statut === 'valide' && cadreFamilial.pension
+      ? `${cadreFamilial.pension.montant} €`
+      : null;
+
+  // Le libellé reflète maintenant ce qui a vraiment été détecté dans le
+  // document, une fois le cadre validé — et est traduit dans les 4 langues.
+  const texteGardeCaf = `${cadreFamilial?.garde?.residencePrincipale || ''} ${cadreFamilial?.garde?.droitVisiteHebergementDescription || ''}`.toLowerCase();
+  const modeGardeLabel =
+    cadreFamilial?.statut === 'valide' && cadreFamilial.garde
+      ? texteGardeCaf.includes('altern')
+        ? t.residenceAlterneeDeclaree
+        : t.gardeExclusiveDeclaree
+      : t.gardeAlterneeDeclaree;
+
+  const indexation = cadreFamilial?.statut === 'valide' ? cadreFamilial.pension?.indexation : undefined;
+  const verrouillerIndiceInitial = useStore((s) => s.verrouillerIndiceInitial);
+  const [indiceInitialSaisie, setIndiceInitialSaisie] = useState('');
+  const [indiceActuel, setIndiceActuel] = useState('');
+  const [recuperationEnCours, setRecuperationEnCours] = useState(false);
+  const [recuperationErreur, setRecuperationErreur] = useState<string | null>(null);
+  const [recuperationAvertissement, setRecuperationAvertissement] = useState<string | null>(null);
+  const [valeurAutomatique, setValeurAutomatique] = useState<{ valeur: number; date: string } | null>(null);
+
+  useEffect(() => {
+    supabase
+      .from('parametres_globaux')
+      .select('valeur_num, mis_a_jour_le')
+      .eq('cle', 'insee_indice_actuel')
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data?.valeur_num) {
+          setValeurAutomatique({ valeur: data.valeur_num, date: data.mis_a_jour_le });
+        }
+      });
+  }, []);
+
+  const recupererIndiceActuel = async () => {
+    setRecuperationEnCours(true);
+    setRecuperationErreur(null);
+    setRecuperationAvertissement(null);
+    try {
+      const reponse = await fetch('https://dualia-backend.vercel.app/api/insee-indice');
+      const data = await reponse.json();
+      if (!reponse.ok || !data.valeur) {
+        throw new Error(data.error || 'Réponse invalide');
+      }
+      setIndiceActuel(String(data.valeur).replace('.', ','));
+      if (data.avertissement) setRecuperationAvertissement(data.avertissement);
+    } catch (err: any) {
+      setRecuperationErreur(t.revalEchec);
+    } finally {
+      setRecuperationEnCours(false);
+    }
+  };
+
+  const montantInitial = cadreFamilial?.pension?.montant;
+  const indiceInitialVerrouille = indexation?.indiceInitialConfirme;
+  const indiceInitialNum = indiceInitialVerrouille ?? parseFloat(indiceInitialSaisie.replace(',', '.'));
+  const indiceActuelNum = parseFloat(indiceActuel.replace(',', '.'));
+  const montantRevalorise =
+    montantInitial && indiceInitialNum > 0 && indiceActuelNum > 0
+      ? Math.round((montantInitial * indiceActuelNum / indiceInitialNum) * 100) / 100
+      : null;
+
+  const localeDate = langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
 
   const DROITS = [
     {
@@ -119,20 +192,106 @@ export default function CafScreen() {
           <View style={[styles.dashCard, { flex: 1 }]}>
             <Ionicons name="checkmark-circle" size={22} color={COLORS.succes} />
             <Text style={styles.dashValeur}>✓</Text>
-            <Text style={styles.dashLabel}>{t.gardeAlterneeDeclaree}</Text>
+            <Text style={styles.dashLabel}>{modeGardeLabel}</Text>
           </View>
           <View style={[styles.dashCard, { flex: 1 }]}>
             <Ionicons name="cash-outline" size={22} color={COLORS.or} />
-            <Text style={styles.dashValeur}>1 840 €</Text>
+            <Text style={styles.dashValeur}>{pensionReelle ?? '1 840 €'}</Text>
             <Text style={styles.dashLabel}>{t.creditImpotEstime}</Text>
           </View>
         </View>
+
+        {montantInitial ? (
+          <View style={styles.revalCard}>
+            <Text style={styles.revalEyebrow}>{t.revalTitre}</Text>
+            {indexation?.formuleTexteSource ? (
+              <Text style={styles.revalFormule}>« {indexation.formuleTexteSource} »</Text>
+            ) : (
+              <Text style={styles.revalFormule}>{t.revalFormuleDefaut}</Text>
+            )}
+            {indexation?.indiceReference ? (
+              <Text style={styles.revalMeta}>{t.revalIndiceRef(indexation.indiceReference)}</Text>
+            ) : null}
+            {indexation?.dateRevisionAnnuelle ? (
+              <Text style={styles.revalMeta}>{t.revalDateRevision(indexation.dateRevisionAnnuelle)}</Text>
+            ) : null}
+
+            <Text style={styles.revalLabel}>{t.revalIndiceJugement}</Text>
+            {indiceInitialVerrouille ? (
+              <View style={styles.revalVerrouille}>
+                <Ionicons name="lock-closed" size={13} color={COLORS.ardoise} />
+                <Text style={styles.revalVerrouilleTexte}>{t.revalEnregistre(indiceInitialVerrouille)}</Text>
+              </View>
+            ) : (
+              <>
+                <TextInput
+                  style={styles.revalInput}
+                  value={indiceInitialSaisie}
+                  onChangeText={setIndiceInitialSaisie}
+                  placeholder={t.revalIndicePlaceholder}
+                  placeholderTextColor={COLORS.ardoise}
+                  keyboardType="decimal-pad"
+                />
+                <TouchableOpacity
+                  style={[styles.revalVerrouillerBtn, !indiceInitialSaisie && styles.revalVerrouillerBtnDesactive]}
+                  disabled={!indiceInitialSaisie}
+                  onPress={() => {
+                    const v = parseFloat(indiceInitialSaisie.replace(',', '.'));
+                    if (v > 0) verrouillerIndiceInitial(v);
+                  }}
+                >
+                  <Text style={styles.revalVerrouillerBtnTexte}>{t.revalEnregistrerBtn}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
+            <Text style={styles.revalLabel}>{t.revalIndiceActuelLabel}</Text>
+            {valeurAutomatique && !indiceActuel ? (
+              <TouchableOpacity
+                style={styles.revalAutoBloc}
+                onPress={() => setIndiceActuel(String(valeurAutomatique.valeur).replace('.', ','))}
+              >
+                <Ionicons name="sync-outline" size={14} color={COLORS.vert} />
+                <Text style={styles.revalAutoTexte}>
+                  {t.revalAutoRecupere(valeurAutomatique.valeur, new Date(valeurAutomatique.date).toLocaleDateString(localeDate))}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <TextInput
+              style={styles.revalInput}
+              value={indiceActuel}
+              onChangeText={setIndiceActuel}
+              placeholder={t.revalIndiceActuelPlaceholder}
+              placeholderTextColor={COLORS.ardoise}
+              keyboardType="decimal-pad"
+            />
+            <TouchableOpacity style={styles.revalRecupererBtn} onPress={recupererIndiceActuel} disabled={recuperationEnCours}>
+              <Text style={styles.revalRecupererBtnTexte}>
+                {recuperationEnCours ? t.revalRecuperationEnCours : t.revalRecupererBtn}
+              </Text>
+            </TouchableOpacity>
+            {recuperationErreur ? <Text style={styles.revalErreur}>{recuperationErreur}</Text> : null}
+            {recuperationAvertissement ? <Text style={styles.revalAvertissement}>{recuperationAvertissement}</Text> : null}
+            <Text style={styles.revalLien} onPress={() => Linking.openURL('https://www.insee.fr/fr/statistiques/serie/001763852')}>
+              {t.revalLienManuel}
+            </Text>
+
+            {montantRevalorise ? (
+              <View style={styles.revalResultat}>
+                <Text style={styles.revalResultatLabel}>{t.revalMontantLabel}</Text>
+                <Text style={styles.revalResultatValeur}>{montantRevalorise} € / mois</Text>
+              </View>
+            ) : null}
+
+            <Text style={styles.revalAvertissement}>{t.revalNote}</Text>
+          </View>
+        ) : null}
 
         <View style={[styles.dashCard, styles.dashCardFull]}>
           <View style={styles.dashCardRow}>
             <Ionicons name="calendar-outline" size={22} color={ACCENT} />
             <View style={{ flex: 1 }}>
-              <Text style={styles.dashValeur}>15 mai 2026</Text>
+              <Text style={styles.dashValeur}>{t.prochaineDeclarationDate}</Text>
               <Text style={styles.dashLabel}>{t.prochaineDeclaration}</Text>
             </View>
           </View>
@@ -218,7 +377,7 @@ export default function CafScreen() {
               <View style={styles.resultatWrap}>
                 <Text style={styles.resultatLabel}>{t.resultatLabel}</Text>
                 <Text style={styles.resultatValeur}>
-                  {resultat.toLocaleString(langue === 'pt' ? 'pt-PT' : 'fr-FR')} €
+                  {resultat.toLocaleString(localeDate)} €
                 </Text>
                 <Text style={styles.resultatNote}>
                   {t.resultatNote}
@@ -354,6 +513,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 16,
   },
+
+  revalCard: {
+    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: ACCENT, borderRadius: RADIUS.lg,
+    padding: SPACING.lg, marginHorizontal: SPACING.lg, marginTop: SPACING.md,
+  },
+  revalEyebrow: { fontSize: TYPOGRAPHY.xs, fontWeight: TYPOGRAPHY.semibold, color: ACCENT, letterSpacing: 0.6, marginBottom: 8 },
+  revalFormule: { fontSize: 12.5, color: COLORS.texte, fontStyle: 'italic', marginBottom: 6, lineHeight: 18 },
+  revalMeta: { fontSize: 11.5, color: COLORS.ardoise, marginBottom: 2 },
+  revalLabel: { fontSize: 12, fontWeight: TYPOGRAPHY.semibold, color: COLORS.texte, marginTop: SPACING.sm, marginBottom: 4 },
+  revalInput: {
+    backgroundColor: COLORS.ivoire, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: RADIUS.md,
+    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.texte,
+  },
+  revalLien: { fontSize: 12, color: ACCENT, fontWeight: TYPOGRAPHY.semibold, marginTop: 8 },
+  revalVerrouille: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.ivoire, borderRadius: RADIUS.md, paddingVertical: 10, paddingHorizontal: 12 },
+  revalVerrouilleTexte: { fontSize: 13, color: COLORS.ardoise },
+  revalVerrouillerBtn: { backgroundColor: ACCENT, borderRadius: RADIUS.md, paddingVertical: 9, alignItems: 'center', marginTop: 6 },
+  revalVerrouillerBtnDesactive: { opacity: 0.4 },
+  revalVerrouillerBtnTexte: { fontSize: 12.5, fontWeight: TYPOGRAPHY.semibold, color: COLORS.blanc },
+  revalRecupererBtn: { backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 10, alignItems: 'center', marginTop: 8 },
+  revalRecupererBtnTexte: { fontSize: 12.5, fontWeight: TYPOGRAPHY.semibold, color: COLORS.blanc },
+  revalErreur: { fontSize: 11, color: COLORS.erreur, marginTop: 6 },
+  revalAutoBloc: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EEF4F1', borderRadius: RADIUS.md, padding: 10, marginBottom: 6 },
+  revalAutoTexte: { flex: 1, fontSize: 11, color: COLORS.vert, lineHeight: 15 },
+  revalResultat: {
+    backgroundColor: '#F7EEE9', borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.md, alignItems: 'center',
+  },
+  revalResultatLabel: { fontSize: 11.5, color: ACCENT, marginBottom: 2 },
+  revalResultatValeur: { fontSize: TYPOGRAPHY.xl, fontWeight: TYPOGRAPHY.bold, color: COLORS.texte },
+  revalAvertissement: { fontSize: 10.5, color: COLORS.ardoise, marginTop: SPACING.sm, lineHeight: 15 },
 
   droitCard: {
     flexDirection: 'row',

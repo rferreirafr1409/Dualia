@@ -1,15 +1,22 @@
 // app/creer-espace.tsx
 // Premier écran vu par un parent qui n'a pas encore de compte. Crée un
 // compte Supabase, puis une famille via la fonction creer_famille(), et
-// affiche le lien d'invitation à transmettre au second parent.
+// redirige vers configurer-foyer.tsx — la question du lien d'invitation
+// (creer-espace-lien.tsx) vient après, une fois les foyers configurés.
+//
+// La règle de mot de passe vit dans constants/motDePasse.ts et doit rester
+// alignée sur la configuration Supabase : sinon l'écran accepte ce que le
+// serveur refuse, et le parent reçoit une erreur brute en anglais.
 
 import React, { useState } from 'react';
 import {
-  View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Share, Alert, Platform,
+  View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
+import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -25,14 +32,19 @@ export default function CreerEspaceScreen() {
   const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
   const [chargement, setChargement] = useState(false);
-  const [lienInvitation, setLienInvitation] = useState<string | null>(null);
+
+  // Message affiché sous le champ pendant la saisie, plutôt qu'une alerte
+  // au moment de valider : le parent voit ce qui manque au fur et à mesure.
+  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse) : null;
 
   const creerEspace = async () => {
-    if (!prenom.trim() || !email.trim() || motDePasse.length < 6) {
-      alertCompat(
-        'Champs incomplets',
-        'Renseigne ton prénom, un email valide, et un mot de passe d\u2019au moins 6 caractères.'
-      );
+    if (!prenom.trim() || !email.trim()) {
+      alertCompat('Champs incomplets', 'Renseigne ton prénom et une adresse email.');
+      return;
+    }
+    const probleme = validerMotDePasse(motDePasse);
+    if (probleme) {
+      alertCompat('Mot de passe trop faible', probleme);
       return;
     }
 
@@ -55,56 +67,25 @@ export default function CreerEspaceScreen() {
         return;
       }
 
-      const { data: familleData, error: familleError } = await supabase.rpc('creer_famille', {
+      const { error: familleError } = await supabase.rpc('creer_famille', {
         p_nom: prenom.trim(),
       });
 
       if (familleError) throw familleError;
 
-      const token = familleData?.[0]?.invitation_token;
-      const lien = `https://rferreirafr1409.github.io/Dualia/rejoindre?token=${token}`;
-      setLienInvitation(lien);
+      // La création de compte est une navigation interne (SPA), pas un
+      // rechargement de page — sans cet appel explicite, le store garde
+      // ses valeurs par défaut jusqu'au prochain F5 involontaire.
+      // On force ici le chargement de la vraie session.
+      await useStore.getState().initialiserSession();
+
+      router.replace('/configurer-foyer' as any);
     } catch (err: any) {
-      alertCompat('Erreur', err.message ?? 'Une erreur est survenue.');
+      alertCompat('Erreur', traduireErreurAuth(err?.message));
     } finally {
       setChargement(false);
     }
   };
-
-  const partagerLien = async () => {
-    if (!lienInvitation) return;
-    try {
-      await Share.share({ message: lienInvitation });
-    } catch {
-      // L'utilisateur peut aussi copier le lien affiché à l'écran.
-    }
-  };
-
-  if (lienInvitation) {
-    return (
-      <View style={styles.screen}>
-        <View style={styles.contentCentre}>
-          <Text style={styles.titre}>Votre espace est créé</Text>
-          <Text style={styles.sousTitre}>
-            Envoyez ce lien à l'autre parent pour qu'il rejoigne votre espace familial. Il reste valable
-            7 jours.
-          </Text>
-
-          <View style={styles.lienBox}>
-            <Text style={styles.lienTexte} selectable>{lienInvitation}</Text>
-          </View>
-
-          <Pressable style={styles.boutonPrincipal} onPress={partagerLien}>
-            <Text style={styles.boutonPrincipalTexte}>Partager le lien</Text>
-          </Pressable>
-
-          <Pressable style={styles.boutonSecondaire} onPress={() => router.replace('/(tabs)/accueil')}>
-            <Text style={styles.boutonSecondaireTexte}>Continuer vers Dualia →</Text>
-          </Pressable>
-        </View>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.screen}>
@@ -137,13 +118,16 @@ export default function CreerEspaceScreen() {
 
         <Text style={styles.label}>Mot de passe</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
           value={motDePasse}
           onChangeText={setMotDePasse}
-          placeholder="6 caractères minimum"
+          placeholder={AIDE_MOT_DE_PASSE}
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
         />
+        <Text style={[styles.aide, !!erreurMotDePasse && styles.aideErreur]}>
+          {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
+        </Text>
 
         <Pressable style={styles.boutonPrincipal} onPress={creerEspace} disabled={chargement}>
           {chargement ? (
@@ -175,19 +159,15 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: RADIUS.md,
     paddingHorizontal: 12, paddingVertical: 12, fontFamily: FONTS.body, fontSize: 15, color: COLORS.vertProfond,
   },
+  inputErreur: { borderColor: COLORS.terracotta },
+  aide: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, lineHeight: 16, marginTop: 6 },
+  aideErreur: { color: COLORS.terracotta },
   boutonPrincipal: {
     backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center',
     marginTop: SPACING.xl,
   },
   boutonPrincipalTexte: { fontFamily: FONTS.bodySemibold, fontSize: 15, color: COLORS.blanc },
-  boutonSecondaire: { paddingVertical: 14, alignItems: 'center', marginTop: SPACING.sm },
-  boutonSecondaireTexte: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.vert },
   lienTexteSecondaire: {
     fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vert, textAlign: 'center', marginTop: SPACING.lg,
   },
-  lienBox: {
-    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: RADIUS.md,
-    padding: SPACING.md, marginBottom: SPACING.lg,
-  },
-  lienTexte: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.vertProfond },
 });

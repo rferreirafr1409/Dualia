@@ -2,11 +2,14 @@
 //
 // "Famille" répond à UNE question : qui compose ma famille, et quelles
 // sont les informations essentielles de mes enfants ? Pas "où puis-je
-// trouver toutes les fonctions de Dualia ?" — ça, c'est déjà le rôle de
-// l'accueil (routeur intelligent), de l'Agenda, du + central et de
-// Messages. À traiter, Finances et Souvenirs/Journal ont donc quitté cet
-// écran : ils ont déjà un point d'entrée clair ailleurs, et les dupliquer
-// ici n'ajoutait que de la charge cognitive.
+// trouver toutes les fonctions de Dualia ?".
+//
+// Documents, Administratif (CAF) et Agenda scolaire ont désormais leur
+// propre porte d'entrée (barre de navigation / fiche enfant filtrée) et ne
+// sont plus dupliqués ici — une information, une seule source, plusieurs
+// chemins pour y accéder. Chaque enfant ouvre sa fiche "L'Essentiel"
+// (app/enfant/[id].tsx), qui elle-même renvoie vers Documents/Agenda/
+// Journal filtrés plutôt que de recréer un second système de stockage.
 
 import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -45,12 +48,13 @@ export default function FamilleScreen() {
     return differenceInYears(new Date(), parseISO(dateNaissance));
   };
 
+  // Organisation familiale : uniquement ce qui n'a pas déjà de porte
+  // d'entrée ailleurs dans l'app. Documents, CAF/Droits & démarches et
+  // Agenda scolaire ont volontairement quitté cette liste.
   const espaceFamilial: { icone: IoniconName; couleur: string; fond: string; titre: string; desc: string; route: string }[] = [
+    { icone: 'home-outline', couleur: COLORS.vert, fond: '#EEF4F1', titre: 'Parents & foyers', desc: 'Qui compose votre famille, et où vivent vos enfants', route: '/parents-foyers' },
     { icone: 'shield-checkmark-outline', couleur: COLORS.vertProfond, fond: '#E8ECEB', titre: t.cadreFamilial, desc: t.cadreFamilialDesc, route: '/validation-cadre' },
-    { icone: 'folder-outline', couleur: COLORS.ardoise, fond: '#EEF1F0', titre: t.documents, desc: t.documentsDesc, route: '/documents' },
-    { icone: 'business-outline', couleur: COLORS.or, fond: '#FBF3DF', titre: t.administratif, desc: t.administratifDesc, route: '/caf' },
     { icone: 'people-outline', couleur: COLORS.terracotta, fond: '#F3E9E4', titre: t.accesTiers, desc: t.accesTiersDesc, route: '/acces-tiers' },
-    { icone: 'school-outline', couleur: COLORS.vert, fond: '#E8F0EB', titre: t.agendaScolaire, desc: t.agendaScolaireDesc, route: '/agenda-scolaire' },
   ];
 
   return (
@@ -63,7 +67,12 @@ export default function FamilleScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {enfants.length === 0 ? (
-          <Pressable style={styles.videCard} onPress={() => router.push('/enfants' as any)}>
+          // Redirige vers /famille lui-même (pas /enfants, écran retiré de
+          // la navigation) : évite un lien mort. L'ajout d'un enfant se
+          // fait aujourd'hui depuis ailleurs dans l'app — voir avec
+          // Ricardo si un formulaire d'ajout doit être intégré ici
+          // directement, en modal.
+          <Pressable style={styles.videCard} onPress={() => router.push('/famille' as any)}>
             <Text style={styles.videTxt}>{t.aucunEnfant}</Text>
             <Text style={styles.videCta}>{t.ajouterEnfantCta}</Text>
           </Pressable>
@@ -71,7 +80,7 @@ export default function FamilleScreen() {
           enfants.map((e) => {
             const ansEnfant = age(e.dateNaissance);
             return (
-              <View key={e.id} style={styles.enfantCard}>
+              <Pressable key={e.id} style={styles.enfantCard} onPress={() => router.push(`/enfant/${e.id}` as any)}>
                 <View style={styles.enfantHeader}>
                   <View style={styles.avatar}>
                     {e.photoUrl ? (
@@ -85,22 +94,11 @@ export default function FamilleScreen() {
                     {ansEnfant !== null ? (
                       <Text style={styles.enfantAge}>{ansEnfant} {langue === 'pt' ? 'anos' : 'ans'}</Text>
                     ) : null}
+                    <Text style={styles.enfantSousTitre}>{t.sante} · {t.sonHistoire}</Text>
                   </View>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
                 </View>
-                <View style={styles.enfantLiens}>
-                  <Pressable style={styles.enfantLien} onPress={() => router.push('/enfants' as any)}>
-                    <Ionicons name="medkit-outline" size={15} color={COLORS.terracotta} />
-                    <Text style={styles.enfantLienTxt}>{t.sante}</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.enfantLien}
-                    onPress={() => router.push({ pathname: '/enfant-histoire', params: { prenom: e.prenom } } as any)}
-                  >
-                    <Ionicons name="book-outline" size={15} color={COLORS.vert} />
-                    <Text style={styles.enfantLienTxt}>{t.sonHistoire}</Text>
-                  </Pressable>
-                </View>
-              </View>
+              </Pressable>
             );
           })
         )}
@@ -143,7 +141,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.blanc, borderRadius: RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.md,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6, elevation: 3,
   },
-  enfantHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.md },
+  enfantHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
   avatar: {
     width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.vert,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
@@ -152,12 +150,7 @@ const styles = StyleSheet.create({
   avatarTxt: { fontFamily: FONTS.bodyBold, fontSize: 17, color: COLORS.blanc },
   enfantPrenom: { fontSize: TYPOGRAPHY.lg, fontWeight: TYPOGRAPHY.semibold, color: COLORS.texte },
   enfantAge: { fontSize: TYPOGRAPHY.xs, color: COLORS.ardoise, marginTop: 1 },
-  enfantLiens: { flexDirection: 'row', gap: SPACING.sm },
-  enfantLien: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: SPACING.sm, borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.bordure,
-  },
-  enfantLienTxt: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.medium, color: COLORS.texte },
+  enfantSousTitre: { fontSize: TYPOGRAPHY.xs, color: COLORS.vert, marginTop: 3 },
 
   sectionLabel: {
     fontFamily: FONTS.bodySemibold, fontSize: 12, letterSpacing: 0.6, textTransform: 'uppercase',

@@ -1,14 +1,49 @@
-﻿export type ParentRole = 'A' | 'B';
+﻿// ---------- Personne / Parent / Foyer ----------
+// Architecture BETA-safe : Personne est l'identité métier canonique.
+// ParentRole ('A' | 'B') reste une couche de compatibilité legacy pour le
+// compte/auth existant (RLS Supabase inchangées) — les nouvelles données
+// utilisent personneId/foyerId, jamais A/B comme fondation.
+
+export interface Personne {
+  id: string;
+  prenom: string;
+  nom?: string;
+  photoUrl?: string;
+  email?: string;
+  telephone?: string;
+}
+
+export type ConfigFoyers = 'deux_foyers' | 'foyer_commun';
+
+export interface Foyer {
+  id: string;
+  nom: string;
+  adresse?: string;
+  ville?: string;
+  codePostal?: string;
+  pays?: string;
+  couleur?: string;
+  adresseVisible: boolean;
+  actif: boolean;
+  estPlaceholder: boolean;
+  personneIds: string[]; // dérivé de foyer_personnes
+  enfantIds: string[];   // dérivé de foyer_enfants
+  // Sous-ensemble d'enfantIds dont ce foyer est la résidence principale.
+  // Vide en garde alternée : l'absence de résidence principale se
+  // représente par l'absence de marquage, jamais par une valeur par défaut.
+  // Optionnel car les états persistés antérieurs ne le contiennent pas.
+  enfantIdsResidencePrincipale?: string[]; // dérivé de foyer_enfants.residence_principale
+}
+
+export type ParentRole = 'A' | 'B';
 export interface Parent {
   id: ParentRole;
   nom: string;
   email: string;
-  couleur: string;
-  // Identifiant réel Supabase (auth.users.id), utilisé en interne par le
-  // store pour les écritures (clé étrangère auteur_id). N'est jamais
-  // affiché à l'écran — les composants continuent d'utiliser id: ParentRole
-  // comme avant.
+  couleur: string; // legacy — la couleur d'identification vit désormais sur Foyer
+  genreParental?: 'mere' | 'pere' | 'autre';
   uuid?: string;
+  personneId?: string; // lien vers Personne — identité métier canonique
 }
 export type TypeGarde =
   | 'résidence_principale'
@@ -20,7 +55,11 @@ export interface EvenementCalendrier {
   titre: string;
   date: string;
   parentId: ParentRole;
+  // Label d'affichage uniquement (prénom), calculé au moment de la
+  // création — pas une source de vérité. Pour filtrer/relier de façon
+  // fiable, utiliser enfantId.
   enfant?: string;
+  enfantId?: string;
   sourceMessageId?: string;
 }
 
@@ -31,6 +70,8 @@ export interface EvenementGarde {
   parentId: ParentRole;
   type: TypeGarde;
   notes?: string;
+  tiersId?: string;
+  foyerId?: string; // nouveau — contexte réel de vie de l'enfant, prioritaire sur parentId quand présent
 }
 export type StatutDecision =
   | 'proposée'
@@ -54,10 +95,6 @@ export interface Message {
   contenu: string;
   dateEnvoi: string;
   statut: StatutMessage;
-  // ---- Modération à l'envoi (filtre + reformulation IA) ----
-  // contenuOriginal n'est renseigné que si l'expéditeur a choisi la
-  // reformulation proposée : contenu devient alors le texte adouci envoyé,
-  // et contenuOriginal garde une trace de ce qui avait été tapé au départ.
   contenuOriginal?: string;
   alerteDetectee?: boolean;
 }
@@ -73,6 +110,7 @@ export interface JournalEntry {
   enfant?: EnfantTag;
   dateRevelation?: string;
   recitCroise?: string;
+  photoUrl?: string;
 }
 export type CategorieDepense = 'sante' | 'ecole' | 'activites' | 'quotidien' | 'vacances' | 'alimentaire' | 'beaute' | 'vetements' | 'transport' | 'maison' | 'autre';
 export interface Depense {
@@ -90,6 +128,15 @@ export interface Depense {
   lignesDetail?: { libelle: string; montant: number }[];
 }
 export type CategorieDocument = 'administratif' | 'sante' | 'ecole' | 'juridique';
+
+// Portee : QUI le document concerne. Axe distinct de la categorie, qui dit
+// DE QUOI il s'agit. Les deux se croisent ("Marlon + Sante", "Famille +
+// Juridique") sans jamais se confondre.
+//   enfant  -> un ou plusieurs enfants, listes dans enfantIds
+//   famille -> l'organisation familiale (livret, jugement, assurance...)
+//   parent  -> un document propre a un parent
+export type DocumentPortee = 'enfant' | 'famille' | 'parent';
+
 export interface DocumentItem {
   id: string;
   nom: string;
@@ -98,6 +145,12 @@ export interface DocumentItem {
   date: string;
   certifie: boolean;
   note?: string;
+  // Chemin dans le bucket prive documents-familiaux, pas une URL publique :
+  // la lecture passe par une URL signee a duree limitee.
+  fichierUrl?: string;
+  dateExpiration?: string;
+  portee: DocumentPortee;
+  enfantIds: string[]; // derive de document_enfants
 }
 
 // ---------- Cadre familial (règles financières issues de la convention) ----------
@@ -115,8 +168,8 @@ export interface ClauseSource {
 export interface ReglePartage {
   id: string;
   categorie: CategorieRegle;
-  partA: number; // %
-  partB: number; // %
+  partA: number;
+  partB: number;
   clauseSource?: ClauseSource;
   conditions?: {
     accordPrealable?: boolean;
@@ -136,14 +189,37 @@ export interface ReglePartage {
 }
 
 export interface CadreFamilial {
-  /** Identifiant réel de la ligne cadre_familial en base — absent tant que rien n'a encore été synchronisé. */
   id?: string;
   regles: ReglePartage[];
   pension?: {
     montant: number;
+    montantParEnfant?: number;
+    nombreEnfantsConcernes?: number;
     periodicite: 'mensuelle' | 'trimestrielle' | 'autre';
     clauseSource?: ClauseSource;
+    indexation?: {
+      indiceReference?: string;
+      dateRevisionAnnuelle?: string;
+      formuleTexteSource?: string;
+      indiceInitialConfirme?: number;
+    };
   };
+  garde?: {
+    autoriteParentale?: string;
+    residencePrincipale?: string;
+    droitVisiteHebergementDescription?: string;
+    transportAChargeDe?: string;
+    confiance?: NiveauConfiance;
+    weekendParite?: 'paires' | 'impaires';
+    weekendJourDebut?: string;
+    weekendJourFin?: string;
+    vacancesScolaires?: string;
+  };
+  datesSpeciales?: {
+    occasion: string;
+    parent?: ParentRole;
+    texteSource?: string;
+  }[];
   documentSource?: {
     id: string;
     type: 'jugement' | 'convention';
@@ -209,7 +285,12 @@ export interface Enfant {
 export interface Moment {
   id: string;
   auteurId: ParentRole;
-  enfant?: string;
+  // Identifiant technique de l'enfant concerné (remplace l'ancien champ
+  // "enfant" en texte libre) — permet un filtrage fiable par enfant sur
+  // le Fil de vie / "Son histoire", cohérent avec Documents et Agenda
+  // scolaire. Le prénom affiché est retrouvé via
+  // enfants.find(e => e.id === enfantId).
+  enfantId?: string;
   texte?: string;
   photoUrl?: string;
   aimePar: ParentRole[];
@@ -217,9 +298,6 @@ export interface Moment {
 }
 
 // ---------- Accès tiers (grands-parents, nounous, école) ----------
-// Volontairement 3 rôles prédéfinis en V1 plutôt que des permissions
-// personnalisables : plus simple à comprendre pour l'utilisateur, plus
-// simple à sécuriser côté RLS Supabase.
 
 export type RoleTiers = 'grand_parent' | 'nounou' | 'ecole_tiers';
 export type StatutTiers = 'invite' | 'actif' | 'revoque';
@@ -232,12 +310,10 @@ export interface Tiers {
   statut: StatutTiers;
   invitePar: ParentRole;
   creeLe: string;
+  peutEtreGardien: boolean;
 }
 
 // ---------- Agenda scolaire (devoirs, absences, sorties, contrôles) ----------
-// Table dédiée plutôt qu'extension de JournalEntry : JournalEntry porte des
-// champs propres au Fil de vie (emoji, liked, récit croisé) qui n'ont pas
-// de sens ici — les mélanger aurait ajouté de la dette, pas évité.
 
 export type TypeAgendaScolaire = 'devoir' | 'absence' | 'sortie' | 'controle';
 
@@ -247,7 +323,7 @@ export interface AgendaScolaireItem {
   titre: string;
   description?: string;
   dateEcheance: string;
-  enfant?: string;
+  enfantId?: string;
   auteurId: ParentRole;
   fait: boolean;
   creeLe: string;

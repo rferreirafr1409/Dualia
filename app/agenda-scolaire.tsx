@@ -3,21 +3,24 @@
 // Devoirs, absences, sorties et contrôles, centralisés et visibles par les
 // deux foyers. Table dédiée (pas une extension du Fil de vie) — voir la
 // note dans types/index.ts.
+//
+// Filtre par enfant basé sur enfantId (identifiant technique), plus fiable
+// que le prénom : deux enfants peuvent partager un prénom, et un prénom
+// peut être modifié. Le prénom ne sert plus qu'à l'affichage.
+//
+// Deux façons d'arriver filtré sur un enfant :
+// - via la route (?enfant=id), depuis la fiche "L'Essentiel" d'un enfant
+// - via les chips manuels si l'utilisateur veut changer de filtre sur place
 
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Platform, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { TRADUCTIONS } from '../constants/i18n';
+import DatePickerField from '../components/DatePickerField';
 import type { TypeAgendaScolaire, AgendaScolaireItem } from '../types';
-
-const TYPES: { valeur: TypeAgendaScolaire; label: string; icone: keyof typeof Ionicons.glyphMap; couleur: string }[] = [
-  { valeur: 'devoir', label: 'Devoir', icone: 'book-outline', couleur: COLORS.vert },
-  { valeur: 'controle', label: 'Contrôle', icone: 'alert-circle-outline', couleur: COLORS.terracotta },
-  { valeur: 'sortie', label: 'Sortie', icone: 'bus-outline', couleur: COLORS.or },
-  { valeur: 'absence', label: 'Absence', icone: 'close-circle-outline', couleur: COLORS.ardoise },
-];
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -27,13 +30,30 @@ function alertCompat(titre: string, message?: string) {
   }
 }
 
-function formatDate(iso: string) {
+function formatDate(iso: string, langue: 'fr' | 'pt' | 'es' | 'en') {
   const d = new Date(iso);
-  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  return d.toLocaleDateString(
+    langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR',
+    { day: 'numeric', month: 'short' }
+  );
 }
 
 export default function AgendaScolaireScreen() {
   const router = useRouter();
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].agendaScolaire;
+
+  // enfant : enfantId passé depuis la fiche "L'Essentiel" pour arriver
+  // directement filtré sur cet enfant.
+  const params = useLocalSearchParams<{ enfant?: string }>();
+
+  const TYPES: { valeur: TypeAgendaScolaire; label: string; icone: keyof typeof Ionicons.glyphMap; couleur: string }[] = [
+    { valeur: 'devoir', label: t.typeDevoir, icone: 'book-outline', couleur: COLORS.vert },
+    { valeur: 'controle', label: t.typeControle, icone: 'alert-circle-outline', couleur: COLORS.terracotta },
+    { valeur: 'sortie', label: t.typeSortie, icone: 'bus-outline', couleur: COLORS.or },
+    { valeur: 'absence', label: t.typeAbsence, icone: 'close-circle-outline', couleur: COLORS.ardoise },
+  ];
+
   const agendaScolaire = useStore((s) => s.agendaScolaire);
   const enfants = useStore((s) => s.enfants);
   const parentActif = useStore((s) => s.parentActif);
@@ -43,41 +63,46 @@ export default function AgendaScolaireScreen() {
   const [modalOuverte, setModalOuverte] = useState(false);
   const [typeChoisi, setTypeChoisi] = useState<TypeAgendaScolaire>('devoir');
   const [titre, setTitre] = useState('');
-  const [dateEcheance, setDateEcheance] = useState('');
+  const [dateChoisie, setDateChoisie] = useState<Date | null>(null);
   const [enfantChoisi, setEnfantChoisi] = useState<string | undefined>(undefined);
-  const [filtreEnfant, setFiltreEnfant] = useState<string | null>(null);
+  const [filtreEnfantId, setFiltreEnfantId] = useState<string | null>(params.enfant ?? null);
+
+  const enfantFiltre = filtreEnfantId ? enfants.find((e) => e.id === filtreEnfantId) ?? null : null;
+  const arriveDepuisRoute = !!params.enfant;
 
   const items = [...agendaScolaire]
-    .filter((a) => !filtreEnfant || a.enfant === filtreEnfant)
+    .filter((a) => !filtreEnfantId || a.enfantId === filtreEnfantId)
     .sort((a, b) => (a.fait === b.fait ? a.dateEcheance.localeCompare(b.dateEcheance) : a.fait ? 1 : -1));
 
+  const reinitialiserFormulaire = () => {
+    setTitre('');
+    setDateChoisie(null);
+    setEnfantChoisi(enfantFiltre?.id);
+    setTypeChoisi('devoir');
+  };
+
   const creerEntree = () => {
-    if (!titre.trim() || !dateEcheance.trim()) {
-      alertCompat('Champs incomplets', 'Indique au moins un titre et une date.');
+    if (!titre.trim() || !dateChoisie) {
+      alertCompat(t.erreurTitreLabel, t.erreurTitreMessage);
       return;
     }
-    const dateIso = /^\d{4}-\d{2}-\d{2}$/.test(dateEcheance.trim())
-      ? new Date(dateEcheance.trim()).toISOString()
-      : new Date().toISOString();
     const nouvelleEntree: AgendaScolaireItem = {
       id: 'agenda-' + Date.now(),
       type: typeChoisi,
       titre: titre.trim(),
-      dateEcheance: dateIso,
-      enfant: enfantChoisi,
+      dateEcheance: dateChoisie.toISOString(),
+      enfantId: enfantChoisi,
       auteurId: parentActif,
       fait: false,
       creeLe: new Date().toISOString(),
     };
     ajouterAgendaScolaire(nouvelleEntree);
-    setTitre('');
-    setDateEcheance('');
-    setEnfantChoisi(undefined);
-    setTypeChoisi('devoir');
+    reinitialiserFormulaire();
     setModalOuverte(false);
   };
 
-  const typeInfo = (type: TypeAgendaScolaire) => TYPES.find((t) => t.valeur === type)!;
+  const typeInfo = (type: TypeAgendaScolaire) => TYPES.find((tp) => tp.valeur === type)!;
+  const prenomDe = (enfantId?: string) => (enfantId ? enfants.find((e) => e.id === enfantId)?.prenom : undefined);
 
   return (
     <View style={styles.screen}>
@@ -85,22 +110,36 @@ export default function AgendaScolaireScreen() {
         <Pressable onPress={() => router.back()} hitSlop={10}>
           <Ionicons name="close" size={22} color={COLORS.vertProfond} />
         </Pressable>
-        <Text style={styles.topbarTitre}>Agenda scolaire</Text>
+        <Text style={styles.topbarTitre}>{t.titre}</Text>
         <View style={{ width: 22 }} />
       </View>
 
-      {enfants.length > 1 ? (
+      {arriveDepuisRoute && enfantFiltre ? (
+        <View style={styles.filtreEnfantBanner}>
+          <Ionicons name="funnel-outline" size={14} color={COLORS.vertProfond} />
+          <Text style={styles.filtreEnfantBannerTexte}>{enfantFiltre.prenom}</Text>
+          <Pressable
+            onPress={() => {
+              router.setParams({ enfant: undefined });
+              setFiltreEnfantId(null);
+            }}
+            hitSlop={8}
+          >
+            <Ionicons name="close-circle" size={16} color={COLORS.ardoise} />
+          </Pressable>
+        </View>
+      ) : enfants.length > 1 ? (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filtresRow} contentContainerStyle={{ paddingHorizontal: SPACING.xl, gap: 8 }}>
-          <Pressable style={[styles.filtreChip, !filtreEnfant && styles.filtreChipActif]} onPress={() => setFiltreEnfant(null)}>
-            <Text style={[styles.filtreChipTexte, !filtreEnfant && styles.filtreChipTexteActif]}>Tous</Text>
+          <Pressable style={[styles.filtreChip, !filtreEnfantId && styles.filtreChipActif]} onPress={() => setFiltreEnfantId(null)}>
+            <Text style={[styles.filtreChipTexte, !filtreEnfantId && styles.filtreChipTexteActif]}>{t.tous}</Text>
           </Pressable>
           {enfants.map((e) => (
             <Pressable
               key={e.id}
-              style={[styles.filtreChip, filtreEnfant === e.prenom && styles.filtreChipActif]}
-              onPress={() => setFiltreEnfant(e.prenom)}
+              style={[styles.filtreChip, filtreEnfantId === e.id && styles.filtreChipActif]}
+              onPress={() => setFiltreEnfantId(e.id)}
             >
-              <Text style={[styles.filtreChipTexte, filtreEnfant === e.prenom && styles.filtreChipTexteActif]}>{e.prenom}</Text>
+              <Text style={[styles.filtreChipTexte, filtreEnfantId === e.id && styles.filtreChipTexteActif]}>{e.prenom}</Text>
             </Pressable>
           ))}
         </ScrollView>
@@ -110,11 +149,12 @@ export default function AgendaScolaireScreen() {
         {items.length === 0 ? (
           <View style={styles.videCard}>
             <Ionicons name="school-outline" size={28} color={COLORS.ardoise} />
-            <Text style={styles.videTexte}>Rien de prévu pour le moment</Text>
+            <Text style={styles.videTexte}>{t.vide}</Text>
           </View>
         ) : (
           items.map((item) => {
             const info = typeInfo(item.type);
+            const prenom = prenomDe(item.enfantId);
             return (
               <Pressable
                 key={item.id}
@@ -132,7 +172,7 @@ export default function AgendaScolaireScreen() {
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.itemTitre, item.fait && styles.itemTitreFait]}>{item.titre}</Text>
                   <Text style={styles.itemMeta}>
-                    {info.label}{item.enfant ? ` · ${item.enfant}` : ''} · {formatDate(item.dateEcheance)}
+                    {info.label}{prenom ? ` · ${prenom}` : ''} · {formatDate(item.dateEcheance, langue)}
                   </Text>
                 </View>
               </Pressable>
@@ -140,73 +180,69 @@ export default function AgendaScolaireScreen() {
           })
         )}
 
-        <Pressable style={styles.ajouterBtn} onPress={() => setModalOuverte(true)}>
+        <Pressable style={styles.ajouterBtn} onPress={() => { reinitialiserFormulaire(); setModalOuverte(true); }}>
           <Ionicons name="add" size={18} color={COLORS.blanc} />
-          <Text style={styles.ajouterTexte}>Ajouter</Text>
+          <Text style={styles.ajouterTexte}>{t.ajouter}</Text>
         </Pressable>
       </ScrollView>
 
       <Modal visible={modalOuverte} animationType="slide" transparent onRequestClose={() => setModalOuverte(false)}>
         <View style={styles.modalFond}>
           <View style={styles.modalCarte}>
-            <Text style={styles.modalTitre}>Ajouter à l'agenda</Text>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={styles.modalTitre}>{t.modalTitre}</Text>
 
-            <View style={styles.typeRow}>
-              {TYPES.map((t) => (
-                <Pressable
-                  key={t.valeur}
-                  style={[styles.typeChip, typeChoisi === t.valeur && { borderColor: t.couleur, backgroundColor: t.couleur + '18' }]}
-                  onPress={() => setTypeChoisi(t.valeur)}
-                >
-                  <Ionicons name={t.icone} size={15} color={typeChoisi === t.valeur ? t.couleur : COLORS.ardoise} />
-                  <Text style={[styles.typeChipTexte, typeChoisi === t.valeur && { color: t.couleur }]}>{t.label}</Text>
+              <View style={styles.typeRow}>
+                {TYPES.map((tp) => (
+                  <Pressable
+                    key={tp.valeur}
+                    style={[styles.typeChip, typeChoisi === tp.valeur && { borderColor: tp.couleur, backgroundColor: tp.couleur + '18' }]}
+                    onPress={() => setTypeChoisi(tp.valeur)}
+                  >
+                    <Ionicons name={tp.icone} size={15} color={typeChoisi === tp.valeur ? tp.couleur : COLORS.ardoise} />
+                    <Text style={[styles.typeChipTexte, typeChoisi === tp.valeur && { color: tp.couleur }]}>{tp.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.label}>{t.champTitre}</Text>
+              <TextInput
+                style={styles.input}
+                value={titre}
+                onChangeText={setTitre}
+                placeholder={t.placeholderTitre}
+                placeholderTextColor={COLORS.ardoise}
+              />
+
+              <View style={{ height: SPACING.md }} />
+              <DatePickerField label={t.champDate} value={dateChoisie} onChange={setDateChoisie} />
+
+              {enfants.length > 0 ? (
+                <>
+                  <Text style={styles.label}>{t.champEnfant}</Text>
+                  <View style={styles.typeRow}>
+                    {enfants.map((e) => (
+                      <Pressable
+                        key={e.id}
+                        style={[styles.typeChip, enfantChoisi === e.id && styles.typeChipEnfantActif]}
+                        onPress={() => setEnfantChoisi(enfantChoisi === e.id ? undefined : e.id)}
+                      >
+                        <Text style={[styles.typeChipTexte, enfantChoisi === e.id && { color: COLORS.vert }]}>{e.prenom}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              ) : null}
+
+              <View style={styles.modalBtns}>
+                <Pressable style={styles.modalBtnAnnuler} onPress={() => setModalOuverte(false)}>
+                  <Text style={styles.modalBtnAnnulerTexte}>{t.annuler}</Text>
                 </Pressable>
-              ))}
-            </View>
-
-            <Text style={styles.label}>Titre</Text>
-            <TextInput
-              style={styles.input}
-              value={titre}
-              onChangeText={setTitre}
-              placeholder="Ex. Exercices de maths p.42"
-              placeholderTextColor={COLORS.ardoise}
-            />
-
-            <Text style={styles.label}>Date (AAAA-MM-JJ)</Text>
-            <TextInput
-              style={styles.input}
-              value={dateEcheance}
-              onChangeText={setDateEcheance}
-              placeholder="2026-09-12"
-              placeholderTextColor={COLORS.ardoise}
-            />
-
-            {enfants.length > 0 ? (
-              <>
-                <Text style={styles.label}>Enfant</Text>
-                <View style={styles.typeRow}>
-                  {enfants.map((e) => (
-                    <Pressable
-                      key={e.id}
-                      style={[styles.typeChip, enfantChoisi === e.prenom && styles.typeChipEnfantActif]}
-                      onPress={() => setEnfantChoisi(enfantChoisi === e.prenom ? undefined : e.prenom)}
-                    >
-                      <Text style={[styles.typeChipTexte, enfantChoisi === e.prenom && { color: COLORS.vert }]}>{e.prenom}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            ) : null}
-
-            <View style={styles.modalBtns}>
-              <Pressable style={styles.modalBtnAnnuler} onPress={() => setModalOuverte(false)}>
-                <Text style={styles.modalBtnAnnulerTexte}>Annuler</Text>
-              </Pressable>
-              <Pressable style={styles.modalBtnEnvoyer} onPress={creerEntree}>
-                <Text style={styles.modalBtnEnvoyerTexte}>Ajouter</Text>
-              </Pressable>
-            </View>
+                <Pressable style={styles.modalBtnEnvoyer} onPress={creerEntree}>
+                  <Text style={styles.modalBtnEnvoyerTexte}>{t.ajouter}</Text>
+                </Pressable>
+              </View>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -221,6 +257,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg, paddingTop: SPACING.xl, paddingBottom: SPACING.md,
   },
   topbarTitre: { fontFamily: FONTS.display, fontSize: 18, color: COLORS.vertProfond },
+
+  filtreEnfantBanner: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#EEF4F1', marginHorizontal: SPACING.xl, marginBottom: SPACING.sm,
+    borderRadius: RADIUS.full, paddingHorizontal: SPACING.md, paddingVertical: 6, alignSelf: 'flex-start',
+  },
+  filtreEnfantBannerTexte: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond },
 
   filtresRow: { flexGrow: 0, marginBottom: SPACING.sm },
   filtreChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16, borderWidth: 1, borderColor: COLORS.bordure, backgroundColor: COLORS.blanc },

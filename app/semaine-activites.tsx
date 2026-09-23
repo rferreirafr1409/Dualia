@@ -6,13 +6,13 @@ import { useRouter } from 'expo-router';
 import {
   eachDayOfInterval, startOfWeek, endOfWeek, isSameDay, isToday, parseISO, format,
 } from 'date-fns';
-import { fr, pt } from 'date-fns/locale';
+import { fr, pt, es, enGB } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 
-const LOCALES = { fr, pt };
+const LOCALES = { fr, pt, es, en: enGB };
 
 export default function SemaineActivitesScreen() {
   const router = useRouter();

@@ -17,6 +17,7 @@ function alertCompat(titre: string, message?: string) {
   }
 }
 import Ionicons from '@expo/vector-icons/Ionicons';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
@@ -24,6 +25,9 @@ import { Depense, CategorieDepense, ParentRole, CategorieRegle, ReglePartage } f
 import DatePickerField from '../../components/DatePickerField';
 import { TRADUCTIONS } from '../../constants/i18n';
 import ErrorBoundary from '../../components/ErrorBoundary';
+import { choisirFichierDocument } from '../../lib/pickerFichierDocument';
+import { TAILLE_MAX_BASE64, estUneImage, normaliserType, typeImageStocke } from '../../lib/typesFichier';
+import { ouvrirFichierStocke } from '../../lib/ouvrirFichierStocke';
 
 const BACKEND_URL = 'https://dualia-backend.vercel.app/api/scan-ticket';
 
@@ -36,6 +40,142 @@ const BACKEND_URL = 'https://dualia-backend.vercel.app/api/scan-ticket';
 // (quality: 0.6) ; le chemin web ne le faisait pas — corrigé ici.
 const PHOTO_MAX_DIMENSION = 1600;
 const PHOTO_JPEG_QUALITY = 0.7;
+
+// Durée de conservation d'un justificatif, en années. Passé ce délai, Dualia
+// le signale aux parents : la suppression reste leur décision, jamais un
+// effacement silencieux. Un justificatif qui disparaît tout seul la veille
+// d'une discussion sur qui a payé quoi serait le pire des services.
+const CONSERVATION_ANNEES = 1;
+
+// Dates au format AAAA-MM-JJ construites sur le calendrier LOCAL. Passer par
+// toISOString() daterait un dépôt fait à 00h30 à Paris de la veille, et
+// l'échéance afficherait un jour de moins dans les fuseaux négatifs.
+function jourLocal(d: Date): string {
+  const mois = String(d.getMonth() + 1).padStart(2, '0');
+  const jour = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mois}-${jour}`;
+}
+
+function dateExpirationJustificatif(): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + CONSERVATION_ANNEES);
+  return jourLocal(d);
+}
+
+// new Date('2027-09-22') est interprété à minuit UTC : en fuseau négatif, la
+// date affichée reculait d'un jour. On reconstruit la date dans le fuseau du
+// parent avant de la mettre en forme.
+function formatJourSeul(jour: string, langue: 'fr' | 'pt' | 'es' | 'en') {
+  const [a, m, j] = jour.split('-').map(Number);
+  if (!a || !m || !j) return jour;
+  return new Date(a, m - 1, j).toLocaleDateString(localeDeLangue(langue), {
+    day: 'numeric', month: 'long', year: 'numeric',
+  });
+}
+
+type PieceJointeEnAttente = { base64: string; contentType: string; nom: string };
+
+type LibellesJustificatif = {
+  joindre: string;
+  justificatif: string;
+  ouvrir: string;
+  supprimer: string;
+  annuler: string;
+  retentionTitre: (n: number) => string;
+  retentionSousTitre: string;
+  retentionModalTitre: string;
+  retentionExplication: string;
+  conserveJusquau: (date: string) => string;
+  echeanceAtteinte: string;
+  confirmerSuppression: (nom: string) => string;
+  typeNonSupporte: string;
+  tropVolumineux: string;
+  heicNonSupporte: string;
+  fichierIllisible: string;
+};
+
+const LIBELLES: Record<string, LibellesJustificatif> = {
+  fr: {
+    joindre: 'Joindre un justificatif',
+    justificatif: 'Justificatif',
+    ouvrir: 'Ouvrir',
+    supprimer: 'Supprimer',
+    annuler: 'Annuler',
+    retentionTitre: (n) => (n === 1 ? '1 justificatif à examiner' : `${n} justificatifs à examiner`),
+    retentionSousTitre: "Un an de conservation atteint",
+    retentionModalTitre: 'Conservation des justificatifs',
+    retentionExplication:
+      "Dualia conserve chaque justificatif un an à compter de son dépôt. Passé ce délai, il vous le signale : la suppression reste votre décision, et celle de l'autre parent.",
+    conserveJusquau: (date) => `Conservé jusqu'au ${date}`,
+    echeanceAtteinte: 'Échéance atteinte',
+    confirmerSuppression: (nom) => `Supprimer définitivement « ${nom} » ? Cette action est irréversible.`,
+    typeNonSupporte: 'Format non accepté. PDF, Word, Excel, texte, JPG, PNG.',
+    tropVolumineux: 'Fichier trop volumineux : 10 Mo maximum.',
+    heicNonSupporte:
+      "Cette photo est au format HEIC, que la plupart des ordinateurs n'ouvrent pas. Sur iPhone : Réglages › Appareil photo › Formats › « Plus compatible ».",
+    fichierIllisible: 'Fichier illisible.',
+  },
+  pt: {
+    joindre: 'Anexar comprovativo',
+    justificatif: 'Comprovativo',
+    ouvrir: 'Abrir',
+    supprimer: 'Eliminar',
+    annuler: 'Cancelar',
+    retentionTitre: (n) => (n === 1 ? '1 comprovativo a rever' : `${n} comprovativos a rever`),
+    retentionSousTitre: 'Um ano de conservação atingido',
+    retentionModalTitre: 'Conservação dos comprovativos',
+    retentionExplication:
+      'A Dualia conserva cada comprovativo durante um ano a partir do depósito. Findo esse prazo, avisa-o: a eliminação continua a ser a sua decisão, e a do outro progenitor.',
+    conserveJusquau: (date) => `Conservado até ${date}`,
+    echeanceAtteinte: 'Prazo atingido',
+    confirmerSuppression: (nom) => `Eliminar definitivamente «${nom}»? Esta ação é irreversível.`,
+    typeNonSupporte: 'Formato não aceite. PDF, Word, Excel, texto, JPG, PNG.',
+    tropVolumineux: 'Ficheiro demasiado grande: 10 MB no máximo.',
+    heicNonSupporte:
+      'Esta foto está no formato HEIC, que a maioria dos computadores não abre. No iPhone: Definições › Câmara › Formatos › «Mais compatível».',
+    fichierIllisible: 'Ficheiro ilegível.',
+  },
+  es: {
+    joindre: 'Adjuntar justificante',
+    justificatif: 'Justificante',
+    ouvrir: 'Abrir',
+    supprimer: 'Eliminar',
+    annuler: 'Cancelar',
+    retentionTitre: (n) => (n === 1 ? '1 justificante por revisar' : `${n} justificantes por revisar`),
+    retentionSousTitre: 'Un año de conservación alcanzado',
+    retentionModalTitre: 'Conservación de los justificantes',
+    retentionExplication:
+      'Dualia conserva cada justificante un año desde su depósito. Pasado ese plazo, te avisa: la eliminación sigue siendo tu decisión, y la del otro progenitor.',
+    conserveJusquau: (date) => `Conservado hasta el ${date}`,
+    echeanceAtteinte: 'Plazo alcanzado',
+    confirmerSuppression: (nom) => `¿Eliminar definitivamente «${nom}»? Esta acción es irreversible.`,
+    typeNonSupporte: 'Formato no aceptado. PDF, Word, Excel, texto, JPG, PNG.',
+    tropVolumineux: 'Archivo demasiado grande: 10 MB como máximo.',
+    heicNonSupporte:
+      'Esta foto está en formato HEIC, que la mayoría de los ordenadores no abre. En iPhone: Ajustes › Cámara › Formatos › «Más compatible».',
+    fichierIllisible: 'Archivo ilegible.',
+  },
+  en: {
+    joindre: 'Attach a receipt',
+    justificatif: 'Receipt',
+    ouvrir: 'Open',
+    supprimer: 'Delete',
+    annuler: 'Cancel',
+    retentionTitre: (n) => (n === 1 ? '1 receipt to review' : `${n} receipts to review`),
+    retentionSousTitre: 'One year of storage reached',
+    retentionModalTitre: 'Receipt retention',
+    retentionExplication:
+      'Dualia keeps each receipt for one year from the day it was added. After that it tells you: deleting it stays your decision, and the other parent’s.',
+    conserveJusquau: (date) => `Kept until ${date}`,
+    echeanceAtteinte: 'Retention reached',
+    confirmerSuppression: (nom) => `Permanently delete “${nom}”? This cannot be undone.`,
+    typeNonSupporte: 'Format not accepted. PDF, Word, Excel, text, JPG, PNG.',
+    tropVolumineux: 'File too large: 10 MB maximum.',
+    heicNonSupporte:
+      'This photo is in HEIC format, which most computers cannot open. On iPhone: Settings › Camera › Formats › "Most Compatible".',
+    fichierIllisible: 'Unreadable file.',
+  },
+};
 
 // Correspondance entre les catégories de dépense (11 valeurs, granulaires)
 // et les catégories de règle du cadre familial (4 valeurs, issues de la
@@ -124,14 +264,18 @@ function formatMontant(n: number): string {
   return `${n.toFixed(2)} €`;
 }
 
-function formatDateCourt(isoDate: string, langue: 'fr' | 'pt') {
-  const d = new Date(isoDate);
-  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'short' });
+function localeDeLangue(langue: 'fr' | 'pt' | 'es' | 'en') {
+  return langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
 }
 
-function formatDateLong(isoDate: string, langue: 'fr' | 'pt') {
+function formatDateCourt(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
   const d = new Date(isoDate);
-  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+  return d.toLocaleDateString(localeDeLangue(langue), { day: 'numeric', month: 'short' });
+}
+
+function formatDateLong(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
+  const d = new Date(isoDate);
+  return d.toLocaleDateString(localeDeLangue(langue), { day: 'numeric', month: 'long', year: 'numeric' });
 }
 
 // Sur les tickets complexes (remises par article, poids, taxes de dépôt...),
@@ -171,9 +315,13 @@ function FinancesScreenInner() {
   const parentActif = useStore((s) => s.parentActif);
   const ajouterDepense = useStore((s) => s.ajouterDepense);
   const reglerDepense = useStore((s) => s.reglerDepense);
+  const televerserPieceJointe = useStore((s) => s.televerserPieceJointe);
+  const supprimerJustificatif = useStore((s) => s.supprimerJustificatif);
   const langue = useStore((s) => s.langue);
-  const cadreFamilial = useStore((s) => s.cadreFamilial);const router = useRouter();
+  const cadreFamilial = useStore((s) => s.cadreFamilial);
+  const router = useRouter();
   const t = TRADUCTIONS[langue].finances;
+  const l = LIBELLES[langue] ?? LIBELLES.fr;
 
   const [modalVisible, setModalVisible] = useState(false);
   const [scanLoading, setScanLoading] = useState(false);
@@ -194,6 +342,28 @@ function FinancesScreenInner() {
   const [detailDepense, setDetailDepense] = useState<Depense | null>(null);
   const [scanDate, setScanDate] = useState<Date | null>(null);
 
+  // Justificatif en attente d'envoi. Il est téléversé une seule fois, à
+  // l'enregistrement : un ticket scanné puis abandonné ne doit rien laisser
+  // derrière lui dans le bucket.
+  const [formJustificatif, setFormJustificatif] = useState<PieceJointeEnAttente | null>(null);
+  const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  const [retentionVisible, setRetentionVisible] = useState(false);
+
+  const messagePourErreur = (err: any): string | undefined => {
+    switch (err?.message) {
+      case 'fichier_heic':
+        return l.heicNonSupporte;
+      case 'type_non_supporte':
+        return l.typeNonSupporte;
+      case 'fichier_trop_volumineux':
+        return l.tropVolumineux;
+      case 'fichier_illisible':
+        return l.fichierIllisible;
+      default:
+        return err?.message;
+    }
+  };
+
   // Ne retrouve une règle que si le cadre familial dans son ensemble a été
   // validé par l'utilisateur (statut 'valide'), et que la règle elle-même a
   // le statut 'validee' — jamais une règle encore 'a_verifier' ou 'rejetee'.
@@ -207,6 +377,16 @@ function FinancesScreenInner() {
   };
 
   const regleActive = trouverRegleValidee(formCategorie);
+
+  // Justificatifs dont l'année de conservation est écoulée. Comparaison de
+  // chaînes ISO (AAAA-MM-JJ) : ordonnées lexicalement, elles se comparent
+  // sans fuseau horaire ni heure, donc sans décalage d'un jour.
+  const justificatifsEchus = useMemo(() => {
+    const aujourdHui = jourLocal(new Date());
+    return depenses.filter(
+      (d) => d.justificatifUrl && d.justificatifExpireLe && d.justificatifExpireLe <= aujourdHui
+    );
+  }, [depenses]);
 
   // Solde "qui doit à qui" : uniquement sur les dépenses non réglées (une
   // fois marquée "réglée", une dépense ne doit plus peser sur le solde),
@@ -240,6 +420,7 @@ function FinancesScreenInner() {
     setFormPhotoUri(undefined);
     setFormPartage('50/50');
     setWhyOpen(false);
+    setFormJustificatif(null);
   };
 
   // Quand la catégorie change, on propose automatiquement la règle du cadre
@@ -263,7 +444,7 @@ function FinancesScreenInner() {
       return;
     }
     if (!ImagePicker) {
-      alertCompat(t.scanEchec, "Le scan photo est disponible uniquement sur l\u0027application mobile.");
+      alertCompat(t.scanEchec, "Le scan photo est disponible uniquement sur l'application mobile.");
       return;
     }
     const permission = depuisCamera
@@ -283,6 +464,21 @@ function FinancesScreenInner() {
 
     const asset = result.assets[0];
     setFormPhotoUri(asset.uri);
+
+    // La photo du ticket devient le justificatif de la dépense. Auparavant
+    // elle servait à l'IA puis disparaissait : le parent croyait avoir gardé
+    // sa preuve, et il ne restait qu'un montant.
+    if (asset.base64 && asset.base64.length <= TAILLE_MAX_BASE64) {
+      setFormJustificatif({
+        base64: asset.base64,
+        contentType: typeImageStocke(asset.mimeType),
+        nom: (asset as any).fileName || `ticket-${Date.now()}.jpg`,
+      });
+    } else if (asset.base64) {
+      // La lecture du ticket par l'IA reste possible ; seule la conservation
+      // du fichier est abandonnée, et on le dit.
+      alertCompat(t.erreur, l.tropVolumineux);
+    }
     setScanLoading(true);
 
     try {
@@ -319,6 +515,7 @@ function FinancesScreenInner() {
   const traiterFichierWeb = (event: any, depuisCamera: boolean) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    const nomFichier = file.name || `ticket-${Date.now()}.jpg`;
     const reader = new FileReader();
     reader.onload = async () => {
       const dataUrlOriginal = reader.result as string;
@@ -329,6 +526,7 @@ function FinancesScreenInner() {
         // de la photo (les photos Android peuvent être très volumineuses).
         const { dataUrl, base64, mediaType } = await compresserImageWeb(dataUrlOriginal);
         setFormPhotoUri(dataUrl);
+        setFormJustificatif({ base64, contentType: mediaType, nom: nomFichier });
 
         const response = await fetchAvecRetry(BACKEND_URL, {
           method: 'POST',
@@ -358,7 +556,81 @@ function FinancesScreenInner() {
     event.target.value = '';
   };
 
-  const soumettre = () => {
+  const lireFichierEnBase64 = async (uri: string): Promise<string> => {
+    if (Platform.OS === 'web') {
+      const reponse = await fetch(uri);
+      const blob = await reponse.blob();
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+    return await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
+  };
+
+  // Troisième chemin, distinct des deux boutons de scan : ici on ne lit rien,
+  // on rattache une facture telle quelle (PDF d'un orthodontiste, relevé de
+  // la cantine...). Le scan devine un montant ; le justificatif prouve.
+  const choisirJustificatif = async () => {
+    try {
+      const pick = await choisirFichierDocument();
+      if (!pick) return;
+      const contentType = normaliserType(pick.mimeType, pick.name);
+      const base64 = pick.uri.startsWith('data:')
+        ? pick.uri.split(',')[1]
+        : await lireFichierEnBase64(pick.uri);
+      setFormJustificatif({ base64, contentType, nom: pick.name });
+    } catch (err: any) {
+      console.error('[Dualia] Échec sélection du justificatif :', err);
+      alertCompat(t.erreur, messagePourErreur(err));
+    }
+  };
+
+  const ouvrirJustificatif = async (dep: Depense) => {
+    if (!dep.justificatifUrl) return;
+    try {
+      await ouvrirFichierStocke(dep.justificatifUrl);
+    } catch (err: any) {
+      console.error('[Dualia] Échec ouverture du justificatif :', err);
+      alertCompat(t.erreur, err?.message);
+    }
+  };
+
+  const demanderSuppressionJustificatif = (dep: Depense) => {
+    const chemin = dep.justificatifUrl;
+    if (!chemin) return;
+    const message = l.confirmerSuppression(dep.justificatifNom || dep.description);
+    const confirmer = () => {
+      // On passe le chemin, pas l'identifiant : detailDepense est un
+      // instantané, et une dépense tout juste créée voit son id local
+      // remplacé par celui de Supabase dès la fin de la synchronisation.
+      supprimerJustificatif(chemin);
+      setDetailDepense((actuel) =>
+        actuel && actuel.justificatifUrl === chemin
+          ? {
+              ...actuel,
+              justificatifUrl: undefined,
+              justificatifNom: undefined,
+              justificatifType: undefined,
+              justificatifExpireLe: undefined,
+            }
+          : actuel
+      );
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm(message)) confirmer();
+      return;
+    }
+    Alert.alert(l.supprimer, message, [
+      { text: l.annuler, style: 'cancel' },
+      { text: l.supprimer, style: 'destructive', onPress: confirmer },
+    ]);
+  };
+
+  const soumettre = async () => {
+    if (envoiEnCours) return;
 
     const montant = parseFloat(formMontant.replace(',', '.'));
     if (!montant || montant <= 0) {
@@ -383,25 +655,40 @@ function FinancesScreenInner() {
       partB = parentActif === 'B' ? montant : 0;
     }
 
-    const nouvelle: Depense = {
-      id: `dep-${Date.now()}`,
-      categorie: formCategorie,
-      montant,
-      description: formDescription || t.depenseSansTitre,
-      auteurId: parentActif,
-      date: formDate.toISOString(),
-      rembourse: false,
-      partA,
-      partB,
-      photoUri: formPhotoUri,
-      commercant: formCommercant || undefined,
-    };
+    setEnvoiEnCours(true);
+    try {
+      const piece = formJustificatif ? await televerserPieceJointe(formJustificatif) : null;
 
-    ajouterDepense(nouvelle);
-    setModalVisible(false);
+      const nouvelle: Depense = {
+        id: `dep-${Date.now()}`,
+        categorie: formCategorie,
+        montant,
+        description: formDescription || t.depenseSansTitre,
+        auteurId: parentActif,
+        date: formDate.toISOString(),
+        rembourse: false,
+        partA,
+        partB,
+        photoUri: formPhotoUri,
+        commercant: formCommercant || undefined,
+        justificatifUrl: piece?.chemin,
+        justificatifNom: piece?.nom,
+        justificatifType: piece?.type,
+        justificatifExpireLe: piece ? dateExpirationJustificatif() : undefined,
+      };
+
+      ajouterDepense(nouvelle);
+      setModalVisible(false);
+    } catch (err: any) {
+      console.error('[Dualia] Échec enregistrement de la dépense :', err);
+      alertCompat(t.erreur, messagePourErreur(err));
+    } finally {
+      setEnvoiEnCours(false);
+    }
   };
 
-  const soumettreLignesCategorisees = () => {
+  const soumettreLignesCategorisees = async () => {
+    if (envoiEnCours) return;
     const groupes: Record<string, number> = {};
     scanLignes.forEach((ligne) => {
       const cat = ligne.categorie || 'autre';
@@ -411,52 +698,99 @@ function FinancesScreenInner() {
     const dateFinale = scanDate || new Date();
     const commercantFinal = scanCommercant || undefined;
 
-    Object.entries(groupes).forEach(([cat, montantCat], index) => {
-      // Si le mode "selon votre cadre familial" est actif globalement et
-      // qu'une règle validée existe pour CETTE catégorie précise, on
-      // l'applique ; sinon on retombe sur 50/50 pour ce groupe-là plutôt
-      // que d'inventer une répartition.
-      const regleGroupe = formPartage === 'regle' ? trouverRegleValidee(cat as CategorieDepense) : undefined;
-      let partA: number;
-      let partB: number;
-      if (regleGroupe) {
-        partA = montantCat * (regleGroupe.partA / 100);
-        partB = montantCat * (regleGroupe.partB / 100);
-      } else if (formPartage === 'total') {
-        partA = parentActif === 'A' ? montantCat : 0;
-        partB = parentActif === 'B' ? montantCat : 0;
-      } else {
-        partA = montantCat / 2;
-        partB = montantCat / 2;
-      }
-      const nouvelle: Depense = {
-        id: `dep-${Date.now()}-${index}`,
-        categorie: cat as CategorieDepense,
-        montant: montantCat,
-        description: commercantFinal ? (commercantFinal + ' - ' + (t.categories[cat as keyof typeof t.categories] ?? cat)) : t.depenseSansTitre,
-        auteurId: parentActif,
-        date: dateFinale.toISOString(),
-        rembourse: false,
-        partA,
-        partB,
-        commercant: commercantFinal,
-        lignesDetail: scanLignes.filter((l) => (l.categorie || 'autre') === cat).map((l) => ({ libelle: l.libelle, montant: l.montant })),
-      };
-      ajouterDepense(nouvelle);
-    });
+    setEnvoiEnCours(true);
+    try {
+      // Un seul envoi du ticket, partagé par toutes les dépenses issues de ce
+      // récapitulatif : trois copies du même fichier seraient trois fois le
+      // même document à supprimer un an plus tard.
+      const piece = formJustificatif ? await televerserPieceJointe(formJustificatif) : null;
+      const expireLe = piece ? dateExpirationJustificatif() : undefined;
 
-    setScanRecapVisible(false);
-    setModalVisible(false);
-    setScanLignes([]);
+      Object.entries(groupes).forEach(([cat, montantCat], index) => {
+        // Si le mode "selon votre cadre familial" est actif globalement et
+        // qu'une règle validée existe pour CETTE catégorie précise, on
+        // l'applique ; sinon on retombe sur 50/50 pour ce groupe-là plutôt
+        // que d'inventer une répartition.
+        const regleGroupe = formPartage === 'regle' ? trouverRegleValidee(cat as CategorieDepense) : undefined;
+        let partA: number;
+        let partB: number;
+        if (regleGroupe) {
+          partA = montantCat * (regleGroupe.partA / 100);
+          partB = montantCat * (regleGroupe.partB / 100);
+        } else if (formPartage === 'total') {
+          partA = parentActif === 'A' ? montantCat : 0;
+          partB = parentActif === 'B' ? montantCat : 0;
+        } else {
+          partA = montantCat / 2;
+          partB = montantCat / 2;
+        }
+        const nouvelle: Depense = {
+          id: `dep-${Date.now()}-${index}`,
+          categorie: cat as CategorieDepense,
+          montant: montantCat,
+          description: commercantFinal ? (commercantFinal + ' - ' + (t.categories[cat as keyof typeof t.categories] ?? cat)) : t.depenseSansTitre,
+          auteurId: parentActif,
+          date: dateFinale.toISOString(),
+          rembourse: false,
+          partA,
+          partB,
+          commercant: commercantFinal,
+          lignesDetail: scanLignes.filter((l2) => (l2.categorie || 'autre') === cat).map((l2) => ({ libelle: l2.libelle, montant: l2.montant })),
+          justificatifUrl: piece?.chemin,
+          justificatifNom: piece?.nom,
+          justificatifType: piece?.type,
+          justificatifExpireLe: expireLe,
+        };
+        ajouterDepense(nouvelle);
+      });
+
+      setScanRecapVisible(false);
+      setModalVisible(false);
+      setScanLignes([]);
+      setFormJustificatif(null);
+    } catch (err: any) {
+      console.error('[Dualia] Échec enregistrement du récapitulatif :', err);
+      alertCompat(t.erreur, messagePourErreur(err));
+    } finally {
+      setEnvoiEnCours(false);
+    }
   };
 
   const parentNom = (id: ParentRole) => parents[id]?.nom ?? id;
 
+  const renderPieceJointeForm = () =>
+    formJustificatif ? (
+      <View style={styles.pieceJointe}>
+        <Ionicons
+          name={estUneImage(formJustificatif.contentType) ? 'image-outline' : 'document-attach-outline'}
+          size={17}
+          color={COLORS.vert}
+        />
+        <Text style={styles.pieceJointeNom} numberOfLines={1}>{formJustificatif.nom}</Text>
+        <Pressable onPress={() => setFormJustificatif(null)} hitSlop={10}>
+          <Ionicons name="close-circle" size={18} color={COLORS.ardoise} />
+        </Pressable>
+      </View>
+    ) : (
+      <Pressable style={styles.joindreBtn} onPress={choisirJustificatif} disabled={scanLoading}>
+        <Ionicons name="attach-outline" size={18} color={COLORS.vert} />
+        <Text style={styles.joindreBtnTexte}>{l.joindre}</Text>
+      </Pressable>
+    );
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+        {/* Action principale en haut à droite, comme Documents et Journal.
+            Aucun bouton flottant : la bulle de retour BETA se positionne par
+            rapport à la fenêtre, un bouton d'écran par rapport à sa zone de
+            contenu — les superposer en bas à droite est inévitable. */}
         <View style={styles.header}>
           <Text style={styles.title}>{t.titre}</Text>
+          <Pressable style={styles.ajouterBtn} onPress={ouvrirModal}>
+            <Ionicons name="add" size={17} color={COLORS.blanc} />
+            <Text style={styles.ajouterBtnTexte} numberOfLines={1}>{t.ajouterDepense}</Text>
+          </Pressable>
         </View>
 
         <View style={styles.soldeCard}>
@@ -471,7 +805,22 @@ function FinancesScreenInner() {
           <Text style={styles.soldeMontantSecondaire}>{formatMontant(Math.abs(soldes.solde))}</Text>
         </View>
 
-        <Text style={styles.sectionTitre}>{t.depensesRecentes}</Text>        {cadreFamilial && (
+        {/* Rappel de conservation. N'apparaît que s'il y a quelque chose à
+            décider : une carte permanente serait un bandeau de plus. */}
+        {justificatifsEchus.length > 0 && (
+          <Pressable style={styles.retentionCard} onPress={() => setRetentionVisible(true)}>
+            <Ionicons name="time-outline" size={20} color={COLORS.or} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.retentionTitre}>{l.retentionTitre(justificatifsEchus.length)}</Text>
+              <Text style={styles.retentionSousTitre}>{l.retentionSousTitre}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
+          </Pressable>
+        )}
+
+        {/* Le cadre familial n'est pas une dépense : il passe avant le titre
+            de section, sinon il apparaît listé sous « Dépenses récentes ». */}
+        {cadreFamilial && (
           <Pressable style={styles.cadreCard} onPress={() => router.push('/validation-cadre' as any)}>
             <View style={styles.cadreCardGauche}>
               <Ionicons
@@ -491,6 +840,8 @@ function FinancesScreenInner() {
             <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
           </Pressable>
         )}
+
+        <Text style={styles.sectionTitre}>{t.depensesRecentes}</Text>
 
         {depenses.length === 0 && (
           <Text style={styles.videTexte}>{t.aucuneDepense}</Text>
@@ -519,16 +870,14 @@ function FinancesScreenInner() {
                     <Text style={styles.badgeEnAttente}>{t.marquerRegle}</Text>
                   </Pressable>
                 )}
+                {dep.justificatifUrl ? (
+                  <Ionicons name="attach-outline" size={14} color={COLORS.ardoise} style={{ marginTop: 4 }} />
+                ) : null}
               </View>
             </Pressable>
           );
         })}
       </ScrollView>
-
-      <Pressable style={styles.fab} onPress={ouvrirModal}>
-        <Ionicons name="add" size={26} color={COLORS.blanc} />
-        <Text style={styles.fabTexte}>{t.ajouterDepense}</Text>
-      </Pressable>
 
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
@@ -541,6 +890,10 @@ function FinancesScreenInner() {
                 </Pressable>
               </View>
 
+              {/* Deux rangées volontairement distinctes : en haut, lire le
+                  ticket pour pré-remplir le formulaire ; en dessous, joindre
+                  une pièce sans rien lire. Mélanger les trois boutons ferait
+                  croire que la facture PDF va aussi être analysée. */}
               <View style={styles.scanRow}>
                 <Pressable style={styles.scanBtn} onPress={() => lancerScan(true)} disabled={scanLoading}>
                   <Ionicons name="camera-outline" size={18} color={COLORS.vert} />
@@ -551,6 +904,9 @@ function FinancesScreenInner() {
                   <Text style={styles.scanBtnTexte}>{t.choisirPhoto}</Text>
                 </Pressable>
               </View>
+
+              {renderPieceJointeForm()}
+
               {Platform.OS === 'web' ? React.createElement('input', {
                 ref: webCameraInputRef, type: 'file', accept: 'image/*', capture: 'environment',
                 style: { display: 'none' }, onChange: (e: any) => traiterFichierWeb(e, true),
@@ -673,8 +1029,16 @@ function FinancesScreenInner() {
                 </>
               ) : null}
 
-              <Pressable style={styles.submitBtn} onPress={soumettre}>
-                <Text style={styles.submitBtnTexte}>{t.enregistrer}</Text>
+              <Pressable
+                style={[styles.submitBtn, envoiEnCours && styles.submitBtnDisabled]}
+                onPress={soumettre}
+                disabled={envoiEnCours}
+              >
+                {envoiEnCours ? (
+                  <ActivityIndicator color={COLORS.blanc} />
+                ) : (
+                  <Text style={styles.submitBtnTexte}>{t.enregistrer}</Text>
+                )}
               </Pressable>
             </ScrollView>
           </View>
@@ -733,6 +1097,17 @@ function FinancesScreenInner() {
                 );
               })()}
 
+              {formJustificatif ? (
+                <View style={[styles.pieceJointe, { marginTop: SPACING.md }]}>
+                  <Ionicons
+                    name={estUneImage(formJustificatif.contentType) ? 'image-outline' : 'document-attach-outline'}
+                    size={17}
+                    color={COLORS.vert}
+                  />
+                  <Text style={styles.pieceJointeNom} numberOfLines={1}>{formJustificatif.nom}</Text>
+                </View>
+              ) : null}
+
               <Text style={styles.label}>{t.repartition}</Text>
               <View style={styles.categorieRow}>
                 <Pressable
@@ -761,8 +1136,16 @@ function FinancesScreenInner() {
                 </Pressable>
               </View>
 
-              <Pressable style={styles.submitBtn} onPress={soumettreLignesCategorisees}>
-                <Text style={styles.submitBtnTexte}>{t.recapEnregistrer}</Text>
+              <Pressable
+                style={[styles.submitBtn, envoiEnCours && styles.submitBtnDisabled]}
+                onPress={soumettreLignesCategorisees}
+                disabled={envoiEnCours}
+              >
+                {envoiEnCours ? (
+                  <ActivityIndicator color={COLORS.blanc} />
+                ) : (
+                  <Text style={styles.submitBtnTexte}>{t.recapEnregistrer}</Text>
+                )}
               </Pressable>
             </ScrollView>
           </View>
@@ -806,6 +1189,46 @@ function FinancesScreenInner() {
                 <Text style={styles.recapLigneMontant}>{detailDepense?.rembourse ? t.regle : t.marquerRegle}</Text>
               </View>
 
+              {/* Justificatif : ouverture par URL signée d'une heure, et
+                  suppression à la demande, sans attendre l'échéance. */}
+              {detailDepense?.justificatifUrl ? (
+                <>
+                  <Text style={[styles.label, { marginTop: SPACING.md }]}>{l.justificatif}</Text>
+                  <View style={styles.justificatifLigne}>
+                    <Ionicons
+                      name={estUneImage(detailDepense.justificatifType ?? '') ? 'image-outline' : 'document-attach-outline'}
+                      size={18}
+                      color={COLORS.vert}
+                    />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.justificatifNom} numberOfLines={1}>
+                        {detailDepense.justificatifNom || l.justificatif}
+                      </Text>
+                      {detailDepense.justificatifExpireLe ? (
+                        <Text style={styles.justificatifMeta}>
+                          {detailDepense.justificatifExpireLe <= jourLocal(new Date())
+                            ? l.echeanceAtteinte
+                            : l.conserveJusquau(formatJourSeul(detailDepense.justificatifExpireLe, langue))}
+                        </Text>
+                      ) : null}
+                    </View>
+                  </View>
+                  <View style={styles.justificatifActions}>
+                    <Pressable style={styles.justificatifBtn} onPress={() => detailDepense && ouvrirJustificatif(detailDepense)}>
+                      <Ionicons name="open-outline" size={16} color={COLORS.vert} />
+                      <Text style={styles.justificatifBtnTexte}>{l.ouvrir}</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.justificatifBtn}
+                      onPress={() => detailDepense && demanderSuppressionJustificatif(detailDepense)}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={COLORS.terracotta} />
+                      <Text style={[styles.justificatifBtnTexte, { color: COLORS.terracotta }]}>{l.supprimer}</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : null}
+
               {/* Détail ligne par ligne, uniquement s'il existe (ticket scanné multi-articles) */}
               {detailDepense?.lignesDetail && detailDepense.lignesDetail.length > 0 ? (
                 <>
@@ -839,14 +1262,74 @@ function FinancesScreenInner() {
           </View>
         </View>
       </Modal>
+
+      {/* Rappel de conservation : la liste de ce qui a dépassé un an, et rien
+          d'autre. Chaque suppression est confirmée séparément — un « tout
+          supprimer » sans retour en arrière sur des preuves de paiement
+          serait un piège. */}
+      <Modal visible={retentionVisible} animationType="slide" transparent onRequestClose={() => setRetentionVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitre}>{l.retentionModalTitre}</Text>
+                <Pressable onPress={() => setRetentionVisible(false)}>
+                  <Ionicons name="close" size={24} color={COLORS.vertProfond} />
+                </Pressable>
+              </View>
+
+              <Text style={styles.retentionExplication}>{l.retentionExplication}</Text>
+
+              {justificatifsEchus.map((dep) => (
+                <View key={dep.id} style={styles.justificatifLigne}>
+                  <Ionicons
+                    name={estUneImage(dep.justificatifType ?? '') ? 'image-outline' : 'document-attach-outline'}
+                    size={18}
+                    color={COLORS.ardoise}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.justificatifNom} numberOfLines={1}>
+                      {dep.justificatifNom || dep.description}
+                    </Text>
+                    <Text style={styles.justificatifMeta}>
+                      {formatMontant(dep.montant)} · {formatDateLong(dep.date, langue)}
+                    </Text>
+                  </View>
+                  <Pressable onPress={() => ouvrirJustificatif(dep)} hitSlop={8} style={{ padding: 4 }}>
+                    <Ionicons name="open-outline" size={18} color={COLORS.vert} />
+                  </Pressable>
+                  <Pressable onPress={() => demanderSuppressionJustificatif(dep)} hitSlop={8} style={{ padding: 4 }}>
+                    <Ionicons name="trash-outline" size={18} color={COLORS.terracotta} />
+                  </Pressable>
+                </View>
+              ))}
+
+              {justificatifsEchus.length === 0 ? (
+                <Text style={styles.videTexte}>—</Text>
+              ) : null}
+
+              <View style={{ height: SPACING.lg }} />
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.ivoire },
-  header: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.sm },
-  title: { fontFamily: FONTS.display, fontSize: 26, color: COLORS.vertProfond },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: SPACING.sm,
+    paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.sm,
+  },
+  title: { fontFamily: FONTS.display, fontSize: 26, color: COLORS.vertProfond, flexShrink: 1 },
+  ajouterBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, flexShrink: 0,
+    backgroundColor: COLORS.vert, borderRadius: RADIUS.full,
+    paddingVertical: 9, paddingHorizontal: 14,
+  },
+  ajouterBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.blanc },
   soldeCard: {
     marginHorizontal: SPACING.lg, backgroundColor: COLORS.vertProfond, borderRadius: RADIUS.lg,
     padding: SPACING.lg, marginBottom: SPACING.lg,
@@ -854,7 +1337,19 @@ const styles = StyleSheet.create({
   soldeLabel: { fontFamily: FONTS.body, fontSize: 12.5, color: 'rgba(255,255,255,0.7)', textTransform: 'uppercase' },
   soldeMontant: { fontFamily: FONTS.display, fontSize: 30, color: COLORS.blanc, marginTop: 2, marginBottom: SPACING.sm },
   soldeSeparateur: { height: 1, backgroundColor: 'rgba(255,255,255,0.15)', marginVertical: SPACING.sm },
-  soldeMontantSecondaire: { fontFamily: FONTS.displaySemibold, fontSize: 20, color: COLORS.or, marginTop: 2 },  cadreCard: {
+  soldeMontantSecondaire: { fontFamily: FONTS.displaySemibold, fontSize: 20, color: COLORS.or, marginTop: 2 },
+  retentionCard: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    backgroundColor: COLORS.blanc, borderRadius: RADIUS.md, padding: SPACING.md,
+    marginHorizontal: SPACING.lg, marginBottom: SPACING.lg,
+    borderWidth: 1, borderColor: COLORS.or,
+  },
+  retentionTitre: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.vertProfond },
+  retentionSousTitre: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, marginTop: 2 },
+  retentionExplication: {
+    fontFamily: FONTS.body, fontSize: 13, lineHeight: 19, color: COLORS.ardoise, marginBottom: SPACING.md,
+  },
+  cadreCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: COLORS.blanc, borderRadius: RADIUS.md, padding: SPACING.md,
     marginHorizontal: SPACING.lg, marginBottom: SPACING.lg,
@@ -887,13 +1382,6 @@ const styles = StyleSheet.create({
     fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.terracotta, marginTop: 3, textTransform: 'uppercase',
     textDecorationLine: 'underline',
   },
-  fab: {
-    position: 'absolute', bottom: SPACING.lg, right: SPACING.lg, backgroundColor: COLORS.vert,
-    borderRadius: RADIUS.lg, paddingVertical: 14, paddingHorizontal: SPACING.lg,
-    flexDirection: 'row', alignItems: 'center', gap: 6, elevation: 4,
-    shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 3 },
-  },
-  fabTexte: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.blanc },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(28,43,37,0.5)', justifyContent: 'flex-end' },
   modalContent: {
     backgroundColor: COLORS.blanc, borderTopLeftRadius: RADIUS.lg, borderTopRightRadius: RADIUS.lg,
@@ -902,13 +1390,34 @@ const styles = StyleSheet.create({
   modalHeader: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md,
   },
-  modalTitre: { fontFamily: FONTS.displaySemibold, fontSize: 19, color: COLORS.vertProfond },
-  scanRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.md },
+  modalTitre: { fontFamily: FONTS.displaySemibold, fontSize: 19, color: COLORS.vertProfond, flexShrink: 1 },
+  scanRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
   scanBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     borderWidth: 1.5, borderColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 12,
   },
   scanBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vert },
+  joindreBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderWidth: 1.5, borderColor: COLORS.vert, borderStyle: 'dashed',
+    borderRadius: RADIUS.md, paddingVertical: 12, marginBottom: SPACING.md,
+  },
+  joindreBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vert },
+  pieceJointe: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    backgroundColor: '#E8F3ED', borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md, paddingVertical: 12, marginBottom: SPACING.md,
+  },
+  pieceJointeNom: { flex: 1, fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vertProfond },
+  justificatifLigne: {
+    flexDirection: 'row', alignItems: 'center', gap: SPACING.sm,
+    paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#EEE',
+  },
+  justificatifNom: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.vertProfond },
+  justificatifMeta: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, marginTop: 2 },
+  justificatifActions: { flexDirection: 'row', gap: SPACING.lg, marginTop: SPACING.sm },
+  justificatifBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6 },
+  justificatifBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vert },
   scanLoading: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.md },
   scanLoadingTexte: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise },
   label: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond, marginBottom: 6, marginTop: SPACING.sm },
@@ -934,6 +1443,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 14,
     alignItems: 'center', marginTop: SPACING.lg, marginBottom: SPACING.md,
   },
+  submitBtnDisabled: { opacity: 0.5 },
   recapCommercant: { fontFamily: FONTS.displaySemibold, fontSize: 16, color: COLORS.vertProfond, marginBottom: 12 },
   recapLigne: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#EEE' },
   recapLigneGauche: { flexDirection: 'row', alignItems: 'center', gap: 8 },

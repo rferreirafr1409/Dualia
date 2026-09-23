@@ -8,17 +8,20 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { ShieldIcon, ExportIcon } from '../../components/icons';
 import { StatutDecision } from '../../types';
 import { TRADUCTIONS } from '../../constants/i18n';
-import JugementUpload from '../../components/JugementUpload';
 
-function formatDate(isoDate: string, langue: 'fr' | 'pt') {
+function formatDate(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
   const d = new Date(isoDate);
-  return d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'short' });
+  return d.toLocaleDateString(
+    langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR',
+    { day: 'numeric', month: 'short' }
+  );
 }
 
-function formatDateTime(isoDate: string, langue: 'fr' | 'pt') {
+function formatDateTime(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
   const d = new Date(isoDate);
-  const date = d.toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-  const time = d.toLocaleTimeString(langue === 'pt' ? 'pt-PT' : 'fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const locale = langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
+  const date = d.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' });
+  const time = d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   return `${date} . ${time}`;
 }
 
@@ -80,12 +83,6 @@ export default function DecisionsScreen() {
     }
   }, [draft]);
 
-  const openNewDecision = () => {
-    setFormTitre('');
-    setFormDescription('');
-    setModalVisible(true);
-  };
-
   const openCategoryPicker = () => {
     setCategoryModalVisible(true);
   };
@@ -145,7 +142,13 @@ export default function DecisionsScreen() {
             <Text style={styles.title}>{t.titre}</Text>
             <Text style={styles.subtitle}>{t.sousTitre}</Text>
           </View>
-          <Pressable style={styles.newBtn} onPress={openNewDecision}>
+          {/* Bouton unique. Il ouvrait auparavant un formulaire vierge
+              pendant qu'un bouton flottant, masqué par la bulle de retour
+              BETA, ouvrait le choix de catégorie : deux chemins pour la même
+              action, dont le plus utile était le plus caché. C'est le choix
+              de catégorie qui est conservé — « Divers » couvre le cas libre,
+              et le titre proposé reste modifiable. */}
+          <Pressable style={styles.newBtn} onPress={openCategoryPicker}>
             <Text style={styles.newBtnText}>{t.nouvelle}</Text>
           </Pressable>
         </View>
@@ -167,7 +170,6 @@ export default function DecisionsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-     
 
         {filtered.length === 0 ? (
           <Text style={styles.emptyText}>{t.vide}</Text>
@@ -232,12 +234,7 @@ export default function DecisionsScreen() {
         })}
       </ScrollView>
 
-      {/* Bouton flottant, même position/style que celui de l'écran Finances */}
-      <Pressable style={styles.fab} onPress={openCategoryPicker}>
-        <Text style={styles.fabText}>{t.fabAjouter}</Text>
-      </Pressable>
-
-      {/* Sélecteur de catégorie, ouvert par le bouton flottant */}
+      {/* Sélecteur de catégorie, ouvert par le bouton du haut */}
       <Modal visible={categoryModalVisible} animationType="fade" transparent onRequestClose={() => setCategoryModalVisible(false)}>
         <Pressable style={styles.modalOverlay} onPress={() => setCategoryModalVisible(false)}>
           <View style={styles.categoryCard}>
@@ -347,21 +344,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(45, 106, 79, 0.08)',
   },
   exportBtnText: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.vert },
-  fab: {
-    position: 'absolute',
-    right: SPACING.xl,
-    bottom: SPACING.xl,
-    backgroundColor: COLORS.vert,
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: RADIUS.full,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  fabText: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.blanc },
   categoryCard: {
     backgroundColor: COLORS.ivoire, borderRadius: RADIUS.xl,
     padding: SPACING.xl, margin: SPACING.xl, marginBottom: SPACING.xxxl,
@@ -376,6 +358,22 @@ const styles = StyleSheet.create({
     padding: SPACING.xl, paddingBottom: SPACING.xxxl,
   },
   modalTitle: { fontFamily: FONTS.display, fontSize: 19, color: COLORS.vertProfond },
+
+  jugementBanner: {
+    backgroundColor: COLORS.vertProfond, borderRadius: RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.lg,
+  },
+  jugementBannerTitre: { fontFamily: FONTS.bodySemibold, fontSize: 14.5, color: COLORS.blanc, marginBottom: 4 },
+  jugementBannerTexte: { fontFamily: FONTS.body, fontSize: 12.5, color: 'rgba(255,255,255,0.75)', lineHeight: 18, marginBottom: SPACING.md },
+  jugementBannerBtn: {
+    backgroundColor: COLORS.or, borderRadius: RADIUS.md, paddingVertical: 10, alignItems: 'center', alignSelf: 'flex-start', paddingHorizontal: SPACING.lg,
+  },
+  jugementBannerBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vertProfond },
+  jugementModalCard: {
+    backgroundColor: COLORS.ivoire, borderTopLeftRadius: RADIUS.xl, borderTopRightRadius: RADIUS.xl,
+    padding: SPACING.xl, paddingBottom: SPACING.xxxl, maxHeight: '92%',
+  },
+  jugementModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.md },
+  jugementModalFermer: { fontFamily: FONTS.bodySemibold, fontSize: 18, color: COLORS.ardoise },
   modalHint: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.terracotta, marginTop: 4 },
   fieldLabel: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise, marginTop: SPACING.lg, marginBottom: 6 },
   input: {

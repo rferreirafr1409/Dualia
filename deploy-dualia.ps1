@@ -4,16 +4,10 @@
 $ErrorActionPreference = "Stop"
 Write-Host "=== 1/5 : Verification TypeScript ===" -ForegroundColor Cyan
 
-# On bascule temporairement en "Continue" : sinon, avec ErrorActionPreference
-# = "Stop", la moindre ligne ecrite sur stderr par npx/npm (ex: "npm notice")
-# est traitee par PowerShell comme une erreur fatale, et le script s'arrete
-# avant meme d'avoir lu le vrai resultat de tsc.
 $ErrorActionPreference = "Continue"
 $tscOutput = npx tsc --noEmit 2>&1
 $ErrorActionPreference = "Stop"
 
-# On ne retient que les vraies erreurs TypeScript (format "fichier(ligne,col): error TSxxxx"),
-# pas n'importe quelle ligne contenant le mot "error".
 $tscErrors = $tscOutput | Select-String -Pattern "error TS"
 
 if ($tscErrors) {
@@ -37,21 +31,14 @@ New-Item -Path "dist\.nojekyll" -ItemType File -Force | Out-Null
 Write-Host "OK - .nojekyll cree" -ForegroundColor Green
 
 Write-Host "`n=== 4/5 : Patch type module sur TOUS les fichiers HTML ===" -ForegroundColor Cyan
-# Important : avec web.output "static", chaque route genere son propre
-# fichier .html (dist\reinitialiser-mot-de-passe.html, dist\accueil.html,
-# etc.), que GitHub Pages sait servir directement sans jamais passer par
-# dist\index.html ni par 404.html. Il faut donc patcher CHAQUE fichier html
-# du dossier dist, pas seulement la racine — sinon toute page visitee
-# directement (lien email, favori, partage) charge un script non-module et
-# plante avec "Cannot use import.meta outside a module".
 $htmlFiles = Get-ChildItem -Path "dist" -Filter "*.html" -Recurse
 $patchedCount = 0
 foreach ($file in $htmlFiles) {
-    $content = Get-Content $file.FullName -Raw -Encoding UTF8
+    $content = Get-Content -LiteralPath $file.FullName -Raw -Encoding UTF8
     $before = $content
     $content = $content -replace '(<script src="[^"]*entry-[^"]*\.js")\s+defer(></script>)', '$1 type="module"$2'
     if ($content -ne $before) {
-        Set-Content -Path $file.FullName -Value $content -Encoding UTF8 -NoNewline
+        Set-Content -LiteralPath $file.FullName -Value $content -Encoding UTF8 -NoNewline
         $patchedCount++
     }
 }
