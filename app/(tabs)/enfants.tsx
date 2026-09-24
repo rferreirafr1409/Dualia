@@ -22,6 +22,7 @@ import { differenceInYears, parseISO } from 'date-fns';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../../store/useStore';
 import { Enfant, ContactUrgence } from '../../types';
+import { jourLocal } from '../../lib/dates';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { TRADUCTIONS } from '../../constants/i18n';
 import DatePickerField from '../../components/DatePickerField';
@@ -110,7 +111,7 @@ export default function EnfantsScreen() {
           enfantEnEdition,
           {
             prenom: form.prenom.trim(),
-            dateNaissance: form.dateNaissance ? form.dateNaissance.toISOString() : undefined,
+            dateNaissance: form.dateNaissance ? jourLocal(form.dateNaissance) : undefined,
             ecole: form.ecole.trim() || undefined,
             medecinTraitant: form.medecinTraitant.trim() || undefined,
             medecinTelephone: form.medecinTelephone.trim() || undefined,
@@ -124,7 +125,7 @@ export default function EnfantsScreen() {
         const nouvel: Enfant = {
           id: `enfant-${Date.now()}`,
           prenom: form.prenom.trim(),
-          dateNaissance: form.dateNaissance ? form.dateNaissance.toISOString() : undefined,
+          dateNaissance: form.dateNaissance ? jourLocal(form.dateNaissance) : undefined,
           ecole: form.ecole.trim() || undefined,
           medecinTraitant: form.medecinTraitant.trim() || undefined,
           medecinTelephone: form.medecinTelephone.trim() || undefined,

@@ -5,6 +5,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
+import { depuisJourLocal } from '../lib/dates';
 import type { JournalEntry } from '../types';
 
 type Props = {
@@ -21,7 +22,7 @@ export default function SouvenirModal({ visible, onClose, entry, ilYaUnAn }: Pro
 
   if (!entry) return null;
 
-  const dateEntry = new Date(entry.date).toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', {
+  const dateEntry = depuisJourLocal(entry.date).toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', {
     day: 'numeric', month: 'long', year: 'numeric',
   });
   const auteurNom = parents[entry.auteurId]?.nom.split(' ')[0] ?? '';

@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import { formatJourLocal } from '../lib/dates';
 import { TRADUCTIONS } from '../constants/i18n';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 
@@ -180,7 +181,7 @@ export default function EcheancesScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={styles.carteTitre}>{e.titre}</Text>
                       <Text style={styles.carteMeta}>
-                        {new Date(e.date_echeance).toLocaleDateString(t.localeDate)}
+                        {formatJourLocal(e.date_echeance, t.localeDate)}
                         {enfant ? ` · ${enfant.prenom}` : ''}
                         {recurrenceLabel ? ` · ${recurrenceLabel}` : ''}
                       </Text>
@@ -212,7 +213,7 @@ export default function EcheancesScreen() {
                     <Text style={styles.carteTitre}>{d.nom}</Text>
                     <Text style={styles.carteMeta}>
                       {d.date_expiration
-                        ? t.expireLe(new Date(d.date_expiration).toLocaleDateString(t.localeDate))
+                        ? t.expireLe(formatJourLocal(d.date_expiration, t.localeDate))
                         : t.pasDateExpiration}
                     </Text>
                   </View>

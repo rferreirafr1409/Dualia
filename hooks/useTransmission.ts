@@ -12,6 +12,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import { jourLocal } from '../lib/dates';
 import { ITEMS_TRANSMISSION_DEFAUT } from '../constants/transmissionCatalog';
 import type { ParentRole } from '../types';
 
@@ -71,7 +72,7 @@ export function useTransmission(): UseTransmissionResult {
     return null;
   }, [evenements]);
 
-  const datePassageIso = prochainPassage ? prochainPassage.date.toISOString().slice(0, 10) : null;
+  const datePassageIso = prochainPassage ? jourLocal(prochainPassage.date) : null;
 
   const charger = useCallback(async () => {
     if (!familleId || !datePassageIso) {

@@ -47,6 +47,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../../store/useStore';
+import { aujourdHuiLocal } from '../../lib/dates';
 import { DocumentItem, CategorieDocument, DocumentPortee } from '../../types';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { TRADUCTIONS } from '../../constants/i18n';
@@ -527,7 +528,7 @@ export default function DocumentsScreen() {
           nom: nom.trim(),
           categorie,
           auteurId: parentActif,
-          date: new Date().toISOString(),
+          date: aujourdHuiLocal(),
           certifie: false,
           note: note.trim() || undefined,
           portee: porteeCourante,

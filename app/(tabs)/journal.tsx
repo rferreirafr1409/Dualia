@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert, Image, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useStore } from '../../store/useStore';
+import { jourLocal, aujourdHuiLocal, depuisJourLocal } from '../../lib/dates';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { LockIcon, HeartIcon } from '../../components/icons';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -22,8 +23,12 @@ try {
 const EMOJIS = ['📸', '🎒', '🎂', '🌳', '🚲', '💌', '⚽', '🎨', '🏖️', '🎓', '🎄', '🌟'];
 const TOUS = 'Tous';
 
+// depuisJourLocal : journal_entries.date et date_revelation sont des colonnes
+// `date`. new Date('2026-12-25') vaut minuit UTC, soit le 24 decembre au soir
+// pour un parent en fuseau negatif.
 function formatDate(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
-  const d = new Date(isoDate);
+  if (!isoDate) return '';
+  const d = depuisJourLocal(isoDate);
   return d.toLocaleDateString(
     langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR',
     { day: 'numeric', month: 'long', year: 'numeric' }
@@ -112,7 +117,7 @@ export default function JournalScreen() {
     setFormEmoji(entry.emoji || EMOJIS[0]);
     setFormEnfant((entry.enfant as string) || TOUS);
     setFormCapsule(!!entry.dateRevelation);
-    setFormDateRevelation(entry.dateRevelation ? new Date(entry.dateRevelation) : null);
+    setFormDateRevelation(entry.dateRevelation ? depuisJourLocal(entry.dateRevelation) : null);
     setFormPhotoUri(null);
     setFormPhotoUrlExistante(entry.photoUrl ?? null);
     setModalVisible(true);
@@ -148,7 +153,7 @@ export default function JournalScreen() {
             description: formDescription.trim(),
             emoji: formEmoji,
             enfant: formEnfant as any,
-            dateRevelation: formCapsule && formDateRevelation ? formDateRevelation.toISOString() : undefined,
+            dateRevelation: formCapsule && formDateRevelation ? jourLocal(formDateRevelation) : undefined,
           },
           formPhotoUri ?? undefined
         );
@@ -160,10 +165,10 @@ export default function JournalScreen() {
             description: formDescription.trim(),
             emoji: formEmoji,
             auteurId: parentActif,
-            date: new Date().toISOString(),
+            date: aujourdHuiLocal(),
             liked: false,
             enfant: formEnfant as any,
-            dateRevelation: formCapsule && formDateRevelation ? formDateRevelation.toISOString() : undefined,
+            dateRevelation: formCapsule && formDateRevelation ? jourLocal(formDateRevelation) : undefined,
           },
           formPhotoUri ?? undefined
         );
@@ -235,7 +240,7 @@ export default function JournalScreen() {
 
         {filtered.map((entry) => {
           const author = parents[entry.auteurId]?.nom.split(' ')[0] ?? entry.auteurId;
-          const isLocked = !!entry.dateRevelation && new Date(entry.dateRevelation) > maintenant;
+          const isLocked = !!entry.dateRevelation && depuisJourLocal(entry.dateRevelation) > maintenant;
 
           if (isLocked) {
             return (

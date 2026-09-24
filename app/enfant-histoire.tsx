@@ -8,6 +8,7 @@ import { format, parseISO } from 'date-fns';
 import { fr, pt, es, enGB } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
+import { depuisJourLocal } from '../lib/dates';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 import { LockIcon, HeartIcon } from '../components/icons';
@@ -46,7 +47,7 @@ export default function EnfantHistoireScreen() {
   const chronologie = useMemo(
     () =>
       entreesEnfant
-        .filter((e) => !e.dateRevelation || new Date(e.dateRevelation) <= maintenant)
+        .filter((e) => !e.dateRevelation || depuisJourLocal(e.dateRevelation) <= maintenant)
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [entreesEnfant]
   );
@@ -117,7 +118,7 @@ export default function EnfantHistoireScreen() {
             <View key={mois} style={styles.moisBloc}>
               <Text style={styles.moisTitre}>{mois}</Text>
               {entriesDuMois.map((entry) => {
-                const isLocked = !!entry.dateRevelation && new Date(entry.dateRevelation) > maintenant;
+                const isLocked = !!entry.dateRevelation && depuisJourLocal(entry.dateRevelation) > maintenant;
                 const author = parents[entry.auteurId]?.nom.split(' ')[0] ?? entry.auteurId;
 
                 if (isLocked) {

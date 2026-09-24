@@ -28,6 +28,11 @@ import ErrorBoundary from '../../components/ErrorBoundary';
 import { choisirFichierDocument } from '../../lib/pickerFichierDocument';
 import { TAILLE_MAX_BASE64, estUneImage, normaliserType, typeImageStocke } from '../../lib/typesFichier';
 import { ouvrirFichierStocke } from '../../lib/ouvrirFichierStocke';
+import { jourLocal, aujourdHuiLocal, depuisJourLocal, ajouterAnnees } from '../../lib/dates';
+import {
+  centimes, repartir, calculerSolde, reconcilierLignes, grouperLignes,
+  parserMontant, lignesDetailPourGroupe,
+} from '../../lib/comptes';
 
 const BACKEND_URL = 'https://dualia-backend.vercel.app/api/scan-ticket';
 
@@ -47,30 +52,12 @@ const PHOTO_JPEG_QUALITY = 0.7;
 // d'une discussion sur qui a payé quoi serait le pire des services.
 const CONSERVATION_ANNEES = 1;
 
-// Dates au format AAAA-MM-JJ construites sur le calendrier LOCAL. Passer par
-// toISOString() daterait un dépôt fait à 00h30 à Paris de la veille, et
-// l'échéance afficherait un jour de moins dans les fuseaux négatifs.
-function jourLocal(d: Date): string {
-  const mois = String(d.getMonth() + 1).padStart(2, '0');
-  const jour = String(d.getDate()).padStart(2, '0');
-  return `${d.getFullYear()}-${mois}-${jour}`;
-}
-
+// Les dates de calendrier passent toutes par lib/dates : jourLocal pour
+// écrire, depuisJourLocal pour relire. La colonne depenses.date est de type
+// `date` côté Postgres — un toISOString() y perdait un jour dans tout fuseau
+// positif (une dépense saisie le 1er juin à Paris arrivait au 31 mai).
 function dateExpirationJustificatif(): string {
-  const d = new Date();
-  d.setFullYear(d.getFullYear() + CONSERVATION_ANNEES);
-  return jourLocal(d);
-}
-
-// new Date('2027-09-22') est interprété à minuit UTC : en fuseau négatif, la
-// date affichée reculait d'un jour. On reconstruit la date dans le fuseau du
-// parent avant de la mettre en forme.
-function formatJourSeul(jour: string, langue: 'fr' | 'pt' | 'es' | 'en') {
-  const [a, m, j] = jour.split('-').map(Number);
-  if (!a || !m || !j) return jour;
-  return new Date(a, m - 1, j).toLocaleDateString(localeDeLangue(langue), {
-    day: 'numeric', month: 'long', year: 'numeric',
-  });
+  return ajouterAnnees(aujourdHuiLocal(), CONSERVATION_ANNEES);
 }
 
 type PieceJointeEnAttente = { base64: string; contentType: string; nom: string };
@@ -92,6 +79,16 @@ type LibellesJustificatif = {
   tropVolumineux: string;
   heicNonSupporte: string;
   fichierIllisible: string;
+  soldeEquilibre: string;
+  soldeDoit: (debiteur: string, crediteur: string) => string;
+  chargeTotaleExplication: string;
+  cadreSansRegle: string;
+  montantIncoherent: string;
+  ajustementLecture: string;
+  remiseRepartie: string;
+  montantIllisible: string;
+  cadreParCategorie: string;
+  cadreFamilialPart: (a: number, b: number) => string;
 };
 
 const LIBELLES: Record<string, LibellesJustificatif> = {
@@ -114,6 +111,17 @@ const LIBELLES: Record<string, LibellesJustificatif> = {
     heicNonSupporte:
       "Cette photo est au format HEIC, que la plupart des ordinateurs n'ouvrent pas. Sur iPhone : Réglages › Appareil photo › Formats › « Plus compatible ».",
     fichierIllisible: 'Fichier illisible.',
+    soldeEquilibre: 'Comptes équilibrés',
+    soldeDoit: (debiteur, crediteur) => `${debiteur} doit à ${crediteur}`,
+    chargeTotaleExplication:
+      "Vous prenez cette dépense entièrement à votre charge : rien ne sera dû par l'autre parent.",
+    cadreSansRegle: 'Aucune règle pour cette catégorie — partage 50/50',
+    montantIncoherent: 'Le total lu sur le ticket est nul ou négatif. Corrigez les lignes avant d’enregistrer.',
+    ajustementLecture: 'Ajustement (écart de lecture)',
+    remiseRepartie: 'Remise répartie',
+    montantIllisible: 'Montant illisible. Écrivez-le avec deux décimales, par exemple 1234,56 ou 12,50.',
+    cadreParCategorie: 'Selon le cadre familial (par catégorie)',
+    cadreFamilialPart: (a, b) => `Cadre familial : ${a}/${b}`,
   },
   pt: {
     joindre: 'Anexar comprovativo',
@@ -134,6 +142,17 @@ const LIBELLES: Record<string, LibellesJustificatif> = {
     heicNonSupporte:
       'Esta foto está no formato HEIC, que a maioria dos computadores não abre. No iPhone: Definições › Câmara › Formatos › «Mais compatível».',
     fichierIllisible: 'Ficheiro ilegível.',
+    soldeEquilibre: 'Contas equilibradas',
+    soldeDoit: (debiteur, crediteur) => `${debiteur} deve a ${crediteur}`,
+    chargeTotaleExplication:
+      'Assume esta despesa na totalidade: o outro progenitor não deverá nada.',
+    cadreSansRegle: 'Sem regra para esta categoria — divisão 50/50',
+    montantIncoherent: 'O total lido no recibo é nulo ou negativo. Corrija as linhas antes de guardar.',
+    ajustementLecture: 'Ajuste (diferença de leitura)',
+    remiseRepartie: 'Desconto distribuído',
+    montantIllisible: 'Montante ilegível. Escreva-o com duas decimais, por exemplo 1234,56 ou 12,50.',
+    cadreParCategorie: 'Segundo o quadro familiar (por categoria)',
+    cadreFamilialPart: (a, b) => `Quadro familiar: ${a}/${b}`,
   },
   es: {
     joindre: 'Adjuntar justificante',
@@ -154,6 +173,17 @@ const LIBELLES: Record<string, LibellesJustificatif> = {
     heicNonSupporte:
       'Esta foto está en formato HEIC, que la mayoría de los ordenadores no abre. En iPhone: Ajustes › Cámara › Formatos › «Más compatible».',
     fichierIllisible: 'Archivo ilegible.',
+    soldeEquilibre: 'Cuentas equilibradas',
+    soldeDoit: (debiteur, crediteur) => `${debiteur} debe a ${crediteur}`,
+    chargeTotaleExplication:
+      'Asumes este gasto por completo: el otro progenitor no deberá nada.',
+    cadreSansRegle: 'Sin regla para esta categoría — reparto 50/50',
+    montantIncoherent: 'El total leído en el ticket es nulo o negativo. Corrige las líneas antes de guardar.',
+    ajustementLecture: 'Ajuste (diferencia de lectura)',
+    remiseRepartie: 'Descuento repartido',
+    montantIllisible: 'Importe ilegible. Escríbelo con dos decimales, por ejemplo 1234,56 o 12,50.',
+    cadreParCategorie: 'Según el marco familiar (por categoría)',
+    cadreFamilialPart: (a, b) => `Marco familiar: ${a}/${b}`,
   },
   en: {
     joindre: 'Attach a receipt',
@@ -174,6 +204,17 @@ const LIBELLES: Record<string, LibellesJustificatif> = {
     heicNonSupporte:
       'This photo is in HEIC format, which most computers cannot open. On iPhone: Settings › Camera › Formats › "Most Compatible".',
     fichierIllisible: 'Unreadable file.',
+    soldeEquilibre: 'Accounts settled',
+    soldeDoit: (debiteur, crediteur) => `${debiteur} owes ${crediteur}`,
+    chargeTotaleExplication:
+      'You are taking this expense on entirely: the other parent will owe nothing.',
+    cadreSansRegle: 'No rule for this category — split 50/50',
+    montantIncoherent: 'The total read from the receipt is zero or negative. Fix the lines before saving.',
+    ajustementLecture: 'Adjustment (reading discrepancy)',
+    remiseRepartie: 'Discount applied',
+    montantIllisible: 'Amount unreadable. Write it with two decimals, for example 1234.56 or 12.50.',
+    cadreParCategorie: 'Per your family framework (by category)',
+    cadreFamilialPart: (a, b) => `Family framework: ${a}/${b}`,
   },
 };
 
@@ -268,45 +309,23 @@ function localeDeLangue(langue: 'fr' | 'pt' | 'es' | 'en') {
   return langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
 }
 
-function formatDateCourt(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
-  const d = new Date(isoDate);
+// depuisJourLocal et non new Date() : new Date('2026-06-15') vaut minuit UTC,
+// donc le 14 juin pour un parent en fuseau négatif. La même dépense ne doit
+// pas porter deux dates selon l'endroit où l'on ouvre Dualia.
+function formatDateCourt(jour: string, langue: 'fr' | 'pt' | 'es' | 'en') {
+  if (!jour) return '';
+  const d = depuisJourLocal(jour);
+  if (Number.isNaN(d.getTime())) return jour;
   return d.toLocaleDateString(localeDeLangue(langue), { day: 'numeric', month: 'short' });
 }
 
-function formatDateLong(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
-  const d = new Date(isoDate);
+function formatDateLong(jour: string, langue: 'fr' | 'pt' | 'es' | 'en') {
+  if (!jour) return '';
+  const d = depuisJourLocal(jour);
+  // Une valeur illisible est rendue telle quelle : « Invalid Date » dans une
+  // liste de dépenses n'aide personne.
+  if (Number.isNaN(d.getTime())) return jour;
   return d.toLocaleDateString(localeDeLangue(langue), { day: 'numeric', month: 'long', year: 'numeric' });
-}
-
-// Sur les tickets complexes (remises par article, poids, taxes de dépôt...),
-// l'IA peut manquer des lignes ou se tromper sur certains montants — c'est
-// un scan visuel, jamais garanti à 100%. Plutôt que de compter sur le
-// prompt seul pour être exact, on vérifie ici que la somme des lignes
-// correspond bien au total imprimé sur le ticket (qui, lui, est un chiffre
-// unique et presque toujours lu correctement). Si un écart existe, on
-// ajoute une ligne d'ajustement pour que le montant total enregistré dans
-// Dualia soit TOUJOURS le vrai total du ticket, même si la répartition
-// par catégorie est imparfaite.
-function reconcilierLignes(
-  lignes: { libelle: string; montant: number; categorie: string }[],
-  montantTotal: number | null | undefined
-): { libelle: string; montant: number; categorie: string }[] {
-  if (!Array.isArray(lignes) || lignes.length === 0 || typeof montantTotal !== 'number') {
-    return lignes;
-  }
-  const somme = lignes.reduce((acc, l) => acc + (Number(l.montant) || 0), 0);
-  const ecart = Math.round((montantTotal - somme) * 100) / 100;
-  if (Math.abs(ecart) < 0.05) {
-    return lignes;
-  }
-  return [
-    ...lignes,
-    {
-      libelle: 'Ajustement (écart de lecture)',
-      montant: ecart,
-      categorie: 'autre',
-    },
-  ];
 }
 
 function FinancesScreenInner() {
@@ -382,7 +401,7 @@ function FinancesScreenInner() {
   // chaînes ISO (AAAA-MM-JJ) : ordonnées lexicalement, elles se comparent
   // sans fuseau horaire ni heure, donc sans décalage d'un jour.
   const justificatifsEchus = useMemo(() => {
-    const aujourdHui = jourLocal(new Date());
+    const aujourdHui = aujourdHuiLocal();
     return depenses.filter(
       (d) => d.justificatifUrl && d.justificatifExpireLe && d.justificatifExpireLe <= aujourdHui
     );
@@ -393,23 +412,23 @@ function FinancesScreenInner() {
   // et net exact des parts de chaque dépense (pas un écart par rapport à
   // une moyenne globale) — pour représenter un mouvement d'argent précis,
   // pas une estimation.
-  const soldes = useMemo(() => {
-    const totalDepenses = depenses.reduce((s, d) => s + d.montant, 0);
-    const nonReglees = depenses.filter((d) => !d.rembourse);
-    let duAVersB = 0;
-    let duBVersA = 0;
-    nonReglees.forEach((d) => {
-      const partA = d.partA ?? d.montant / 2;
-      const partB = d.partB ?? d.montant / 2;
-      if (d.auteurId === 'A') {
-        duBVersA += partB;
-      } else {
-        duAVersB += partA;
-      }
-    });
-    const solde = duBVersA - duAVersB; // positif => B doit à A
-    return { totalDepenses, solde };
-  }, [depenses]);
+  // Solde « qui doit à qui » : voir lib/comptes. Positif => B doit à A.
+  // Seules les dépenses non réglées pèsent sur le solde.
+  const soldes = useMemo(() => calculerSolde(depenses), [depenses]);
+
+  // Qui doit à qui, lu uniquement sur le signe du solde.
+  //
+  // L'affichage précédent nommait les parents à partir de parentActif : le
+  // parent A voyait « B doit à A », et le parent B, pour le MÊME solde, voyait
+  // « A doit à B ». Les deux parents lisaient donc chacun que l'autre lui
+  // devait de l'argent. Sur le seul écran de Dualia qui parle d'argent, c'était
+  // la garantie d'un conflit fondé sur un bug d'affichage.
+  const libelleSolde = useMemo(() => {
+    if (Math.abs(soldes.solde) < 0.005) return l.soldeEquilibre;
+    const debiteur = soldes.solde > 0 ? 'B' : 'A';
+    const crediteur = soldes.solde > 0 ? 'A' : 'B';
+    return l.soldeDoit(parents[debiteur]?.nom ?? debiteur, parents[crediteur]?.nom ?? crediteur);
+  }, [soldes.solde, parents, l]);
 
   const resetForm = () => {
     setFormMontant('');
@@ -495,12 +514,12 @@ function FinancesScreenInner() {
       if (data.montant) setFormMontant(String(data.montant));
       if (data.commercant) setFormCommercant(data.commercant);
       if (data.description) setFormDescription(data.description);
-      if (data.date) setFormDate(new Date(data.date));
+      if (data.date) setFormDate(depuisJourLocal(data.date));
 
     if (Array.isArray(data.lignes) && data.lignes.length > 1) {
-      setScanLignes(reconcilierLignes(data.lignes, data.montant));
+      setScanLignes(reconcilierLignes(data.lignes, data.montant, l.ajustementLecture));
       setScanCommercant(data.commercant || '');
-      setScanDate(data.date ? new Date(data.date) : new Date());
+      setScanDate(data.date ? depuisJourLocal(data.date) : new Date());
       setModalVisible(false);      setScanRecapVisible(true);
     }
 
@@ -538,11 +557,11 @@ function FinancesScreenInner() {
         if (data.montant) setFormMontant(String(data.montant));
         if (data.commercant) setFormCommercant(data.commercant);
         if (data.description) setFormDescription(data.description);
-        if (data.date) setFormDate(new Date(data.date));
+        if (data.date) setFormDate(depuisJourLocal(data.date));
         if (Array.isArray(data.lignes) && data.lignes.length > 1) {
-          setScanLignes(reconcilierLignes(data.lignes, data.montant));
+          setScanLignes(reconcilierLignes(data.lignes, data.montant, l.ajustementLecture));
           setScanCommercant(data.commercant || '');
-          setScanDate(data.date ? new Date(data.date) : new Date());
+          setScanDate(data.date ? depuisJourLocal(data.date) : new Date());
           setModalVisible(false);          setScanRecapVisible(true);
         }
         if (!(Array.isArray(data.lignes) && data.lignes.length > 1)) { alertCompat(t.scanReussi, t.scanReussiMsg); }
@@ -632,7 +651,16 @@ function FinancesScreenInner() {
   const soumettre = async () => {
     if (envoiEnCours) return;
 
-    const montant = parseFloat(formMontant.replace(',', '.'));
+    // parserMontant, et non parseFloat : « 1 234,56 » collé depuis une facture
+    // valait 1,00 € avec l'ancienne lecture. Arrondi au centime au passage.
+    const montant = parserMontant(formMontant);
+    if (Number.isNaN(montant)) {
+      // « 1,234 » vaut 1,234 € ou 1 234 € selon le pays : parserMontant refuse
+      // de choisir, et on dit au parent comment lever l'ambiguïté plutôt que
+      // d'enregistrer un montant mille fois trop grand ou trop petit.
+      alertCompat(t.erreur, l.montantIllisible);
+      return;
+    }
     if (!montant || montant <= 0) {
       alertCompat(t.erreur, t.erreurMontant);
       return;
@@ -645,14 +673,17 @@ function FinancesScreenInner() {
     let partA: number;
     let partB: number;
     if (formPartage === 'regle' && regleActive) {
-      partA = montant * (regleActive.partA / 100);
-      partB = montant * (regleActive.partB / 100);
-    } else if (formPartage === '50/50') {
-      partA = montant / 2;
-      partB = montant / 2;
-    } else {
+      ({ partA, partB } = repartir(montant, regleActive.partA));
+    } else if (formPartage === 'total') {
+      // Charge totale : celui qui paie assume l'intégralité, l'autre ne doit
+      // rien. Les deux parts totalisent donc bien le montant.
       partA = parentActif === 'A' ? montant : 0;
       partB = parentActif === 'B' ? montant : 0;
+    } else {
+      // 50/50, et retombée du mode « cadre familial » quand aucune règle
+      // validée ne couvre la catégorie — même règle que le récapitulatif de
+      // ticket. Un else muet aurait fait basculer ce cas en charge totale.
+      ({ partA, partB } = repartir(montant, 50));
     }
 
     setEnvoiEnCours(true);
@@ -665,7 +696,7 @@ function FinancesScreenInner() {
         montant,
         description: formDescription || t.depenseSansTitre,
         auteurId: parentActif,
-        date: formDate.toISOString(),
+        date: jourLocal(formDate),
         rembourse: false,
         partA,
         partB,
@@ -689,11 +720,12 @@ function FinancesScreenInner() {
 
   const soumettreLignesCategorisees = async () => {
     if (envoiEnCours) return;
-    const groupes: Record<string, number> = {};
-    scanLignes.forEach((ligne) => {
-      const cat = ligne.categorie || 'autre';
-      groupes[cat] = (groupes[cat] || 0) + ligne.montant;
-    });
+    const groupes = grouperLignes(scanLignes);
+    const entrees = Object.entries(groupes);
+    if (entrees.length === 0) {
+      alertCompat(t.erreur, l.montantIncoherent);
+      return;
+    }
 
     const dateFinale = scanDate || new Date();
     const commercantFinal = scanCommercant || undefined;
@@ -706,23 +738,22 @@ function FinancesScreenInner() {
       const piece = formJustificatif ? await televerserPieceJointe(formJustificatif) : null;
       const expireLe = piece ? dateExpirationJustificatif() : undefined;
 
-      Object.entries(groupes).forEach(([cat, montantCat], index) => {
+      entrees.forEach(([cat, montantCat], index) => {
         // Si le mode "selon votre cadre familial" est actif globalement et
         // qu'une règle validée existe pour CETTE catégorie précise, on
         // l'applique ; sinon on retombe sur 50/50 pour ce groupe-là plutôt
-        // que d'inventer une répartition.
+        // que d'inventer une répartition. Le récapitulatif affiche cette
+        // retombée explicitement, pour qu'elle ne soit pas une surprise.
         const regleGroupe = formPartage === 'regle' ? trouverRegleValidee(cat as CategorieDepense) : undefined;
         let partA: number;
         let partB: number;
         if (regleGroupe) {
-          partA = montantCat * (regleGroupe.partA / 100);
-          partB = montantCat * (regleGroupe.partB / 100);
+          ({ partA, partB } = repartir(montantCat, regleGroupe.partA));
         } else if (formPartage === 'total') {
           partA = parentActif === 'A' ? montantCat : 0;
           partB = parentActif === 'B' ? montantCat : 0;
         } else {
-          partA = montantCat / 2;
-          partB = montantCat / 2;
+          ({ partA, partB } = repartir(montantCat, 50));
         }
         const nouvelle: Depense = {
           id: `dep-${Date.now()}-${index}`,
@@ -730,12 +761,12 @@ function FinancesScreenInner() {
           montant: montantCat,
           description: commercantFinal ? (commercantFinal + ' - ' + (t.categories[cat as keyof typeof t.categories] ?? cat)) : t.depenseSansTitre,
           auteurId: parentActif,
-          date: dateFinale.toISOString(),
+          date: jourLocal(dateFinale),
           rembourse: false,
           partA,
           partB,
           commercant: commercantFinal,
-          lignesDetail: scanLignes.filter((l2) => (l2.categorie || 'autre') === cat).map((l2) => ({ libelle: l2.libelle, montant: l2.montant })),
+          lignesDetail: lignesDetailPourGroupe(scanLignes, cat, montantCat, l.remiseRepartie),
           justificatifUrl: piece?.chemin,
           justificatifNom: piece?.nom,
           justificatifType: piece?.type,
@@ -797,12 +828,10 @@ function FinancesScreenInner() {
           <Text style={styles.soldeLabel}>{t.totalDepenses}</Text>
           <Text style={styles.soldeMontant}>{formatMontant(soldes.totalDepenses)}</Text>
           <View style={styles.soldeSeparateur} />
-          <Text style={styles.soldeLabel}>
-            {soldes.solde >= 0
-              ? `${parentNom(parentActif === 'A' ? 'B' : 'A')} ${t.doit} ${parentNom(parentActif)}`
-              : `${parentNom(parentActif)} ${t.doit} ${parentNom(parentActif === 'A' ? 'B' : 'A')}`}
-          </Text>
-          <Text style={styles.soldeMontantSecondaire}>{formatMontant(Math.abs(soldes.solde))}</Text>
+          <Text style={styles.soldeLabel}>{libelleSolde}</Text>
+          {Math.abs(soldes.solde) >= 0.005 ? (
+            <Text style={styles.soldeMontantSecondaire}>{formatMontant(Math.abs(soldes.solde))}</Text>
+          ) : null}
         </View>
 
         {/* Rappel de conservation. N'apparaît que s'il y a quelque chose à
@@ -1003,6 +1032,13 @@ function FinancesScreenInner() {
                 </Pressable>
               </View>
 
+              {/* Dit noir sur blanc ce que fait ce choix : aucune créance ne
+                  sera créée. Le libellé seul ne suffit pas à lever le doute
+                  entre « j'avance » et « je prends à ma charge ». */}
+              {formPartage === 'total' ? (
+                <Text style={styles.partageNote}>{l.chargeTotaleExplication}</Text>
+              ) : null}
+
               {formPartage === 'regle' && regleActive ? (
                 <>
                   <Pressable style={styles.whyToggle} onPress={() => setWhyOpen(!whyOpen)}>
@@ -1061,28 +1097,37 @@ function FinancesScreenInner() {
               ) : null}
 
               {(() => {
-                const groupes: Record<string, number> = {};
-                scanLignes.forEach((ligne) => {
-                  const cat = ligne.categorie || 'autre';
-                  groupes[cat] = (groupes[cat] || 0) + ligne.montant;
-                });
-                const total = Object.values(groupes).reduce((a, b) => a + b, 0);
+                // Mêmes regroupements que ceux qui seront enregistrés : le
+                // récapitulatif est une promesse, il doit afficher exactement
+                // ce que soumettreLignesCategorisees va écrire.
+                const groupes = grouperLignes(scanLignes);
+                const total = centimes(Object.values(groupes).reduce((a, b) => a + b, 0));
                 return (
                   <>
                     {Object.entries(groupes).map(([cat, montantCat]) => {
                       const catDef = CATEGORIES.find((c) => c.key === cat);
-                      const regleGroupe = trouverRegleValidee(cat as CategorieDepense);
+                      // La règle n'est annoncée que si elle sera réellement
+                      // appliquée. Avant, la ligne « Cadre familial : 60/40 »
+                      // s'affichait même en mode 50/50 ou charge totale : le
+                      // parent validait une répartition, et une autre était
+                      // enregistrée.
+                      const regleGroupe =
+                        formPartage === 'regle' ? trouverRegleValidee(cat as CategorieDepense) : undefined;
+                      const sansRegle = formPartage === 'regle' && !regleGroupe;
                       return (
                         <View key={cat} style={styles.recapLigne}>
                           <View style={styles.recapLigneGauche}>
                             <Ionicons name={catDef?.icon ?? 'ellipsis-horizontal-outline'} size={18} color={COLORS.vert} />
                             <View>
                               <Text style={styles.recapLigneTexte}>{t.categories[cat as keyof typeof t.categories] ?? cat}</Text>
-                              {regleGroupe && (
+                              {regleGroupe ? (
                                 <Text style={styles.recapLigneRegle}>
-                                  Cadre familial : {regleGroupe.partA}/{regleGroupe.partB}
+                                  {l.cadreFamilialPart(regleGroupe.partA, 100 - regleGroupe.partA)}
                                 </Text>
-                              )}
+                              ) : null}
+                              {sansRegle ? (
+                                <Text style={styles.recapLigneRegle}>{l.cadreSansRegle}</Text>
+                              ) : null}
                             </View>
                           </View>
                           <Text style={styles.recapLigneMontant}>{formatMontant(montantCat)}</Text>
@@ -1115,7 +1160,7 @@ function FinancesScreenInner() {
                   onPress={() => setFormPartage('regle')}
                 >
                   <Text style={[styles.categorieChipTexte, formPartage === 'regle' && styles.categorieChipTexteActive]}>
-                    Selon le cadre familial (par catégorie)
+                    {l.cadreParCategorie}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -1135,6 +1180,10 @@ function FinancesScreenInner() {
                   </Text>
                 </Pressable>
               </View>
+
+              {formPartage === 'total' ? (
+                <Text style={styles.partageNote}>{l.chargeTotaleExplication}</Text>
+              ) : null}
 
               <Pressable
                 style={[styles.submitBtn, envoiEnCours && styles.submitBtnDisabled]}
@@ -1206,9 +1255,9 @@ function FinancesScreenInner() {
                       </Text>
                       {detailDepense.justificatifExpireLe ? (
                         <Text style={styles.justificatifMeta}>
-                          {detailDepense.justificatifExpireLe <= jourLocal(new Date())
+                          {detailDepense.justificatifExpireLe <= aujourdHuiLocal()
                             ? l.echeanceAtteinte
-                            : l.conserveJusquau(formatJourSeul(detailDepense.justificatifExpireLe, langue))}
+                            : l.conserveJusquau(formatDateLong(detailDepense.justificatifExpireLe, langue))}
                         </Text>
                       ) : null}
                     </View>
@@ -1439,6 +1488,14 @@ const styles = StyleSheet.create({
   whyBoxLigne: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, marginBottom: 4 },
   whyBoxExtrait: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, fontStyle: 'italic', marginTop: 2, marginBottom: 6, lineHeight: 17 },
   whyBoxNote: { fontFamily: FONTS.body, fontSize: 11, color: COLORS.ardoise, lineHeight: 16 },
+  partageNote: {
+    fontFamily: FONTS.body,
+    fontSize: 11.5,
+    color: COLORS.ardoise,
+    lineHeight: 16,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.xs,
+  },
   submitBtn: {
     backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 14,
     alignItems: 'center', marginTop: SPACING.lg, marginBottom: SPACING.md,

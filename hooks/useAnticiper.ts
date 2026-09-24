@@ -11,6 +11,7 @@ import { useState, useCallback } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import { aujourdHuiLocal, ajouterJours } from '../lib/dates';
 
 const FENETRE_JOURS = 90;
 
@@ -43,9 +44,10 @@ export function useAnticiper(): UseAnticiperResult {
     setChargement(true);
     setErreur(null);
 
-    const limite = new Date();
-    limite.setDate(limite.getDate() + FENETRE_JOURS);
-    const limiteIso = limite.toISOString().slice(0, 10);
+    // Jour de calendrier local : avec toISOString(), la fenetre perdait ou
+    // gagnait un jour selon le fuseau et l'heure de la consultation, et une
+    // echeance tombant pile au 90e jour disparaissait du widget.
+    const limiteIso = ajouterJours(aujourdHuiLocal(), FENETRE_JOURS);
 
     const [docsRes, echeancesRes] = await Promise.all([
       supabase
