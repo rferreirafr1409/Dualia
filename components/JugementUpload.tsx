@@ -34,6 +34,7 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { useStore } from '../store/useStore';
+import { entetesBackend } from '../lib/appelBackend';
 import { TRADUCTIONS } from '../constants/i18n';
 import { choisirFichierPDF } from '../lib/pickerFichierPDF';
 import type { CadreFamilial, ReglePartage } from '../types';
@@ -226,7 +227,7 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
       setStatut('extraction_texte');
       const texteResponse = await fetch(`${BACKEND_URL}/api/extract-pdf-text`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await entetesBackend(),
         body: JSON.stringify({ pdfBase64 }),
       });
       const texteData = await texteResponse.json();
@@ -243,7 +244,7 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
       setStatut('extraction_clauses');
       const clausesResponse = await fetch(`${BACKEND_URL}/api/extract-jugement`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await entetesBackend(),
         body: JSON.stringify({ documentText: texteData.text }),
       });
       const clausesData = await clausesResponse.json();

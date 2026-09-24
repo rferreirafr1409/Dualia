@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { useStore } from '../../store/useStore';
+import { entetesBackend } from '../../lib/appelBackend';
 import { supabase } from '../../constants/supabase';
 import { TRADUCTIONS } from '../../constants/i18n';
 
@@ -73,7 +74,9 @@ export default function CafScreen() {
     setRecuperationErreur(null);
     setRecuperationAvertissement(null);
     try {
-      const reponse = await fetch('https://dualia-backend.vercel.app/api/insee-indice');
+      const reponse = await fetch('https://dualia-backend.vercel.app/api/insee-indice', {
+        headers: await entetesBackend(),
+      });
       const data = await reponse.json();
       if (!reponse.ok || !data.valeur) {
         throw new Error(data.error || 'Réponse invalide');

@@ -19,6 +19,7 @@ import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useStore } from '../../store/useStore';
+import { entetesBackend } from '../../lib/appelBackend';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { ExportIcon } from '../../components/icons';
 import { TRADUCTIONS } from '../../constants/i18n';
@@ -381,7 +382,7 @@ export default function MessagerieScreen() {
       try {
         const reponse = await fetchAvecRetry(MODERATE_MESSAGE_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: await entetesBackend(),
           body: JSON.stringify({ texte, langue }),
         });
         const data = await reponse.json();
@@ -427,18 +428,25 @@ export default function MessagerieScreen() {
       // l'envoyer au détecteur d'événements ne ferait qu'un aller-retour
       // réseau pour rien.
       if (!msg.contenu.trim()) return;
-      fetchAvecRetry(PARSE_MESSAGE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ texte: msg.contenu, langue }),
-      })
-        .then((r) => r.json())
-        .then((data) => {
+      // Les en-têtes portent désormais le jeton de session, et le construire
+      // demande un await : le rappel passe donc en asynchrone. Les erreurs
+      // restent avalées — ce détecteur d'événements est un confort, il ne doit
+      // jamais faire échouer l'affichage de la messagerie.
+      (async () => {
+        try {
+          const reponse = await fetchAvecRetry(PARSE_MESSAGE_URL, {
+            method: 'POST',
+            headers: await entetesBackend(),
+            body: JSON.stringify({ texte: msg.contenu, langue }),
+          });
+          const data = await reponse.json();
           if (data.evenementDetecte && data.date) {
             ajouterSuggestionMessage(msg.id, { titre: data.titre || 'Evenement', date: data.date, enfant: data.enfant });
           }
-        })
-        .catch(() => {});
+        } catch {
+          /* silencieux */
+        }
+      })();
     });
   }, [messages]);
 

@@ -20,6 +20,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../store/useStore';
+import { entetesBackend } from '../../lib/appelBackend';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { Depense, CategorieDepense, ParentRole, CategorieRegle, ReglePartage } from '../../types';
 import DatePickerField from '../../components/DatePickerField';
@@ -577,7 +578,7 @@ function FinancesScreenInner() {
     try {
       const response = await fetchAvecRetry(BACKEND_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await entetesBackend(),
         body: JSON.stringify({ image: asset.base64, mediaType: asset.mimeType || 'image/jpeg' }),
       });
 
@@ -623,7 +624,7 @@ function FinancesScreenInner() {
 
         const response = await fetchAvecRetry(BACKEND_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: await entetesBackend(),
           body: JSON.stringify({ image: base64, mediaType }),
         });
         if (!response.ok) throw new Error('scan_failed');

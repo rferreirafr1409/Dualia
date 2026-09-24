@@ -22,6 +22,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import { entetesBackend } from '../lib/appelBackend';
 import { parserICS, type EvenementICS } from '../lib/icsParser';
 
 const BACKEND_URL = 'https://dualia-backend.vercel.app';
@@ -64,7 +65,9 @@ interface UseCalendriersExternesResult {
 // pour éviter les blocages CORS des fournisseurs (Google, Outlook...).
 async function recupererICSDistant(url: string): Promise<{ ok: true; contenu: string } | { ok: false; erreur: string }> {
   try {
-    const reponse = await fetch(`${BACKEND_URL}/api/fetch-ics?url=${encodeURIComponent(url)}`);
+    const reponse = await fetch(`${BACKEND_URL}/api/fetch-ics?url=${encodeURIComponent(url)}`, {
+      headers: await entetesBackend(),
+    });
     if (!reponse.ok) {
       const corps = await reponse.json().catch(() => null);
       return { ok: false, erreur: corps?.error ?? `Le serveur a répondu avec le statut ${reponse.status}` };
