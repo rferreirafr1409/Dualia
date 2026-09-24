@@ -175,7 +175,6 @@ export default function RootLayout() {
         <Stack.Screen name="echeances" />
         <Stack.Screen name="enfant-histoire" />
         <Stack.Screen name="fil-de-vie" />
-        <Stack.Screen name="journal" />
         <Stack.Screen name="partager-moment" />
         <Stack.Screen name="personnaliser-home" />
         <Stack.Screen name="personnaliser-transmission" />

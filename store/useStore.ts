@@ -2502,14 +2502,36 @@ export const useStore = create<DualiaStore>()(
           : texteGarde.includes('père') || texteGarde.includes('pere')
           ? 'pere'
           : null;
-        const parentResident: ParentRole = genre
-          ? ((['A', 'B'] as ParentRole[]).find((id) => parents[id].genreParental === genre) ?? 'A')
-          : 'A';
+        // Le jugement designe un parent par son genre (« residence principale
+        // chez la mere »). Si on ne sait pas lequel des deux est la mere, on
+        // NE GENERE RIEN.
+        //
+        // L'ancien code retombait sur le parent A. Quand la mere etait le
+        // parent B, Dualia produisait douze mois de calendrier de garde avec
+        // les enfants chez le mauvais parent — en silence, et avec l'autorite
+        // d'un planning issu du jugement. Mieux vaut pas de calendrier du tout
+        // qu'un calendrier faux : le parent renseigne qui est la mere et qui
+        // est le pere dans l'ecran de validation du cadre, et relance.
+        const parentDesigne = genre
+          ? (['A', 'B'] as ParentRole[]).find((id) => parents[id].genreParental === genre)
+          : undefined;
 
-        if (alternee) {
-          genererCalendrierAlterne(new Date().toISOString(), parentResident, 12);
+        // Aucune generation automatique tant que le parent de residence n'est
+        // pas etabli : ni quand le jugement ne designe personne, ni quand il
+        // designe un genre qu'aucun parent ne porte. L'ecran de validation du
+        // cadre propose une generation manuelle, ou le parent choisit
+        // lui-meme — c'est la le bon endroit pour une decision que Dualia ne
+        // peut pas prendre.
+        if (!parentDesigne) {
+          console.warn(
+            '[Dualia] Parent de residence indetermine' +
+              (genre ? ' (le jugement designe « ' + genre + ' », aucun parent ne porte ce genre)' : '') +
+              ' : calendrier de garde non genere.'
+          );
+        } else if (alternee) {
+          genererCalendrierAlterne(new Date().toISOString(), parentDesigne, 12);
         } else if (cadre.garde.weekendParite) {
-          genererCalendrierGardeWeekend(new Date().toISOString(), parentResident, 12);
+          genererCalendrierGardeWeekend(new Date().toISOString(), parentDesigne, 12);
         }
       }
 
@@ -2787,6 +2809,69 @@ export const useStore = create<DualiaStore>()(
       accesTiers: null,
     });
 
+    const roleParUuid: Record<string, ParentRole> = {};
+    (tousLesParents ?? []).forEach((p: any) => {
+      roleParUuid[p.id] = p.role as ParentRole;
+    });
+
+
+    // Les enfants d'abord, juste apres les parents.
+    //
+    // Ils etaient charges en quinzieme position, apres le cadre familial, les
+    // regles, le calendrier, les depenses, le journal, les decisions, les
+    // messages, les tiers, l'agenda, la garde et les documents — soit une
+    // quinzaine d'allers-retours reseau avant que leurs photos soient signees.
+    // Or les visages des enfants sont la PREMIERE chose que le parent voit en
+    // ouvrant Dualia : il regardait des ronds vides pendant une demi-seconde a
+    // chaque rechargement. Rien d'autre sur cet ecran n'est plus urgent.
+    const { data: enfantsDB, error: erreurEnfants } = await supabase
+      .from('enfants')
+      .select('*')
+      .eq('famille_id', familleId)
+      .order('prenom', { ascending: true });
+    if (erreurEnfants) {
+      console.error('[Dualia] Échec chargement enfants :', erreurEnfants);
+      set({ enfants: [] });
+    } else {
+      const { data: contactsDB, error: erreurContacts } = await supabase
+        .from('contacts_urgence')
+        .select('*')
+        .eq('famille_id', familleId)
+        .order('priorite', { ascending: true });
+      if (erreurContacts) console.error("[Dualia] Échec chargement contacts d'urgence :", erreurContacts);
+
+      const enfantsCharges = (enfantsDB ?? []).map((row: any) =>
+        enfantDepuisDB(
+          row,
+          (contactsDB ?? []).filter((c: any) => c.enfant_id === row.id).map(contactUrgenceDepuisDB)
+        )
+      );
+      // Les photos sont stockees sous forme de chemin : on les signe en une
+      // requete pour l'ensemble des enfants.
+      const urlsEnfants = await signerChemins('enfants-photos', enfantsCharges.map((e) => e.photoUrl));
+      set({
+        enfants: enfantsCharges.map((e) =>
+          e.photoUrl && urlsEnfants[e.photoUrl] ? { ...e, photoUrl: urlsEnfants[e.photoUrl] } : e
+        ),
+      });
+    }
+
+    // Puis le Fil de vie, pour la meme raison : le bandeau « souvenir recent »
+    // de l'accueil porte une photo, et il restait vide lui aussi.
+    const { data: momentsDB, error: erreurMoments } = await supabase
+      .from('moments')
+      .select('*')
+      .eq('famille_id', familleId)
+      .order('created_at', { ascending: false });
+    if (erreurMoments) console.error('[Dualia] Échec chargement Fil de vie :', erreurMoments);
+    const momentsCharges = (momentsDB ?? []).map((row: any) => momentDepuisDB(row, roleParUuid));
+    const urlsMoments = await signerChemins('moments-photos', momentsCharges.map((m) => m.photoUrl));
+    set({
+      moments: momentsCharges.map((m) =>
+        m.photoUrl && urlsMoments[m.photoUrl] ? { ...m, photoUrl: urlsMoments[m.photoUrl] } : m
+      ),
+    });
+
     const { data: cadreDB, error: erreurCadre } = await supabase
       .from('cadre_familial')
       .select('*')
@@ -2805,11 +2890,6 @@ export const useStore = create<DualiaStore>()(
     } else {
       set({ cadreFamilial: null });
     }
-
-    const roleParUuid: Record<string, ParentRole> = {};
-    (tousLesParents ?? []).forEach((p: any) => {
-      roleParUuid[p.id] = p.role as ParentRole;
-    });
 
     const { data: evenementsDB, error: erreurEvenements } = await supabase
       .from('evenements_calendrier')
@@ -2928,51 +3008,7 @@ export const useStore = create<DualiaStore>()(
       ),
     });
 
-    const { data: enfantsDB, error: erreurEnfants } = await supabase
-      .from('enfants')
-      .select('*')
-      .eq('famille_id', familleId)
-      .order('prenom', { ascending: true });
-    if (erreurEnfants) {
-      console.error('[Dualia] Échec chargement enfants :', erreurEnfants);
-      set({ enfants: [] });
-    } else {
-      const { data: contactsDB, error: erreurContacts } = await supabase
-        .from('contacts_urgence')
-        .select('*')
-        .eq('famille_id', familleId)
-        .order('priorite', { ascending: true });
-      if (erreurContacts) console.error("[Dualia] Échec chargement contacts d'urgence :", erreurContacts);
 
-      const enfantsCharges = (enfantsDB ?? []).map((row: any) =>
-        enfantDepuisDB(
-          row,
-          (contactsDB ?? []).filter((c: any) => c.enfant_id === row.id).map(contactUrgenceDepuisDB)
-        )
-      );
-      // Les photos sont stockees sous forme de chemin : on les signe en une
-      // requete pour l'ensemble des enfants.
-      const urlsEnfants = await signerChemins('enfants-photos', enfantsCharges.map((e) => e.photoUrl));
-      set({
-        enfants: enfantsCharges.map((e) =>
-          e.photoUrl && urlsEnfants[e.photoUrl] ? { ...e, photoUrl: urlsEnfants[e.photoUrl] } : e
-        ),
-      });
-    }
-
-    const { data: momentsDB, error: erreurMoments } = await supabase
-      .from('moments')
-      .select('*')
-      .eq('famille_id', familleId)
-      .order('created_at', { ascending: false });
-    if (erreurMoments) console.error('[Dualia] Échec chargement Fil de vie :', erreurMoments);
-    const momentsCharges = (momentsDB ?? []).map((row: any) => momentDepuisDB(row, roleParUuid));
-    const urlsMoments = await signerChemins('moments-photos', momentsCharges.map((m) => m.photoUrl));
-    set({
-      moments: momentsCharges.map((m) =>
-        m.photoUrl && urlsMoments[m.photoUrl] ? { ...m, photoUrl: urlsMoments[m.photoUrl] } : m
-      ),
-    });
 
     await get().chargerFoyers(familleId);
 
