@@ -15,6 +15,8 @@ import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { libellesConditions, listerConditions, aDesConditions } from '../lib/conditionsCadre';
+import { formatMontant } from '../lib/comptes';
 import { TRADUCTIONS } from '../constants/i18n';
 import DatePickerField from '../components/DatePickerField';
 import type { CategorieRegle, NiveauConfiance, ReglePartage, ParentRole } from '../types';
@@ -22,6 +24,11 @@ import type { CategorieRegle, NiveauConfiance, ReglePartage, ParentRole } from '
 export default function ValidationCadreScreen() {
   const router = useRouter();
   const langue = useStore((s) => s.langue);
+  const lcCadre = libellesConditions(langue);
+  // Exactement la même fonction que l'écran Finances : un plafond doit se lire
+  // à l'identique là où on le valide et là où on l'applique. Dupliquer la mise
+  // en forme, c'était laisser les deux écrans diverger à la première retouche.
+  const formatMontantCadre = (n: number) => formatMontant(n, langue);
   const t = TRADUCTIONS[langue].validationCadre;
   const localeDate = langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
 
@@ -264,6 +271,7 @@ export default function ValidationCadreScreen() {
 
         {regles.map((regle) => {
           const confiance = LABELS_CONFIANCE[regle.detection.confiance];
+          const conditions = listerConditions(regle.conditions, langue, formatMontantCadre);
           const estDefautNonPrecise = regle.detection.confiance === 'basse' && !regle.clauseSource?.reference;
 
           return (
@@ -292,6 +300,23 @@ export default function ValidationCadreScreen() {
                   {regle.clauseSource.extrait && (
                     <Text style={styles.clauseExtrait}>« {regle.clauseSource.extrait} »</Text>
                   )}
+                </View>
+              ) : null}
+
+              {/* Conditions du jugement. Elles étaient extraites, enregistrées
+                  en base, et montrées à personne : le parent validait « 60/40 »
+                  sans voir « dans la limite de 400 €, déduction faite de la
+                  mutuelle, sur justificatif ». Valider une règle dont on ne
+                  voit pas les conditions, ce n'est pas valider. */}
+              {aDesConditions(regle.conditions) ? (
+                <View style={styles.conditionsBox}>
+                  <Text style={styles.conditionsTitre}>{lcCadre.titre}</Text>
+                  {conditions.map((ligne, i) => (
+                    <View key={i} style={styles.conditionLigne}>
+                      <Ionicons name="ellipse" size={5} color={COLORS.or} style={{ marginTop: 6 }} />
+                      <Text style={styles.conditionTexte}>{ligne}</Text>
+                    </View>
+                  ))}
                 </View>
               ) : null}
 
@@ -461,6 +486,25 @@ const styles = StyleSheet.create({
   clauseBox: { backgroundColor: '#F3F1EC', borderRadius: 8, padding: 10, marginTop: 6, marginBottom: 8 },
   clauseReference: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.ardoise, marginBottom: 3 },
   clauseExtrait: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, fontStyle: 'italic', lineHeight: 18 },
+  conditionsBox: {
+    backgroundColor: 'rgba(197,160,89,0.08)',
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.or,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginBottom: SPACING.md,
+    gap: 4,
+  },
+  conditionsTitre: {
+    fontFamily: FONTS.bodySemibold,
+    fontSize: 11.5,
+    color: COLORS.vertProfond,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  conditionLigne: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
+  conditionTexte: { flex: 1, fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, lineHeight: 17 },
   confianceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: SPACING.md },
   confiancePuce: { width: 7, height: 7, borderRadius: 4 },
   confianceTexte: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise },

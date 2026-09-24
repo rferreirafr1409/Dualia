@@ -25,6 +25,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
+import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
 
@@ -112,6 +113,13 @@ export default function ReinitialiserMotDePasseScreen() {
     try {
       const { error } = await supabase.auth.updateUser({ password: motDePasse });
       if (error) throw error;
+      // Recharge l'espace familial AVANT d'annoncer le succes, comme le font
+      // connexion, creer-espace, rejoindre et rejoindre-acces. Sans cet appel,
+      // le parent arrivait sur un accueil vide — la garde de session ayant
+      // purge le stockage local a l'ouverture de cet ecran, qui se fait sans
+      // session. Et annoncer avant de charger ferait afficher « Mot de passe
+      // mis a jour » puis une erreur, pour un mot de passe pourtant change.
+      await useStore.getState().initialiserSession();
       alertCompat('Mot de passe mis à jour', 'Votre nouveau mot de passe est enregistré.');
       router.replace('/(tabs)/accueil');
     } catch (err: any) {

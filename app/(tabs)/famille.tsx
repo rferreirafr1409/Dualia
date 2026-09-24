@@ -32,6 +32,15 @@ function parentDuJour(date: Date, evs: { dateDebut: string; dateFin: string; par
   return null;
 }
 
+// Libellés de l'entrée « Mon compte ». Gardés ici plutôt que dans i18n.ts
+// pour ne pas alourdir un fichier de 2 700 lignes avec deux chaînes.
+const LIBELLES_COMPTE: Record<'fr' | 'pt' | 'es' | 'en', { titre: string; desc: string }> = {
+  fr: { titre: 'Mon compte', desc: 'Double authentification et déconnexion' },
+  pt: { titre: 'A minha conta', desc: 'Dupla autenticação e terminar sessão' },
+  es: { titre: 'Mi cuenta', desc: 'Doble autenticación y cerrar sesión' },
+  en: { titre: 'My account', desc: 'Two-factor authentication and sign out' },
+};
+
 export default function FamilleScreen() {
   const router = useRouter();
   const langue = useStore((s) => s.langue);
@@ -55,6 +64,17 @@ export default function FamilleScreen() {
     { icone: 'home-outline', couleur: COLORS.vert, fond: '#EEF4F1', titre: 'Parents & foyers', desc: 'Qui compose votre famille, et où vivent vos enfants', route: '/parents-foyers' },
     { icone: 'shield-checkmark-outline', couleur: COLORS.vertProfond, fond: '#E8ECEB', titre: t.cadreFamilial, desc: t.cadreFamilialDesc, route: '/validation-cadre' },
     { icone: 'people-outline', couleur: COLORS.terracotta, fond: '#F3E9E4', titre: t.accesTiers, desc: t.accesTiersDesc, route: '/acces-tiers' },
+    // Mon compte : double authentification et déconnexion. L'écran existait
+    // déjà mais n'était lié depuis nulle part — ni la 2FA ni la déconnexion
+    // n'étaient donc atteignables par un parent.
+    {
+      icone: 'lock-closed-outline',
+      couleur: COLORS.vertProfond,
+      fond: '#E8ECEB',
+      titre: LIBELLES_COMPTE[langue].titre,
+      desc: LIBELLES_COMPTE[langue].desc,
+      route: '/securite-compte',
+    },
   ];
 
   return (

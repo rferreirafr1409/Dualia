@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
+import { useStore } from '../store/useStore';
 
 // Sur le web, Alert.alert (React Native) ne s'affiche pas — on utilise
 // window.alert/confirm à la place. Sur mobile, on garde Alert.alert natif.
@@ -23,14 +24,21 @@ const notifier = (titre: string, message: string) => {
   }
 };
 
-const demanderConfirmation = (titre: string, message: string): Promise<boolean> => {
+// Le libellé du bouton de confirmation est passé par l'appelant : « Désactiver »
+// était codé en dur pour la double authentification, et se serait affiché tel
+// quel sur une demande de déconnexion.
+const demanderConfirmation = (
+  titre: string,
+  message: string,
+  libelleConfirmation = 'Désactiver'
+): Promise<boolean> => {
   return new Promise((resolve) => {
     if (Platform.OS === 'web') {
       resolve(window.confirm(`${titre}\n\n${message}`));
     } else {
       Alert.alert(titre, message, [
         { text: 'Annuler', style: 'cancel', onPress: () => resolve(false) },
-        { text: 'Désactiver', style: 'destructive', onPress: () => resolve(true) },
+        { text: libelleConfirmation, style: 'destructive', onPress: () => resolve(true) },
       ]);
     }
   });
@@ -57,6 +65,33 @@ type Facteur = {
 
 export default function SecuriteCompte() {
   const router = useRouter();
+  const seDeconnecterDuStore = useStore((st) => st.seDeconnecter);
+  const [deconnexionEnCours, setDeconnexionEnCours] = useState(false);
+
+  const deconnexion = async () => {
+    const confirme = await demanderConfirmation(
+      'Se déconnecter',
+      "Les données de votre espace familial seront effacées de cet appareil. Elles reviendront à votre prochaine connexion.",
+      'Se déconnecter'
+    );
+    if (!confirme) return;
+    setDeconnexionEnCours(true);
+    try {
+      const fermeeCoteServeur = await seDeconnecterDuStore();
+      if (!fermeeCoteServeur) {
+        // L'appareil est propre, mais la session peut rester ouverte ailleurs.
+        // Le dire plutôt que de laisser le parent croire le contraire : sur un
+        // ordinateur partagé, c'est précisément ce qu'il a besoin de savoir.
+        notifier(
+          'Déconnecté de cet appareil',
+          "Cet appareil est propre : vos données et votre session y ont été effacées. Nos serveurs n'ont pas pu être joints, donc la session peut rester ouverte sur vos autres appareils."
+        );
+      }
+      router.replace('/connexion' as any);
+    } finally {
+      setDeconnexionEnCours(false);
+    }
+  };
 
   const [chargement, setChargement] = useState(true);
   const [facteurs, setFacteurs] = useState<Facteur[]>([]);
@@ -257,6 +292,30 @@ export default function SecuriteCompte() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Déconnexion.
+          Elle n'existait que pour les tiers. Un parent n'avait aucun moyen de
+          retirer ses données d'un ordinateur partagé — or l'ordinateur familial
+          d'un couple séparé est précisément le matériel de nos utilisateurs. */}
+      <View style={styles.carte}>
+        <Text style={styles.carteTitre}>Déconnexion</Text>
+        <Text style={styles.carteTexte}>
+          Ferme votre session et efface de cet appareil les données de votre espace familial :
+          messages, dépenses, documents, enfants. Rien n'est supprimé de votre compte, tout
+          revient à la reconnexion.
+        </Text>
+        <TouchableOpacity
+          style={styles.boutonSecondaire}
+          onPress={deconnexion}
+          disabled={deconnexionEnCours}
+        >
+          {deconnexionEnCours ? (
+            <ActivityIndicator color={COLORS.rouge} />
+          ) : (
+            <Text style={styles.boutonSecondaireTexte}>Se déconnecter</Text>
+          )}
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }

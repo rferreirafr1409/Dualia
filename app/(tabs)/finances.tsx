@@ -33,6 +33,10 @@ import {
   centimes, repartir, calculerSolde, reconcilierLignes, grouperLignes,
   parserMontant, lignesDetailPourGroupe,
 } from '../../lib/comptes';
+import {
+  libellesConditions, listerConditions, aDesConditions, basePartageable, depassePlafond,
+} from '../../lib/conditionsCadre';
+import { formatMontant as formatMontantBrut } from '../../lib/comptes';
 
 const BACKEND_URL = 'https://dualia-backend.vercel.app/api/scan-ticket';
 
@@ -301,10 +305,6 @@ const CATEGORIES: { key: CategorieDepense; icon: keyof typeof Ionicons.glyphMap 
   { key: 'autre', icon: 'ellipsis-horizontal-outline' },
 ];
 
-function formatMontant(n: number): string {
-  return `${n.toFixed(2)} €`;
-}
-
 function localeDeLangue(langue: 'fr' | 'pt' | 'es' | 'en') {
   return langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
 }
@@ -365,6 +365,10 @@ function FinancesScreenInner() {
   // l'enregistrement : un ticket scanné puis abandonné ne doit rien laisser
   // derrière lui dans le bucket.
   const [formJustificatif, setFormJustificatif] = useState<PieceJointeEnAttente | null>(null);
+  // Conditions du jugement. Le remboursement est le seul chiffre que Dualia
+  // calcule lui-même ; l'accord préalable est une déclaration du parent.
+  const [formRemboursement, setFormRemboursement] = useState('');
+  const [formAccordObtenu, setFormAccordObtenu] = useState<boolean | null>(null);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const [retentionVisible, setRetentionVisible] = useState(false);
 
@@ -396,6 +400,64 @@ function FinancesScreenInner() {
   };
 
   const regleActive = trouverRegleValidee(formCategorie);
+
+  // Conditions attachées à la règle retenue. Elles ne sont jamais masquées :
+  // valider ou appliquer une règle dont on ne voit pas les conditions, ce n'est
+  // pas valider. Voir lib/conditionsCadre pour la règle de conduite complète.
+  // Un parent français doit lire « 1 234,56 € », pas « 1234.56 € ».
+  const formatMontant = (n: number) => formatMontantBrut(n, langue);
+  const lc = libellesConditions(langue);
+  // Les conditions du jugement portent sur la CATÉGORIE de dépense, pas sur le
+  // mode de partage choisi. Les rattacher au mode « cadre familial » les
+  // faisait disparaître d'un seul appui sur « 50/50 » : le parent perdait
+  // l'avertissement d'accord préalable et l'exigence de justificatif, qui sont
+  // des obligations du jugement quelle que soit la répartition retenue. Le
+  // remboursement se déduit lui aussi dans tous les modes — c'est ce qui reste
+  // à la charge de la famille qui se partage, pas la facture brute.
+  const conditionsActives = regleActive?.conditions;
+  const lignesConditions = useMemo(
+    () => listerConditions(conditionsActives, langue, formatMontant),
+    [conditionsActives, langue]
+  );
+  // Conditions portées par les catégories présentes dans un ticket scanné.
+  // Le chemin scan appliquait la règle du cadre familial sans jamais montrer
+  // ni appliquer ses conditions : la même dépense pouvait être enregistrée
+  // différemment selon qu'on l'avait saisie à la main ou photographiée.
+  const conditionsDuTicket = useMemo(() => {
+    const categories = new Set(scanLignes.map((x) => x.categorie || 'autre'));
+    const lignes: string[] = [];
+    let accordRequis = false;
+    let remboursementRequis = false;
+    categories.forEach((cat) => {
+      const c = trouverRegleValidee(cat as CategorieDepense)?.conditions;
+      if (!c) return;
+      if (c.accordPrealable === true) accordRequis = true;
+      if (c.remboursementAssuranceDeduit === true) remboursementRequis = true;
+      listerConditions(c, langue, formatMontant).forEach((ligne) => {
+        if (!lignes.includes(ligne)) lignes.push(ligne);
+      });
+    });
+    return { lignes, accordRequis, remboursementRequis };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanLignes, cadreFamilial, langue]);
+
+  const montantSaisi = parserMontant(formMontant);
+  const montantValide = !Number.isNaN(montantSaisi) && montantSaisi > 0 ? montantSaisi : 0;
+  const remboursementSaisi = formRemboursement.trim() ? parserMontant(formRemboursement) : 0;
+  // Aperçu seulement : aucun rognage silencieux ici non plus. Un remboursement
+  // supérieur au montant est refusé à l'enregistrement, pas ramené au montant.
+  const remboursementValide =
+    conditionsActives?.remboursementAssuranceDeduit === true &&
+    !Number.isNaN(remboursementSaisi) &&
+    remboursementSaisi > 0 &&
+    remboursementSaisi <= montantValide
+      ? remboursementSaisi
+      : 0;
+  const baseDePartage = basePartageable(montantValide, remboursementValide);
+  const plafondFranchi = depassePlafond(montantValide, conditionsActives);
+  const accordAttendu = conditionsActives?.accordPrealable === true;
+  const justificatifAttendu =
+    conditionsActives?.justificatifObligatoire === true && !formJustificatif;
 
   // Justificatifs dont l'année de conservation est écoulée. Comparaison de
   // chaînes ISO (AAAA-MM-JJ) : ordonnées lexicalement, elles se comparent
@@ -440,6 +502,17 @@ function FinancesScreenInner() {
     setFormPartage('50/50');
     setWhyOpen(false);
     setFormJustificatif(null);
+    setFormRemboursement('');
+    setFormAccordObtenu(null);
+  };
+
+  // Les réponses aux conditions appartiennent à la catégorie pour laquelle
+  // elles ont été données. Sans cette remise à zéro, « J'ai son accord » coché
+  // pour le sport restait coché après un basculement vers la santé : Dualia
+  // enregistrait une déclaration que le parent n'avait pas faite.
+  const oublierReponsesConditions = () => {
+    setFormRemboursement('');
+    setFormAccordObtenu(null);
   };
 
   // Quand la catégorie change, on propose automatiquement la règle du cadre
@@ -450,6 +523,7 @@ function FinancesScreenInner() {
     const regle = trouverRegleValidee(cat);
     setFormPartage(regle ? 'regle' : '50/50');
     setWhyOpen(false);
+    oublierReponsesConditions();
   };
 
   const ouvrirModal = () => {
@@ -670,20 +744,62 @@ function FinancesScreenInner() {
       return;
     }
 
+    // Base de partage : le montant, moins le remboursement quand la règle du
+    // jugement le prévoit. partA + partB valent la BASE, pas le montant payé —
+    // le détail de la dépense montre les trois chiffres.
+    const conditions = regleActive?.conditions;
+    const remboursementDemande = conditions?.remboursementAssuranceDeduit === true;
+
+    let remboursement = 0;
+    if (remboursementDemande && formRemboursement.trim()) {
+      const rembSaisi = parserMontant(formRemboursement);
+      if (Number.isNaN(rembSaisi)) {
+        // Message propre au champ : dire « montant illisible » quand c'est le
+        // remboursement qui pose problème envoie le parent corriger la
+        // mauvaise ligne.
+        alertCompat(t.erreur, lc.remboursementIllisible);
+        return;
+      }
+      if (rembSaisi < 0) {
+        alertCompat(t.erreur, lc.remboursementIllisible);
+        return;
+      }
+      if (rembSaisi > montant) {
+        // Refusé, jamais rogné : ramener 6 000 € à 600 € en silence ferait
+        // tomber la dette de l'autre parent à zéro sur une facture de 600 €,
+        // avec un écran qui affiche encore 6 000.
+        alertCompat(t.erreur, lc.remboursementSuperieur);
+        return;
+      }
+      remboursement = rembSaisi;
+    }
+
+    // L'accord préalable est une obligation du jugement : on demande la
+    // réponse plutôt que d'en inventer une. L'ancienne version écrivait
+    // « pas d'accord » pour un parent qui n'avait rien répondu — une
+    // déclaration défavorable qu'il n'avait jamais faite, montrée à son
+    // ex-conjoint.
+    if (conditions?.accordPrealable === true && formAccordObtenu === null) {
+      alertCompat(t.erreur, lc.accordSansReponse);
+      return;
+    }
+
+    const base = basePartageable(montant, remboursement);
+
     let partA: number;
     let partB: number;
     if (formPartage === 'regle' && regleActive) {
-      ({ partA, partB } = repartir(montant, regleActive.partA));
+      ({ partA, partB } = repartir(base, regleActive.partA));
     } else if (formPartage === 'total') {
       // Charge totale : celui qui paie assume l'intégralité, l'autre ne doit
       // rien. Les deux parts totalisent donc bien le montant.
-      partA = parentActif === 'A' ? montant : 0;
-      partB = parentActif === 'B' ? montant : 0;
+      partA = parentActif === 'A' ? base : 0;
+      partB = parentActif === 'B' ? base : 0;
     } else {
       // 50/50, et retombée du mode « cadre familial » quand aucune règle
       // validée ne couvre la catégorie — même règle que le récapitulatif de
       // ticket. Un else muet aurait fait basculer ce cas en charge totale.
-      ({ partA, partB } = repartir(montant, 50));
+      ({ partA, partB } = repartir(base, 50));
     }
 
     setEnvoiEnCours(true);
@@ -706,6 +822,9 @@ function FinancesScreenInner() {
         justificatifNom: piece?.nom,
         justificatifType: piece?.type,
         justificatifExpireLe: piece ? dateExpirationJustificatif() : undefined,
+        remboursementRecu: remboursement > 0 ? remboursement : undefined,
+        accordPrealableConfirme:
+          conditions?.accordPrealable === true ? formAccordObtenu === true : undefined,
       };
 
       ajouterDepense(nouvelle);
@@ -724,6 +843,13 @@ function FinancesScreenInner() {
     const entrees = Object.entries(groupes);
     if (entrees.length === 0) {
       alertCompat(t.erreur, l.montantIncoherent);
+      return;
+    }
+
+    // Même exigence que la saisie manuelle : on demande la réponse plutôt que
+    // d'en inventer une.
+    if (conditionsDuTicket.accordRequis && formAccordObtenu === null) {
+      alertCompat(t.erreur, lc.accordSansReponse);
       return;
     }
 
@@ -771,6 +897,13 @@ function FinancesScreenInner() {
           justificatifNom: piece?.nom,
           justificatifType: piece?.type,
           justificatifExpireLe: expireLe,
+          // Le remboursement n'est pas demandé ici : au moment où l'on
+          // photographie un ticket, on ne le connaît pas encore. La dépense est
+          // donc enregistrée sur son montant brut, et le récapitulatif le dit.
+          accordPrealableConfirme:
+            trouverRegleValidee(cat as CategorieDepense)?.conditions?.accordPrealable === true
+              ? formAccordObtenu === true
+              : undefined,
         };
         ajouterDepense(nouvelle);
       });
@@ -779,6 +912,7 @@ function FinancesScreenInner() {
       setModalVisible(false);
       setScanLignes([]);
       setFormJustificatif(null);
+      oublierReponsesConditions();
     } catch (err: any) {
       console.error('[Dualia] Échec enregistrement du récapitulatif :', err);
       alertCompat(t.erreur, messagePourErreur(err));
@@ -1039,6 +1173,91 @@ function FinancesScreenInner() {
                 <Text style={styles.partageNote}>{l.chargeTotaleExplication}</Text>
               ) : null}
 
+              {/* Conditions du jugement. Elles sont affichées dès que la règle
+                  est retenue, avant tout calcul : le parent doit les lire au
+                  moment où il choisit, pas les découvrir après coup. */}
+              {aDesConditions(conditionsActives) ? (
+                <View style={styles.conditionsBox}>
+                  <Text style={styles.conditionsTitre}>{lc.titre}</Text>
+                  {lignesConditions.map((ligne, i) => (
+                    <View key={i} style={styles.conditionLigne}>
+                      <Ionicons name="ellipse" size={5} color={COLORS.or} style={{ marginTop: 6 }} />
+                      <Text style={styles.conditionTexte}>{ligne}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
+              {/* Remboursement : la seule condition que Dualia calcule. La
+                  répartition porte sur ce qui reste à la charge de la famille,
+                  et la base est affichée pour que le chiffre soit vérifiable. */}
+              {conditionsActives?.remboursementAssuranceDeduit === true ? (
+                <>
+                  <Text style={styles.label}>{lc.remboursementLabel}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formRemboursement}
+                    onChangeText={setFormRemboursement}
+                    placeholder={langue === 'en' ? '0.00' : '0,00'}
+                    placeholderTextColor={COLORS.ardoise}
+                    keyboardType="decimal-pad"
+                  />
+                  <Text style={styles.partageNote}>{lc.remboursementAide}</Text>
+                  {montantValide > 0 ? (
+                    <Text style={styles.basePartage}>{lc.basePartagee(formatMontant(baseDePartage))}</Text>
+                  ) : null}
+                </>
+              ) : null}
+
+              {/* Plafond : Dualia ne tranche pas. Il ne sait pas si « 400 € »
+                  vaut par dépense, par an ou par enfant — l'appliquer d'office
+                  donnerait à une supposition l'autorité d'un chiffre affiché. */}
+              {plafondFranchi && conditionsActives?.plafondMontant ? (
+                <View style={styles.avertissementBox}>
+                  <Ionicons name="alert-circle-outline" size={17} color={COLORS.or} />
+                  <Text style={styles.avertissementTexte}>
+                    {lc.plafondDepasse(formatMontant(conditionsActives.plafondMontant))}
+                  </Text>
+                </View>
+              ) : null}
+
+              {/* Accord préalable : une déclaration du parent, enregistrée
+                  telle quelle. « Pas encore » n'empêche rien — mais l'autre
+                  parent le verra, ce qui vaut mieux qu'un blocage. */}
+              {accordAttendu ? (
+                <View style={styles.accordBox}>
+                  <Text style={styles.accordQuestion}>{lc.accordQuestion}</Text>
+                  <View style={styles.categorieRow}>
+                    <Pressable
+                      style={[styles.categorieChip, formAccordObtenu === true && styles.categorieChipActive]}
+                      onPress={() => setFormAccordObtenu(true)}
+                    >
+                      <Text style={[styles.categorieChipTexte, formAccordObtenu === true && styles.categorieChipTexteActive]}>
+                        {lc.accordOui}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.categorieChip, formAccordObtenu === false && styles.categorieChipActive]}
+                      onPress={() => setFormAccordObtenu(false)}
+                    >
+                      <Text style={[styles.categorieChipTexte, formAccordObtenu === false && styles.categorieChipTexteActive]}>
+                        {lc.accordNon}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {formAccordObtenu === false ? (
+                    <Text style={styles.partageNote}>{lc.accordNonNote}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {justificatifAttendu ? (
+                <View style={styles.avertissementBox}>
+                  <Ionicons name="document-attach-outline" size={17} color={COLORS.or} />
+                  <Text style={styles.avertissementTexte}>{lc.justificatifManquant}</Text>
+                </View>
+              ) : null}
+
               {formPartage === 'regle' && regleActive ? (
                 <>
                   <Pressable style={styles.whyToggle} onPress={() => setWhyOpen(!whyOpen)}>
@@ -1185,6 +1404,48 @@ function FinancesScreenInner() {
                 <Text style={styles.partageNote}>{l.chargeTotaleExplication}</Text>
               ) : null}
 
+              {conditionsDuTicket.lignes.length > 0 ? (
+                <View style={styles.conditionsBox}>
+                  <Text style={styles.conditionsTitre}>{lc.titre}</Text>
+                  {conditionsDuTicket.lignes.map((ligne, i) => (
+                    <View key={i} style={styles.conditionLigne}>
+                      <Ionicons name="ellipse" size={5} color={COLORS.or} style={{ marginTop: 6 }} />
+                      <Text style={styles.conditionTexte}>{ligne}</Text>
+                    </View>
+                  ))}
+                  {conditionsDuTicket.remboursementRequis ? (
+                    <Text style={styles.partageNote}>{lc.remboursementAide}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
+              {conditionsDuTicket.accordRequis ? (
+                <View style={styles.accordBox}>
+                  <Text style={styles.accordQuestion}>{lc.accordQuestion}</Text>
+                  <View style={styles.categorieRow}>
+                    <Pressable
+                      style={[styles.categorieChip, formAccordObtenu === true && styles.categorieChipActive]}
+                      onPress={() => setFormAccordObtenu(true)}
+                    >
+                      <Text style={[styles.categorieChipTexte, formAccordObtenu === true && styles.categorieChipTexteActive]}>
+                        {lc.accordOui}
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.categorieChip, formAccordObtenu === false && styles.categorieChipActive]}
+                      onPress={() => setFormAccordObtenu(false)}
+                    >
+                      <Text style={[styles.categorieChipTexte, formAccordObtenu === false && styles.categorieChipTexteActive]}>
+                        {lc.accordNon}
+                      </Text>
+                    </Pressable>
+                  </View>
+                  {formAccordObtenu === false ? (
+                    <Text style={styles.partageNote}>{lc.accordNonNote}</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
               <Pressable
                 style={[styles.submitBtn, envoiEnCours && styles.submitBtnDisabled]}
                 onPress={soumettreLignesCategorisees}
@@ -1214,9 +1475,59 @@ function FinancesScreenInner() {
 
               {/* Infos de base, toujours affichées, même sans détail ligne par ligne */}
               <View style={styles.recapLigne}>
-                <Text style={styles.recapLigneTexte}>{t.montant}</Text>
+                <Text style={styles.recapLigneTexte}>
+                  {detailDepense?.remboursementRecu ? lc.montantPaye : t.montant}
+                </Text>
                 <Text style={styles.recapLigneMontant}>{detailDepense ? formatMontant(detailDepense.montant) : ''}</Text>
               </View>
+
+              {/* Quand un remboursement a été déduit, les trois chiffres sont
+                  montrés : payé, remboursé, base réellement partagée. Afficher
+                  la seule part sans sa base rendrait le calcul invérifiable. */}
+              {detailDepense?.remboursementRecu ? (
+                <>
+                  <View style={styles.detailConditionLigne}>
+                    <Text style={styles.detailConditionLabel}>{lc.rembourse}</Text>
+                    <Text style={styles.detailConditionValeur}>
+                      − {formatMontant(detailDepense.remboursementRecu)}
+                    </Text>
+                  </View>
+                  <View style={styles.detailConditionLigne}>
+                    <Text style={styles.detailConditionLabel}>{lc.baseLabel}</Text>
+                    <Text style={styles.detailConditionValeur}>
+                      {formatMontant(basePartageable(detailDepense.montant, detailDepense.remboursementRecu))}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
+
+              {/* Les parts de chacun : ce sont les seuls chiffres qui pèsent
+                  réellement sur le solde, et ils n'étaient affichés nulle part.
+                  Montrer une base sans les parts laisse le calcul aussi
+                  invérifiable que l'inverse. */}
+              {detailDepense && (detailDepense.partA != null || detailDepense.partB != null) ? (
+                <>
+                  <View style={styles.detailConditionLigne}>
+                    <Text style={styles.detailConditionLabel}>{lc.partDe(parentNom('A'))}</Text>
+                    <Text style={styles.detailConditionValeur}>
+                      {formatMontant(detailDepense.partA ?? detailDepense.montant / 2)}
+                    </Text>
+                  </View>
+                  <View style={styles.detailConditionLigne}>
+                    <Text style={styles.detailConditionLabel}>{lc.partDe(parentNom('B'))}</Text>
+                    <Text style={styles.detailConditionValeur}>
+                      {formatMontant(detailDepense.partB ?? detailDepense.montant / 2)}
+                    </Text>
+                  </View>
+                </>
+              ) : null}
+
+              {detailDepense?.accordPrealableConfirme === false ? (
+                <View style={styles.avertissementBox}>
+                  <Ionicons name="alert-circle-outline" size={17} color={COLORS.or} />
+                  <Text style={styles.avertissementTexte}>{lc.accordNonNote}</Text>
+                </View>
+              ) : null}
               <View style={styles.recapLigne}>
                 <Text style={styles.recapLigneTexte}>{t.date}</Text>
                 <Text style={styles.recapLigneMontant}>{detailDepense ? formatDateLong(detailDepense.date, langue) : ''}</Text>
@@ -1292,7 +1603,12 @@ function FinancesScreenInner() {
               ) : null}
 
               <View style={styles.recapTotalRow}>
-                <Text style={styles.recapTotalLabel}>{t.recapTotal}</Text>
+                {/* Nommé « Payé » dès qu'un remboursement a été déduit :
+                    réafficher « Total 600 € » juste après « Base partagée
+                    400 € » donne deux totaux contradictoires. */}
+                <Text style={styles.recapTotalLabel}>
+                  {detailDepense?.remboursementRecu ? lc.montantPaye : t.recapTotal}
+                </Text>
                 <Text style={styles.recapTotalMontant}>{detailDepense ? formatMontant(detailDepense.montant) : ''}</Text>
               </View>
 
@@ -1488,6 +1804,51 @@ const styles = StyleSheet.create({
   whyBoxLigne: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, marginBottom: 4 },
   whyBoxExtrait: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, fontStyle: 'italic', marginTop: 2, marginBottom: 6, lineHeight: 17 },
   whyBoxNote: { fontFamily: FONTS.body, fontSize: 11, color: COLORS.ardoise, lineHeight: 16 },
+  conditionsBox: {
+    backgroundColor: 'rgba(197,160,89,0.08)',
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.or,
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginTop: SPACING.sm,
+    gap: 4,
+  },
+  conditionsTitre: {
+    fontFamily: FONTS.bodySemibold,
+    fontSize: 11.5,
+    color: COLORS.vertProfond,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  conditionLigne: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 },
+  conditionTexte: { flex: 1, fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, lineHeight: 17 },
+  basePartage: {
+    fontFamily: FONTS.displaySemibold,
+    fontSize: 14,
+    color: COLORS.vert,
+    marginTop: SPACING.xs,
+  },
+  avertissementBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: 'rgba(197,160,89,0.12)',
+    borderRadius: RADIUS.sm,
+    padding: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  avertissementTexte: { flex: 1, fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, lineHeight: 17 },
+  accordBox: { marginTop: SPACING.sm, gap: SPACING.xs },
+  accordQuestion: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, lineHeight: 17 },
+  detailConditionLigne: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 5,
+  },
+  detailConditionLabel: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise },
+  detailConditionValeur: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond },
   partageNote: {
     fontFamily: FONTS.body,
     fontSize: 11.5,

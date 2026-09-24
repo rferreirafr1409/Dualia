@@ -3,8 +3,9 @@
 
 import {
   centimes, repartir, calculerSolde, reconcilierLignes, grouperLignes,
-  parserMontant, lignesDetailPourGroupe,
+  parserMontant, lignesDetailPourGroupe, formatMontant,
 } from './lib/comptes';
+import { basePartageable, depassePlafond, listerConditions, aDesConditions, libellesConditions } from './lib/conditionsCadre';
 import { jourLocal, aujourdHuiLocal, depuisJourLocal, ajouterJours, ajouterAnnees, jourPourBase } from './lib/dates';
 
 let echecs = 0;
@@ -210,6 +211,100 @@ eq('liste vide => total 0', calculerSolde([]).totalDepenses, 0);
 // Ancien enregistrement dont les parts ne totalisent pas le montant.
 eq('parts incoherentes anciennes : lues telles quelles, sans NaN',
    calculerSolde([{ montant: 100, rembourse: false, auteurId: 'A', partA: 60.006, partB: 40.004 }]).solde, 40);
+
+
+console.log('\n-- conditions du jugement : le remboursement deduit');
+// Le cas qui a motive ce lot : orthodontie 600 €, mutuelle 200 €, regle 60/40.
+const base600 = basePartageable(600, 200);
+eq('base partagee = 600 - 200', base600, 400);
+const orthodontie = repartir(base600, 60);
+eq('parts sur la base nette', orthodontie, { partA: 240, partB: 160 });
+eq('somme des parts = base, pas le montant paye', centimes(orthodontie.partA + orthodontie.partB), 400);
+// Ce que Dualia reclamait avant : 60/40 sur le brut.
+const avant = repartir(600, 60);
+eq('ANCIEN calcul, sur le montant brut', avant, { partA: 360, partB: 240 });
+ok('ecart de 80 € sur la part de l autre parent', avant.partB - orthodontie.partB === 80);
+// Le solde suit la base nette.
+eq('A paie 600, mutuelle 200, 60/40 => B doit 160',
+   calculerSolde([{ montant: 600, rembourse: false, auteurId: 'A', partA: 240, partB: 160 }]).solde, 160);
+
+console.log('\n-- base partageable : cas limites');
+eq('aucun remboursement', basePartageable(600, undefined), 600);
+eq('remboursement nul', basePartageable(600, 0), 600);
+eq('remboursement negatif ignore', basePartageable(600, -50), 600);
+eq('remboursement egal au montant => base nulle', basePartageable(600, 600), 0);
+eq('remboursement superieur => base ramenee a zero, jamais negative', basePartageable(600, 900), 0);
+eq('arrondi au centime', basePartageable(100.01, 33.336), 66.67);
+ok('base jamais negative', [0, 1, 600, 1e6].every((m) => [0, 1, 700, 1e7].every((r) => basePartageable(m, r) >= 0)));
+// Une base nulle ne doit pas creer de creance.
+const baseNulle = repartir(basePartageable(300, 300), 60);
+eq('base nulle => aucune part', baseNulle, { partA: 0, partB: 0 });
+eq('base nulle => solde nul',
+   calculerSolde([{ montant: 300, rembourse: false, auteurId: 'A', partA: 0, partB: 0 }]).solde, 0);
+
+console.log('\n-- plafond : detecte, jamais applique d office');
+ok('600 depasse un plafond de 400', depassePlafond(600, { plafondMontant: 400 }));
+ok('400 ne depasse pas 400', !depassePlafond(400, { plafondMontant: 400 }));
+ok('400,01 depasse 400', depassePlafond(400.01, { plafondMontant: 400 }));
+ok('aucun plafond => aucun depassement', !depassePlafond(1e6, {}));
+ok('plafond nul ignore', !depassePlafond(600, { plafondMontant: 0 }));
+ok('conditions absentes => aucun depassement', !depassePlafond(600, undefined));
+
+console.log('\n-- affichage des conditions : rien ne reste cache');
+const fmt = (n: number) => `${n.toFixed(2)} €`;
+const toutes = { plafondMontant: 400, remboursementAssuranceDeduit: true, accordPrealable: true, justificatifObligatoire: true };
+eq('les quatre conditions sont listees', listerConditions(toutes, 'fr', fmt).length, 4);
+ok('le plafond apparait avec son montant', listerConditions(toutes, 'fr', fmt)[0].includes('400,00 €'.replace(',', '.')));
+for (const lg of ['fr', 'pt', 'es', 'en'] as const) {
+  const lignes = listerConditions(toutes, lg, fmt);
+  ok(`${lg} : 4 conditions traduites`, lignes.length === 4 && lignes.every((x) => x.length > 0), lignes);
+}
+ok('aucune condition => rien a afficher', !aDesConditions({}));
+ok('aucune condition => liste vide', listerConditions({}, 'fr', fmt).length === 0);
+ok('conditions absentes => rien a afficher', !aDesConditions(undefined));
+ok('un seul plafond suffit a afficher le bloc', aDesConditions({ plafondMontant: 400 }));
+ok('false explicite ne compte pas comme une condition', !aDesConditions({ accordPrealable: false, justificatifObligatoire: false }));
+
+
+console.log('\n-- mise en forme des montants, dans la langue du parent');
+const fr = formatMontant(1234.56, 'fr');
+ok('fr : virgule decimale', fr.includes('1') && fr.includes('234') && fr.includes(',56'), fr);
+ok('fr : pas de point decimal', !/\d\.\d\d(?!\d)/.test(fr), fr);
+const en = formatMontant(1234.56, 'en');
+ok('en : point decimal', en.includes('.56'), en);
+for (const lg of ['fr', 'pt', 'es', 'en'] as const) {
+  ok(`${lg} : deux decimales toujours`, /\d[.,]\d\d(\D|$)/.test(formatMontant(5, lg)), formatMontant(5, lg));
+  ok(`${lg} : symbole euro present`, formatMontant(5, lg).includes('€'), formatMontant(5, lg));
+}
+eq('arrondi au centime avant affichage', formatMontant(0.005, 'en'), formatMontant(0.01, 'en'));
+
+console.log('\n-- libelles des conditions : completude dans les quatre langues');
+const cles = Object.keys(libellesConditions('fr')).sort();
+for (const lg of ['pt', 'es', 'en'] as const) {
+  eq(`${lg} : memes cles que fr`, Object.keys(libellesConditions(lg)).sort(), cles);
+}
+for (const lg of ['fr', 'pt', 'es', 'en'] as const) {
+  const L: any = libellesConditions(lg);
+  const vides = cles.filter((k) => {
+    const v = L[k];
+    return typeof v === 'string' ? v.trim() === '' : typeof v === 'function' ? String(v('X')).trim() === '' : true;
+  });
+  ok(`${lg} : aucun libelle vide`, vides.length === 0, vides);
+  // Les fonctions doivent reellement interpoler leur argument.
+  ok(`${lg} : plafond interpole son montant`, L.plafond('ZZZ').includes('ZZZ'), L.plafond('ZZZ'));
+  ok(`${lg} : basePartagee interpole`, L.basePartagee('ZZZ').includes('ZZZ'), L.basePartagee('ZZZ'));
+  ok(`${lg} : partDe interpole le prenom`, L.partDe('Isabelle').includes('Isabelle'), L.partDe('Isabelle'));
+  ok(`${lg} : plafondDepasse interpole`, L.plafondDepasse('ZZZ').includes('ZZZ'), L.plafondDepasse('ZZZ'));
+}
+
+console.log('\n-- le remboursement ne rogne plus en silence');
+// L'ancien comportement : Math.min(6000, 600) = 600, base 0, dette effacee.
+const baseRognee = basePartageable(600, Math.min(6000, 600));
+eq('ANCIEN : un zero de trop effacait la dette', baseRognee, 0);
+eq('ANCIEN : part de l autre parent ramenee a zero', repartir(baseRognee, 60).partB, 0);
+// Desormais l'enregistrement est refuse ; basePartageable reste protege.
+eq('basePartageable reste borne a zero', basePartageable(600, 6000), 0);
+ok('600 rembourse 200 reste la seule saisie acceptee', basePartageable(600, 200) === 400);
 
 console.log(echecs === 0 ? `\nTOUS LES TESTS PASSENT\n` : `\n${echecs} ECHEC(S)\n`);
 process.exit(echecs === 0 ? 0 : 1);

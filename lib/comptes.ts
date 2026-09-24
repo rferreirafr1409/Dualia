@@ -7,10 +7,36 @@
 //
 // Trois invariants tenus par ce fichier :
 //  1. tout montant stocke est arrondi au centime ;
-//  2. partA + partB vaut EXACTEMENT le montant de la depense ;
+//  2. partA + partB vaut EXACTEMENT la base de partage de la depense —
+//     c'est-a-dire son montant, diminue du remboursement de la mutuelle quand
+//     la regle du jugement le prevoit (voir lib/conditionsCadre). Sans
+//     remboursement, base = montant. Ne jamais redériver une part depuis
+//     `montant` : passer par basePartageable() ;
 //  3. la somme des depenses creees depuis un ticket vaut le total du ticket.
 
 export type LigneTicket = { libelle: string; montant: number; categorie: string };
+
+/**
+ * Mise en forme d'un montant, dans la langue du parent.
+ *
+ * Toutes les langues de Dualia sauf l'anglais ecrivent la decimale avec une
+ * virgule : `${n.toFixed(2)} €` affichait « 1234.56 € » a un parent francais.
+ * Une seule fonction pour toute l'application, pour qu'un plafond se lise a
+ * l'identique la ou on le valide et la ou on l'applique.
+ */
+export function formatMontant(n: number, langue: 'fr' | 'pt' | 'es' | 'en' = 'fr'): string {
+  const locale = langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(centimes(n));
+  } catch {
+    return `${centimes(n).toFixed(2)} €`;
+  }
+}
 
 /** Arrondi au centime. 60 % de 100,01 € vaut 60,006 € : inacceptable en base. */
 export function centimes(n: number): number {

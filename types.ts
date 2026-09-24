@@ -137,6 +137,18 @@ export interface Depense {
   justificatifNom?: string;
   justificatifType?: string;
   justificatifExpireLe?: string;
+  // Conditions du jugement appliquees a cette depense.
+  //
+  // remboursementRecu : ce que la mutuelle ou la Securite sociale a rendu.
+  // Quand la regle du cadre familial porte « deduction faite du remboursement »,
+  // partA + partB valent montant - remboursementRecu, et NON montant : la
+  // repartition porte sur ce qui reste reellement a la charge de la famille.
+  //
+  // accordPrealableConfirme : undefined quand la categorie n'exige aucun accord
+  // prealable, true quand le parent declare l'avoir obtenu, false quand il a
+  // enregistre sans. Dualia n'arbitre pas, il rend la situation visible.
+  remboursementRecu?: number;
+  accordPrealableConfirme?: boolean;
 }
 export type CategorieDocument = 'administratif' | 'sante' | 'ecole' | 'juridique';
 

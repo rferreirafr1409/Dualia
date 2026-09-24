@@ -19,6 +19,7 @@ import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import { depuisJourLocal } from '../lib/dates';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import type { Enfant, EvenementGarde } from '../types';
 
@@ -145,9 +146,13 @@ function formatCreneau(ev: EvenementGarde, locale: string): string {
     : `${jour}, ${h(debut)} → ${fin.toLocaleDateString(locale, { day: 'numeric', month: 'long' })} ${h(fin)}`;
 }
 
+// enfants.date_naissance est une colonne `date` : new Date('2020-01-01') vaut
+// minuit UTC, soit le 31 decembre 2019 pour un parent en fuseau negatif. Le
+// tiers lisait alors un age different de celui affiche aux parents (qui passent
+// par date-fns parseISO, lequel interprete bien la date en local).
 function calculerAge(dateNaissance?: string): number | null {
   if (!dateNaissance) return null;
-  const n = new Date(dateNaissance);
+  const n = depuisJourLocal(dateNaissance);
   const aujourdHui = new Date();
   let age = aujourdHui.getFullYear() - n.getFullYear();
   const m = aujourdHui.getMonth() - n.getMonth();

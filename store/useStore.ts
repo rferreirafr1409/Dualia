@@ -12,7 +12,8 @@ import {
 } from '../types';
 import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
-import { supabase } from '../constants/supabase';
+import { supabase, effacerSessionLocale } from '../constants/supabase';
+import { jourPourBase } from '../lib/dates';
 
 const dernierDimancheDeMai = (annee: number): Date => {
   const d = new Date(annee, 4, 31);
@@ -300,7 +301,7 @@ const depenseVersDB = (dep: Depense, familleId: string, auteurUuid?: string) => 
   montant: dep.montant,
   description: dep.description || null,
   auteur_id: auteurUuid ?? null,
-  date: dep.date.split('T')[0],
+  date: jourPourBase(dep.date),
   rembourse: dep.rembourse,
   part_a: dep.partA ?? null,
   part_b: dep.partB ?? null,
@@ -310,6 +311,8 @@ const depenseVersDB = (dep: Depense, familleId: string, auteurUuid?: string) => 
   justificatif_nom: dep.justificatifNom ?? null,
   justificatif_type: dep.justificatifType ?? null,
   justificatif_expire_le: dep.justificatifExpireLe ?? null,
+  remboursement_recu: dep.remboursementRecu ?? null,
+  accord_prealable_confirme: dep.accordPrealableConfirme ?? null,
 });
 
 const depenseDepuisDB = (d: any, roleParUuid: Record<string, ParentRole>): Depense => ({
@@ -328,6 +331,8 @@ const depenseDepuisDB = (d: any, roleParUuid: Record<string, ParentRole>): Depen
   justificatifNom: d.justificatif_nom ?? undefined,
   justificatifType: d.justificatif_type ?? undefined,
   justificatifExpireLe: d.justificatif_expire_le ?? undefined,
+  remboursementRecu: d.remboursement_recu != null ? Number(d.remboursement_recu) : undefined,
+  accordPrealableConfirme: d.accord_prealable_confirme ?? undefined,
 });
 
 const journalVersDB = (entry: JournalEntry, familleId: string, auteurUuid?: string) => ({
@@ -663,6 +668,7 @@ interface DualiaStore {
   // a chaque changement d'utilisateur : le stockage local est partage par
   // tous ceux qui ouvrent l'application sur ce navigateur.
   purgerDonneesFamiliales: () => void;
+  generationDonnees: number;
 
   langueDetectee: boolean;
   detecterLangueAuto: () => void;
@@ -747,7 +753,26 @@ interface DualiaStore {
 
   familleId: string | null;
   chargementInitial: boolean;
+  // null tant qu'on n'a pas regarde, false quand aucune session n'existe sur
+  // cet appareil, true quand une session valide est presente. Le layout s'en
+  // sert pour renvoyer vers la connexion : sans ce drapeau, l'application
+  // affichait l'espace familial reconstitue depuis le stockage local, sans
+  // qu'aucun mot de passe ait ete saisi.
+  sessionActive: boolean | null;
+  // Passe a true des que la question « y a-t-il une session ? » est tranchee,
+  // dans TOUTES les branches — y compris celles ou la reponse est « on ne sait
+  // pas ». C'est ce drapeau, et non chargementInitial, qui debloque l'affichage
+  // : attendre la fin du chargement complet de l'espace familial ferait
+  // patienter le parent plusieurs secondes devant un ecran vide a chaque
+  // ouverture, alors qu'une seule question doit etre tranchee avant de rendre
+  // quoi que ce soit.
+  sessionVerifiee: boolean;
   initialiserSession: () => Promise<void>;
+  // Rend true si la session a bien ete fermee cote serveur. false signifie
+  // que l'appareil est propre mais que la session reste ouverte ailleurs :
+  // l'ecran doit le dire au parent plutot que de le laisser croire le
+  // contraire.
+  seDeconnecter: () => Promise<boolean>;
 }
 
 const rawStorage =
@@ -1357,8 +1382,43 @@ export const useStore = create<DualiaStore>()(
   // remplacerait ces donnees lorsqu'un TIERS se connecte ensuite : la famille
   // resterait en memoire sous un compte qui n'y a aucun droit. On vide donc
   // explicitement.
+  // Deconnexion d'un parent. Elle n'existait que pour les tiers : un parent
+  // n'avait aucun moyen de retirer ses donnees d'un ordinateur partage, ni
+  // meme de quitter son espace. La purge locale vient AVANT le signOut, pour
+  // que rien ne subsiste si l'appel reseau echoue.
+  seDeconnecter: async () => {
+    get().purgerDonneesFamiliales();
+    set({ accesTiers: null, sessionActive: false, sessionVerifiee: true });
+
+    // signOut() ne leve pas d'exception : il REND { error }. Un catch seul
+    // etait du code mort, et l'erreur partait a la poubelle.
+    //
+    // Pire : quand le jeton d'acces a expire et que le rafraichissement
+    // echoue faute de reseau, signOut() rend une erreur SANS retirer la
+    // session du stockage local. Le parent voyait l'ecran de connexion,
+    // pensait l'ordinateur partage propre, et le jeton de rafraichissement y
+    // restait : au prochain demarrage avec du reseau, l'espace familial
+    // entier revenait, sans mot de passe.
+    //
+    // Et repasser par signOut({ scope: 'local' }) ne sert a rien : _signOut
+    // teste la portee APRES la sortie en erreur, donc le second appel suit
+    // exactement le meme chemin. On retire donc la cle du stockage nous-memes.
+    const { error } = await supabase.auth.signOut();
+    if (!error) return true;
+
+    console.error('[Dualia] Déconnexion serveur refusée :', error);
+    await effacerSessionLocale();
+    return false;
+  },
+
   purgerDonneesFamiliales: () =>
-    set({
+    set((etat) => ({
+      // Compteur de generation : chargerEspaceFamilial le capture au depart et
+      // le compare avant de conclure. Sans lui, une purge (deconnexion, ou
+      // evenement SIGNED_OUT) survenant pendant un chargement etait aussitot
+      // recouverte par les `set` restants du chargement — et le stockage local
+      // se retrouvait repeuple juste apres avoir ete vide.
+      generationDonnees: etat.generationDonnees + 1,
       familleId: null,
       espacesFamiliaux: [],
       parents: { ...PARENTS },
@@ -1380,7 +1440,7 @@ export const useStore = create<DualiaStore>()(
       agendaScolaire: [],
       foyers: [],
       configFoyers: null,
-    }),
+    })),
 
   // Un tiers n'a pas d'espace familial : il a un acces. On ne charge donc
   // rien de la famille, seulement ce que les regles serveur lui accordent —
@@ -1667,6 +1727,16 @@ export const useStore = create<DualiaStore>()(
     if (updatesAvecPhoto.emoji !== undefined) dbUpdates.emoji = updatesAvecPhoto.emoji || null;
     if (updatesAvecPhoto.enfant !== undefined) dbUpdates.enfant = updatesAvecPhoto.enfant || null;
     if (updatesAvecPhoto.photoUrl !== undefined) dbUpdates.photo_url = updatesAvecPhoto.photoUrl || null;
+    // date_revelation n'etait jamais transmise : modifier la date d'ouverture
+    // d'une capsule, ou decocher « capsule », semblait fonctionner puis
+    // revenait au rechargement — et l'autre parent continuait de lire
+    // l'ancienne date. Le test porte sur la PRESENCE de la cle, car undefined
+    // est precisement la valeur qui signifie « plus de capsule ».
+    if ('dateRevelation' in updatesAvecPhoto) {
+      dbUpdates.date_revelation = updatesAvecPhoto.dateRevelation
+        ? jourPourBase(updatesAvecPhoto.dateRevelation)
+        : null;
+    }
     if (Object.keys(dbUpdates).length === 0) return;
 
     const { error } = await supabase.from('journal_entries').update(dbUpdates).eq('id', id);
@@ -2651,6 +2721,10 @@ export const useStore = create<DualiaStore>()(
   },
 
   chargerEspaceFamilial: async (familleId: string) => {
+    // Generation capturee au depart : si une purge survient pendant ce
+    // chargement (deconnexion, session revoquee), on ne doit pas laisser les
+    // donnees fraichement lues se reinscrire dans le stockage local.
+    const generationAuDepart = get().generationDonnees;
     const { data: userData } = await supabase.auth.getUser();
     const user = userData.user;
     if (!user) {
@@ -2902,6 +2976,14 @@ export const useStore = create<DualiaStore>()(
 
     await get().chargerFoyers(familleId);
 
+    if (get().generationDonnees !== generationAuDepart) {
+      // Une purge a eu lieu pendant le chargement : ce qu'on vient d'ecrire
+      // appartient a une session qui n'a plus cours. On efface de nouveau.
+      get().purgerDonneesFamiliales();
+      set({ chargementInitial: false });
+      return;
+    }
+
     set({ chargementInitial: false });
   },
 
@@ -2913,6 +2995,9 @@ export const useStore = create<DualiaStore>()(
 
   familleId: null,
   chargementInitial: true,
+  sessionActive: null,
+  sessionVerifiee: false,
+  generationDonnees: 0,
 
   initialiserSession: async () => {
     // Sans ce drapeau, une reconnexion sur un appareil ou un familleId est
@@ -2921,12 +3006,71 @@ export const useStore = create<DualiaStore>()(
     // a laquelle on n'appartient plus.
     set({ chargementInitial: true });
 
-    const { data: userData } = await supabase.auth.getUser();
-    const user = userData.user;
-    if (!user) {
-      set({ chargementInitial: false });
+    // getSession() et non getUser() : getSession lit la session stockee sur
+    // l'appareil, sans aller au reseau. Une coupure de reseau ne doit pas etre
+    // prise pour une absence de session et declencher la purge ci-dessous.
+    // getSession() n'a ni delai maximum ni possibilite d'annulation : quand le
+    // jeton doit etre rafraichi et que le reseau ne repond pas, supabase-js
+    // reessaie pendant environ 25 secondes. Comme l'affichage attend cette
+    // reponse, un parent qui rouvre Dualia dans le metro restait 25 secondes
+    // devant un rond qui tourne — pour finalement voir ses donnees, puisque la
+    // branche « on ne sait pas » les conserve. L'attente ne protegeait rien.
+    //
+    // Le cas qui compte pour la securite, lui, est instantane : sans session
+    // stockee, supabase-js ne fait aucun appel reseau.
+    const DELAI_MAX_SESSION = 2000;
+    const lectureSession = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise<'delai_depasse'>((r) => setTimeout(() => r('delai_depasse'), DELAI_MAX_SESSION)),
+    ]);
+
+    if (lectureSession === 'delai_depasse') {
+      console.warn('[Dualia] Lecture de session trop lente : on conserve les données locales.');
+      set({ sessionActive: null, sessionVerifiee: true, chargementInitial: false });
       return;
     }
+
+    const { data: sessionData, error: erreurSession } = lectureSession;
+    if (erreurSession) {
+      // On ne sait pas. Ne rien purger, ne rien rediriger : un parent hors
+      // ligne garderait sinon un ecran vide et devrait se reconnecter pour
+      // consulter des donnees deja presentes sur son appareil.
+      console.error('[Dualia] Impossible de lire la session :', erreurSession);
+      set({ sessionActive: null, sessionVerifiee: true, chargementInitial: false });
+      return;
+    }
+    if (!sessionData.session) {
+      // Le point important de tout ce garde-fou.
+      //
+      // Le store est persiste (voir partialize) : messages, depenses,
+      // documents, enfants, cadre familial... Sans cette purge, ouvrir Dualia
+      // sur un navigateur ou un parent s'etait connecte affichait tout son
+      // espace familial, reconstitue depuis le stockage local, sans aucune
+      // session et sans mot de passe. Sur l'ordinateur familial d'un couple
+      // separe, c'est-a-dire exactement le materiel de nos utilisateurs.
+      get().purgerDonneesFamiliales();
+      set({ accesTiers: null, sessionActive: false, sessionVerifiee: true, chargementInitial: false });
+      return;
+    }
+
+    const { data: userData, error: erreurUser } = await supabase.auth.getUser();
+    const user = userData.user;
+    if (erreurUser && !user) {
+      // getUser() interroge le serveur : une erreur reseau ici ne prouve rien.
+      // La session locale existe, on la garde et on reessaiera au prochain
+      // demarrage. C'est getSession(), ci-dessus, qui fait foi pour la purge.
+      console.error('[Dualia] Session non verifiable aupres du serveur :', erreurUser);
+      set({ sessionActive: null, sessionVerifiee: true, chargementInitial: false });
+      return;
+    }
+    if (!user) {
+      // Reponse claire du serveur : plus d'utilisateur derriere cette session
+      // (revoquee, compte supprime). On purge.
+      get().purgerDonneesFamiliales();
+      set({ accesTiers: null, sessionActive: false, sessionVerifiee: true, chargementInitial: false });
+      return;
+    }
+    set({ sessionActive: true, sessionVerifiee: true });
 
     const { data: mesAppartenances, error: erreurAppartenances } = await supabase
       .from('parents')
