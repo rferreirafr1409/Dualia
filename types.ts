@@ -97,6 +97,11 @@ export interface Message {
   statut: StatutMessage;
   contenuOriginal?: string;
   alerteDetectee?: boolean;
+  // Fuseau de l'appareil expediteur (« Europe/Paris »). Sert a interpreter
+  // « demain » ou « ce soir » de la meme facon chez les deux parents, quel
+  // que soit le moment ou chacun ouvre la messagerie. Absent sur les
+  // messages anterieurs a cette colonne.
+  fuseauExpediteur?: string;
   // Piece jointe : chemin dans le bucket prive documents-familiaux.
   pieceJointeUrl?: string;
   pieceJointeNom?: string;

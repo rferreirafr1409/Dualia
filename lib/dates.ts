@@ -183,3 +183,23 @@ export function estInstantValide(valeur: unknown): boolean {
   // (« T25:00 » a la bonne forme sans exister).
   return !Number.isNaN(new Date(valeur).getTime());
 }
+
+/**
+ * Le fuseau de cet appareil, sous sa forme IANA (« Europe/Paris »).
+ *
+ * Le backend tourne en UTC et n'a aucun moyen de savoir ou vit le parent.
+ * Tant qu'il l'ignorait, il disait au detecteur d'evenements la date UTC :
+ * entre minuit et 2h du matin a Paris, c'est la veille. Un message ecrit a
+ * 00h30 disant « demain » partait un jour trop tot, pour les deux parents.
+ *
+ * On l'envoie donc avec le message. La valeur est verifiee cote serveur,
+ * qui retombe sur UTC si elle est absente ou douteuse.
+ */
+export function fuseauAppareil(): string {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof tz === 'string' && tz ? tz : 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}

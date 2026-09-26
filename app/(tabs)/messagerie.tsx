@@ -20,7 +20,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useStore } from '../../store/useStore';
 import { entetesBackend } from '../../lib/appelBackend';
-import { instantDepuisHeureLocale, estInstantValide } from '../../lib/dates';
+import { instantDepuisHeureLocale, estInstantValide, fuseauAppareil } from '../../lib/dates';
 
 // La carte de suggestion et le magasin doivent juger la date de la meme
 // facon. Passer par une fonction nommee evite qu'ils divergent a nouveau.
@@ -367,6 +367,9 @@ export default function MessagerieScreen() {
       expediteurId: parentActif,
       contenu,
       dateEnvoi: new Date().toISOString(),
+      // Le fuseau de CELUI QUI ECRIT, fige a l'envoi. C'est lui qui donne son
+      // sens a « demain » ou « ce soir » — pas celui de la personne qui lira.
+      fuseauExpediteur: fuseauAppareil(),
       statut: 'envoyé',
       contenuOriginal,
       alerteDetectee,
@@ -446,7 +449,23 @@ export default function MessagerieScreen() {
           const reponse = await fetchAvecRetry(PARSE_MESSAGE_URL, {
             method: 'POST',
             headers: await entetesBackend(),
-            body: JSON.stringify({ texte: msg.contenu, langue }),
+            // L'analyse est ancree sur le MESSAGE, pas sur le moment ou on le
+            // lit. Sans « instant », le serveur prenait l'heure courante : un
+            // message ecrit vendredi soir et ouvert le dimanche faisait
+            // tomber « demain » sur lundi chez l'un et samedi chez l'autre.
+            // Et sans le fuseau de l'expediteur, deux parents dans deux pays
+            // — Lisbonne et Paris n'ont pas la meme heure — obtenaient deux
+            // jours differents pour la meme phrase.
+            //
+            // Les deux appareils envoient donc exactement les memes reperes,
+            // et obtiennent donc la meme date. Pour les messages anterieurs a
+            // la colonne, on retombe sur le fuseau du lecteur.
+            body: JSON.stringify({
+              texte: msg.contenu,
+              langue,
+              instant: msg.dateEnvoi,
+              fuseau: msg.fuseauExpediteur || fuseauAppareil(),
+            }),
           });
           const data = await reponse.json();
           if (data.evenementDetecte && data.date) {
