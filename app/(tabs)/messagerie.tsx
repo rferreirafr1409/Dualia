@@ -20,6 +20,11 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useStore } from '../../store/useStore';
 import { entetesBackend } from '../../lib/appelBackend';
+import { instantDepuisHeureLocale, estInstantValide } from '../../lib/dates';
+
+// La carte de suggestion et le magasin doivent juger la date de la meme
+// facon. Passer par une fonction nommee evite qu'ils divergent a nouveau.
+const dateSuggestionLisible = (date: string) => estInstantValide(date);
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { ExportIcon } from '../../components/icons';
 import { TRADUCTIONS } from '../../constants/i18n';
@@ -197,6 +202,10 @@ export default function MessagerieScreen() {
   // ---- Modération à l'envoi (filtre + reformulation IA) ----
   const [verificationEnCours, setVerificationEnCours] = React.useState(false);
   const [alerte, setAlerte] = React.useState<{ texteOriginal: string; reformulation: string } | null>(null);
+  // Identifiant du message dont la suggestion vient d'etre refusee, parce que
+  // sa date etait illisible. On le retient pour l'afficher, au lieu de laisser
+  // le parent appuyer sur « Confirmer » sans que rien ne se passe.
+  const [suggestionRefusee, setSuggestionRefusee] = React.useState<string | null>(null);
   // ---- Pièce jointe ----
   const [piece, setPiece] = React.useState<PieceEnAttente | null>(null);
   const [preparationPiece, setPreparationPiece] = React.useState(false);
@@ -459,7 +468,11 @@ export default function MessagerieScreen() {
     const enfantResolu = sug.enfant
       ? enfants.find((e) => e.prenom.toLowerCase() === sug.enfant!.toLowerCase())
       : undefined;
-    ajouterEvenementCalendrier({
+    // L'heure rendue par le detecteur est une heure murale, sans fuseau. La
+    // conversion en instant se fait une seule fois, dans le magasin : la
+    // faire aussi ici la faisait deux fois, et l'evenement partait deux
+    // heures plus tot que l'heure affichee dans la bulle juste au-dessus.
+    const retenu = ajouterEvenementCalendrier({
       id: 'evt-' + Date.now(),
       titre: sug.titre,
       date: sug.date,
@@ -468,6 +481,14 @@ export default function MessagerieScreen() {
       enfantId: enfantResolu?.id,
       sourceMessageId: msgId,
     });
+
+    // Refuse : on garde la suggestion a l'ecran. L'effacer ferait disparaitre
+    // le rendez-vous sans que rien ne soit cree, et sans retour possible —
+    // le message est deja marque comme analyse, il ne sera pas represente.
+    if (!retenu) {
+      setSuggestionRefusee(msgId);
+      return;
+    }
     retirerSuggestionMessage(msgId);
   };
 
@@ -534,25 +555,43 @@ export default function MessagerieScreen() {
                   <Text style={styles.suggestionTexte}>
                    {t.ajouterAuCalendrier} {suggestions[msg.id].titre}
                 {suggestions[msg.id].enfant ? ` – ${suggestions[msg.id].enfant}` : ''}
-                {' – '}
-                {(() => {
-                  const d = new Date(suggestions[msg.id].date);
-                  const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
-                  return d.toLocaleDateString(localeDeLangue(langue), {
-                    day: 'numeric',
-                    month: 'long',
-                    ...(aUneHeure ? { hour: '2-digit', minute: '2-digit' } : {}),
-                  });
-                })()}
-                {' ?'}
+                {dateSuggestionLisible(suggestions[msg.id].date) ? (
+                  <>
+                    {' – '}
+                    {(() => {
+                      // Meme lecture que celle qui sera enregistree, pour que
+                      // l'heure proposee et l'heure retenue ne divergent jamais.
+                      const d = new Date(instantDepuisHeureLocale(suggestions[msg.id].date));
+                      const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
+                      return d.toLocaleDateString(localeDeLangue(langue), {
+                        day: 'numeric',
+                        month: 'long',
+                        ...(aUneHeure ? { hour: '2-digit', minute: '2-digit' } : {}),
+                      });
+                    })()}
+                    {' ?'}
+                  </>
+                ) : null}
                   </Text>
+
+                  {/* Une date que le magasin refusera ne doit pas etre
+                      affichee comme si elle allait de soi. new Date() reporte
+                      le 31 fevrier au 3 mars sans rien dire : la carte
+                      proposait « 3 mars a 19:00 ? », le parent confirmait, et
+                      s'entendait repondre que la date etait illisible. */}
+                  {!dateSuggestionLisible(suggestions[msg.id].date) || suggestionRefusee === msg.id ? (
+                    <Text style={styles.suggestionErreur}>{t.dateIllisible}</Text>
+                  ) : null}
+
                   <View style={styles.suggestionBtns}>
                     <Pressable style={styles.suggestionBtnIgnorer} onPress={() => ignorerCetteSuggestion(msg.id)}>
                       <Text style={styles.suggestionBtnIgnorerText}>{t.ignorer}</Text>
                     </Pressable>
-                    <Pressable style={styles.suggestionBtnConfirmer} onPress={() => confirmerSuggestion(msg.id)}>
-                      <Text style={styles.suggestionBtnConfirmerText}>{t.confirmer}</Text>
-                    </Pressable>
+                    {dateSuggestionLisible(suggestions[msg.id].date) ? (
+                      <Pressable style={styles.suggestionBtnConfirmer} onPress={() => confirmerSuggestion(msg.id)}>
+                        <Text style={styles.suggestionBtnConfirmerText}>{t.confirmer}</Text>
+                      </Pressable>
+                    ) : null}
                   </View>
                   </View>
                                 ) : null}
@@ -741,6 +780,7 @@ const styles = StyleSheet.create({
   formaliserText: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.vert },
   suggestionCard: { backgroundColor: COLORS.ivoire, borderWidth: 1, borderColor: COLORS.vert, borderRadius: 10, padding: 10, marginTop: 6, marginBottom: 8 },
   suggestionTexte: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.vertProfond, marginBottom: 8 },
+  suggestionErreur: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.erreur, marginBottom: 8 },
   suggestionBtns: { flexDirection: 'row', gap: 8, justifyContent: 'flex-end' },
   suggestionBtnIgnorer: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
   suggestionBtnIgnorerText: { fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.ardoise },

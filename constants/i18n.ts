@@ -92,6 +92,7 @@ export const TRADUCTIONS = {
     calendrier: {
       titre: 'Calendrier',
       sousTitre: 'Planning de garde partagé',
+      dateIllisible: "Cette date n'est pas lisible : l'événement n'a pas été créé. Vérifiez le jour et l'heure saisis.",
       ajouter: '+ Ajouter',
       prochainesPeriodes: 'Prochaines périodes',
       modalTitre: 'Ajouter une garde',
@@ -268,6 +269,7 @@ export const TRADUCTIONS = {
       sousTitre: 'Canal sécurisé · messages horodatés',
       formaliser: 'Formaliser en décision',
       ajouterAuCalendrier: 'Ajouter au calendrier :',
+      dateIllisible: "La date de cette proposition n'est pas lisible : l'événement n'a pas été créé. Ajoutez-le vous-même depuis le calendrier.",
       ignorer: 'Ignorer',
       confirmer: 'Confirmer',
       envoyer: 'Envoyer',
@@ -782,6 +784,7 @@ export const TRADUCTIONS = {
     calendrier: {
       titre: 'Calendario',
       sousTitre: 'Planning de custodia compartida',
+      dateIllisible: 'Esta fecha no es legible: el evento no se ha creado. Comprueba el día y la hora introducidos.',
       ajouter: '+ Añadir',
       prochainesPeriodes: 'Próximos periodos',
       modalTitre: 'Añadir custodia',
@@ -958,6 +961,7 @@ export const TRADUCTIONS = {
       sousTitre: 'Canal seguro · mensajes con sello temporal',
       formaliser: 'Formalizar como decisión',
       ajouterAuCalendrier: 'Añadir al calendario:',
+      dateIllisible: 'La fecha de esta propuesta no es legible: el evento no se ha creado. Añádelo tú mismo desde el calendario.',
       ignorer: 'Ignorar',
       confirmer: 'Confirmar',
       envoyer: 'Enviar',
@@ -1472,6 +1476,7 @@ export const TRADUCTIONS = {
     calendrier: {
       titre: 'Calendário',
       sousTitre: 'Plano de guarda partilhado',
+      dateIllisible: 'Esta data não é legível: o evento não foi criado. Verifique o dia e a hora introduzidos.',
       ajouter: '+ Adicionar',
       prochainesPeriodes: 'Próximos períodos',
       modalTitre: 'Adicionar um período',
@@ -1648,6 +1653,7 @@ export const TRADUCTIONS = {
       sousTitre: 'Canal seguro · mensagens com registo temporal',
       formaliser: 'Formalizar em decisão',
       ajouterAuCalendrier: 'Adicionar ao calendário:',
+      dateIllisible: 'A data desta sugestão não é legível: o evento não foi criado. Adicione-o você mesmo a partir do calendário.',
       ignorer: 'Ignorar',
       confirmer: 'Confirmar',
       envoyer: 'Enviar',
@@ -2162,6 +2168,7 @@ export const TRADUCTIONS = {
     calendrier: {
       titre: 'Calendar',
       sousTitre: 'Shared custody schedule',
+      dateIllisible: "This date could not be read, so the event was not created. Please check the day and time you entered.",
       ajouter: '+ Add',
       prochainesPeriodes: 'Upcoming periods',
       modalTitre: 'Add custody period',
@@ -2338,6 +2345,7 @@ export const TRADUCTIONS = {
       sousTitre: 'Secure channel · timestamped messages',
       formaliser: 'Turn into a decision',
       ajouterAuCalendrier: 'Add to calendar:',
+      dateIllisible: "This suggestion's date could not be read, so the event was not created. Please add it yourself from the calendar.",
       ignorer: 'Ignore',
       confirmer: 'Confirm',
       envoyer: 'Send',

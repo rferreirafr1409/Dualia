@@ -102,6 +102,8 @@ export default function CalendrierScreen() {
   const [jourSelectionne, setJourSelectionne] = useState<Date | null>(null);
 
   const [modalAjoutVisible, setModalAjoutVisible] = useState(false);
+  // Message affiche dans la fenetre d'ajout quand l'evenement a ete refuse.
+  const [erreurAjout, setErreurAjout] = useState<string | null>(null);
   const [formTitre, setFormTitre] = useState('');
   const [formDate, setFormDate] = useState<Date | null>(null);
   const [formHeure, setFormHeure] = useState('');
@@ -256,6 +258,7 @@ export default function CalendrierScreen() {
     setFormHeure('');
     setFormParent(parentActif);
     setFormEnfantId(enfantFiltreResolu?.id ?? null);
+    setErreurAjout(null);
     setModalAjoutVisible(true);
   };
 
@@ -277,7 +280,7 @@ export default function CalendrierScreen() {
 
     const enfantChoisi = formEnfantId ? enfants.find((e) => e.id === formEnfantId) : undefined;
 
-    ajouterEvenementCalendrier({
+    const retenu = ajouterEvenementCalendrier({
       id: `evt-${Date.now()}`,
       titre: formTitre.trim(),
       date: dateComplete.toISOString(),
@@ -285,6 +288,18 @@ export default function CalendrierScreen() {
       enfant: enfantChoisi?.prenom,
       enfantId: enfantChoisi?.id,
     });
+
+    // On ne ferme la fenetre que si l'evenement a bien ete retenu. La fermer
+    // dans tous les cas donnait au parent la preuve visible d'un
+    // enregistrement qui n'avait pas eu lieu, et sa saisie etait perdue.
+    //
+    // Et on le dit : une fenetre qui reste ouverte sans un mot apres un appui
+    // sur « Ajouter » se lit comme une panne, pas comme un refus.
+    if (!retenu) {
+      setErreurAjout(t.dateIllisible);
+      return;
+    }
+    setErreurAjout(null);
     setModalAjoutVisible(false);
   };
 
@@ -650,6 +665,8 @@ export default function CalendrierScreen() {
                 </>
               ) : null}
 
+              {erreurAjout ? <Text style={styles.erreurAjout}>{erreurAjout}</Text> : null}
+
               <View style={styles.modalActions}>
                 <TouchableOpacity style={styles.btnAnnuler} onPress={() => setModalAjoutVisible(false)}>
                   <Text style={styles.btnAnnulerTxt}>{t.annuler}</Text>
@@ -1014,6 +1031,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.bordure, alignItems: 'center',
   },
   parentChoixTxt: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.medium, color: COLORS.texte },
+  erreurAjout: { fontSize: 12, color: COLORS.erreur, marginTop: 4, marginBottom: 2 },
   modalActions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.xs },
   btnAnnuler: { flex: 1, padding: SPACING.lg, borderRadius: RADIUS.md, backgroundColor: COLORS.ivoire, alignItems: 'center' },
   btnAnnulerTxt: { fontSize: TYPOGRAPHY.sm, color: COLORS.ardoise, fontWeight: TYPOGRAPHY.medium },

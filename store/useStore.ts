@@ -13,7 +13,7 @@ import {
 import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
 import { supabase, effacerSessionLocale } from '../constants/supabase';
-import { jourPourBase } from '../lib/dates';
+import { jourPourBase, depuisJourLocal, instantDepuisHeureLocale, estInstantValide } from '../lib/dates';
 
 const dernierDimancheDeMai = (annee: number): Date => {
   const d = new Date(annee, 4, 31);
@@ -239,6 +239,8 @@ async function assurerCadreFamilialDistant(familleId: string, cadre: CadreFamili
   return data.id as string;
 }
 
+const EST_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const evenementCalendrierVersDB = (ev: EvenementCalendrier, familleId: string, parentUuid?: string) => ({
   famille_id: familleId,
   titre: ev.titre,
@@ -246,6 +248,19 @@ const evenementCalendrierVersDB = (ev: EvenementCalendrier, familleId: string, p
   parent_id: parentUuid ?? null,
   enfant: ev.enfant ?? null,
   enfant_id: ev.enfantId ?? null,
+  // La colonne existe et le type la porte, mais elle n'etait jamais envoyee :
+  // le lien vers le message d'origine se perdait a la synchronisation, et tous
+  // les evenements ressemblaient a des saisies manuelles.
+  //
+  // On ne l'envoie que si c'est un vrai uuid. La colonne est de type uuid avec
+  // une cle etrangere vers messages, alors que l'application fabrique d'abord
+  // des identifiants locaux du genre « msg-1759000000000 », remplaces par
+  // l'uuid de Supabase une fois le message synchronise. Transmettre
+  // l'identifiant local ferait echouer l'insertion — et comme l'evenement est
+  // ajoute a l'etat local avant l'appel reseau, il resterait affiche chez ce
+  // parent sans jamais parvenir a l'autre. Precisement la divergence
+  // silencieuse que tout ce travail cherche a supprimer.
+  source_message_id: EST_UUID.test(ev.sourceMessageId ?? '') ? ev.sourceMessageId : null,
 });
 
 // Notes apposées aux événements produits par un modèle de garde.
@@ -640,7 +655,10 @@ interface DualiaStore {
   ) => { genere: number; ignorees: string[] };
   genererVacancesScolaires: () => { genere: number };
   evenementsCalendrier: EvenementCalendrier[];
-  ajouterEvenementCalendrier: (ev: EvenementCalendrier) => void;
+  // Rend VRAI si l'evenement a ete retenu, FAUX si sa date etait illisible et
+  // qu'il a donc ete refuse. Les ecrans doivent tester cette reponse avant
+  // d'annoncer quoi que ce soit au parent.
+  ajouterEvenementCalendrier: (ev: EvenementCalendrier) => boolean;
   ignorerSuggestion: (messageId: string) => void;
   messagesAnalyses: string[];
   marquerMessageAnalyse: (id: string) => void;
@@ -1098,17 +1116,20 @@ export const useStore = create<DualiaStore>()(
         for (const annee of Object.keys(table).map(Number)) {
           if (annee < anneeDebut || annee >= anneeDebut + nombreAnnees) continue;
           const { debut, jours } = table[annee];
-          const dateDebutFete = new Date(debut);
+          // Meme piege : les dates des fetes sont ecrites 'AAAA-MM-JJ'.
+          const dateDebutFete = depuisJourLocal(debut);
           for (let j = 0; j < jours; j++) {
             const dateJour = new Date(dateDebutFete);
             dateJour.setDate(dateJour.getDate() + j);
-            ajouterEvenementCalendrier({
+            // On ne compte que ce qui est effectivement retenu : le nombre
+            // annonce au parent a la fin doit correspondre a ce qu'il verra
+            // dans son calendrier, pas au nombre de tentatives.
+            if (ajouterEvenementCalendrier({
               id: `date-speciale-${Date.now()}-${annee}-${j}-${cleFete.replace(/\s/g, '')}`,
               titre: jours > 1 ? `${d.occasion} (jour ${j + 1}/${jours})` : d.occasion,
               date: dateJour.toISOString(),
               parentId: d.parent || 'A',
-            });
-            genere++;
+            })) genere++;
           }
           uneDateCalculee = true;
         }
@@ -1131,13 +1152,12 @@ export const useStore = create<DualiaStore>()(
 
         if (date) {
           uneDateCalculee = true;
-          ajouterEvenementCalendrier({
+          if (ajouterEvenementCalendrier({
             id: `date-speciale-${Date.now()}-${a}-${occasion.replace(/\s/g, '')}`,
             titre: d.occasion,
             date: date.toISOString(),
             parentId: d.parent || 'A',
-          });
-          genere++;
+          })) genere++;
         }
       }
 
@@ -1149,30 +1169,64 @@ export const useStore = create<DualiaStore>()(
 
   genererVacancesScolaires: () => {
     const { ajouterEvenementCalendrier } = get();
+    // Le total rendu etait la constante VACANCES_ZONE_C.length * 2, annoncee
+    // au parent sans aucun rapport avec ce qui avait reellement ete cree. On
+    // compte desormais les evenements retenus.
+    let genere = 0;
     for (const periode of VACANCES_ZONE_C) {
-      ajouterEvenementCalendrier({
+      if (ajouterEvenementCalendrier({
         id: `vacances-debut-${Date.now()}-${periode.debut}`,
         titre: `Début — ${periode.nom}`,
-        date: new Date(periode.debut).toISOString(),
+        // depuisJourLocal : new Date('2026-10-17') vaut minuit UTC, donc
+        // 02:00 a Paris. Les vacances scolaires s'affichaient avec une heure.
+        date: depuisJourLocal(periode.debut).toISOString(),
         parentId: 'A',
-      });
-      ajouterEvenementCalendrier({
+      })) genere++;
+      if (ajouterEvenementCalendrier({
         id: `vacances-fin-${Date.now()}-${periode.fin}`,
         titre: `Reprise — ${periode.nom}`,
-        date: new Date(periode.fin).toISOString(),
+        date: depuisJourLocal(periode.fin).toISOString(),
         parentId: 'A',
-      });
+      })) genere++;
     }
-    return { genere: VACANCES_ZONE_C.length * 2 };
+    return { genere };
   },
       evenementsCalendrier: [],
-      ajouterEvenementCalendrier: (ev) => {
+      ajouterEvenementCalendrier: (evEntrant) => {
+        // Derniere porte avant l'etat, et avant l'envoi en base. Une date
+        // illisible n'a aucune valeur pour personne : elle n'apparaitrait sur
+        // aucun ecran, mais partirait quand meme chez l'autre parent.
+        //
+        // La fonction rend VRAI si l'evenement est retenu, FAUX s'il est
+        // refuse. Sans cette reponse, l'appelant fermait sa fenetre et
+        // effacait la suggestion en annoncant une reussite, alors que rien
+        // n'avait ete cree : un rendez-vous disparu sans un mot.
+        //
+        // On valide AVANT de normaliser, et c'est l'ordre qui compte : le
+        // 31 fevrier a la bonne forme, et new Date(2026, 1, 31) le reporte
+        // silencieusement au 3 mars. Normaliser d'abord blanchirait donc la
+        // date invalide et la ferait passer le controle — un rendez-vous
+        // apparaissant un jour que personne n'a jamais indique.
+        if (!estInstantValide(evEntrant.date)) {
+          console.error(
+            '[Dualia] Événement refusé : date illisible',
+            JSON.stringify(evEntrant.date)
+          );
+          return false;
+        }
+        const ev: EvenementCalendrier = {
+          ...evEntrant,
+          date: instantDepuisHeureLocale(evEntrant.date),
+        };
+
         set((state) => ({ evenementsCalendrier: [...state.evenementsCalendrier, ev] }));
 
         const { familleId, parents } = get();
         if (!familleId) {
+          // L'evenement est bien dans l'etat local : on rend VRAI. Seule la
+          // synchronisation manque, et c'est un autre probleme.
           console.error('[Dualia] Événement non synchronisé : aucune famille active.');
-          return;
+          return true;
         }
         const parentUuid = parents[ev.parentId]?.uuid;
         supabase
@@ -1191,6 +1245,8 @@ export const useStore = create<DualiaStore>()(
               ),
             }));
           });
+
+        return true;
       },
       ignorerSuggestion: (messageId) =>
         set((state) => ({ messagesAnalyses: [...state.messagesAnalyses, messageId] })),
@@ -2896,7 +2952,22 @@ export const useStore = create<DualiaStore>()(
       .select('*')
       .eq('famille_id', familleId);
     if (erreurEvenements) console.error('[Dualia] Échec chargement événements calendrier :', erreurEvenements);
-    set({ evenementsCalendrier: (evenementsDB ?? []).map((e: any) => evenementCalendrierDepuisDB(e, roleParUuid)) });
+    // Seconde porte : les lignes deja en base. Une seule date illisible —
+    // heritee d'une version anterieure, d'un import .ics malforme — suffirait
+    // a rendre l'accueil blanc au chargement, avant meme que le parent ait pu
+    // agir. On l'ecarte de l'affichage et on la signale dans la console plutot
+    // que de faire tomber l'ecran.
+    const evenementsLus = (evenementsDB ?? []).map((e: any) =>
+      evenementCalendrierDepuisDB(e, roleParUuid)
+    );
+    const evenementsLisibles = evenementsLus.filter((e) => estInstantValide(e.date));
+    if (evenementsLisibles.length !== evenementsLus.length) {
+      console.error(
+        '[Dualia] Événements écartés (date illisible en base) :',
+        evenementsLus.filter((e) => !estInstantValide(e.date)).map((e) => ({ id: e.id, date: e.date }))
+      );
+    }
+    set({ evenementsCalendrier: evenementsLisibles });
 
     const { data: depensesDB, error: erreurDepenses } = await supabase
       .from('depenses')
@@ -3179,6 +3250,30 @@ export const useStore = create<DualiaStore>()(
         foyers: state.foyers,
         configFoyers: state.configFoyers,
       }),
+
+      // Troisieme porte, et la plus facile a oublier : le stockage local.
+      //
+      // evenementsCalendrier est persiste, et zustand le rehydrate AVANT que
+      // chargerEspaceFamilial ne s'execute. Une date illisible ecrite par une
+      // version anterieure de l'application — qui n'avait aucun controle —
+      // revient donc intacte au demarrage et atteint parseISO() avant que
+      // quoi que ce soit ait pu l'ecarter. C'est precisement l'ecran blanc
+      // sans issue que ce garde-fou existe pour empecher, et il survivait a
+      // une simple mise a jour.
+      merge: (persiste, courant) => {
+        const recu = (persiste ?? {}) as Partial<DualiaStore>;
+        const evenements = recu.evenementsCalendrier;
+        if (!Array.isArray(evenements)) return { ...courant, ...recu };
+
+        const lisibles = evenements.filter((e) => estInstantValide(e?.date));
+        if (lisibles.length !== evenements.length) {
+          console.error(
+            '[Dualia] Événements écartés du stockage local (date illisible) :',
+            evenements.length - lisibles.length
+          );
+        }
+        return { ...courant, ...recu, evenementsCalendrier: lisibles };
+      },
     }
   )
 );

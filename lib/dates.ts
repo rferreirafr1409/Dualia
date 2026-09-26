@@ -87,3 +87,99 @@ export function ajouterAnnees(valeur: string, nombre: number): string {
   d.setFullYear(d.getFullYear() + nombre);
   return jourLocal(d);
 }
+
+/**
+ * Transforme une heure « murale » en instant reel.
+ *
+ * Le detecteur d'evenements du backend rend une heure telle qu'elle est ecrite
+ * dans le message — « 2026-09-25T19:00:00 », sans fuseau. Cette chaine etait
+ * enregistree telle quelle. L'application la relisait comme une heure locale et
+ * affichait 19:00 ; Postgres, lui, la lisait comme de l'UTC et stockait
+ * 19:00+00, soit 21:00 a Paris.
+ *
+ * Resultat : le parent voyait 19:00, l'autre parent voyait 21:00, et le premier
+ * aussi des le rechargement suivant. Un match de football decale de deux
+ * heures entre deux telephones, sur l'ecran meme qui sert a se coordonner.
+ *
+ * On construit donc l'instant dans le fuseau de l'appareil.
+ *
+ * ATTENTION — cette fonction doit etre IDEMPOTENTE, et la premiere version ne
+ * l'etait pas. Son motif n'etait pas ancre a la fin : « 2026-09-25T17:00:00Z »
+ * en satisfaisait le debut, le « Z » etait jete, et 17:00 — qui etait de l'UTC,
+ * soit 19:00 a Paris — etait relu comme une heure murale. Chaque passage
+ * retirait ainsi deux heures. Appliquee a l'entree du magasin, ou la plupart
+ * des valeurs sont deja des instants (toISOString() de la saisie manuelle, de
+ * Noel, des vacances scolaires), elle avancait Noel au 24 decembre 23:00 et
+ * reculait de deux heures chaque rendez-vous saisi a la main.
+ *
+ * Regle : une chaine qui porte deja un fuseau EST un instant et ne doit pas
+ * etre touchee. Seule une chaine sans fuseau est une heure murale.
+ */
+export function instantDepuisHeureLocale(valeur: string): string {
+  if (!valeur) return valeur;
+  const s = String(valeur).trim();
+
+  // Fuseau deja present (« Z » ou « +02:00 ») : c'est un instant, on le rend
+  // tel quel. C'est le garde-fou qui rend la fonction idempotente, et donc
+  // sans danger la ou elle est appelee plusieurs fois de suite.
+  if (/[T ]\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})$/i.test(s)) return s;
+
+  // Heure murale, sans fuseau. Le motif est ancre a la fin : rien d'autre
+  // qu'une date et une heure ne peut desormais entrer dans cette branche.
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
+  if (!m) {
+    // Date seule, sans heure : depuisJourLocal construit minuit LOCAL. Passer
+    // par new Date('2026-09-25') donnerait minuit UTC — le piege decrit en
+    // tete de ce fichier, et qui affiche 02:00 a Paris ou la veille a New York.
+    const jourSeul = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (jourSeul) return depuisJourLocal(s).toISOString();
+    const brut = new Date(s);
+    return Number.isNaN(brut.getTime()) ? valeur : brut.toISOString();
+  }
+  const [, a, mo, j, h, mi, sec] = m;
+  const d = new Date(Number(a), Number(mo) - 1, Number(j), Number(h), Number(mi), Number(sec ?? 0));
+  return d.toISOString();
+}
+
+/**
+ * Cette chaine pourra-t-elle etre lue par parseISO() sans lever ?
+ *
+ * L'application appelle parseISO(ev.date) a plus de quarante endroits, et
+ * format() sur une date invalide leve une RangeError. Une seule ligne
+ * illisible — un modele qui rend « vendredi prochain », un import .ics
+ * malforme, une vieille ligne en base — et l'accueil devient blanc, sans
+ * message, sans moyen d'en sortir.
+ *
+ * Plutot que de proteger quarante appels, on verifie aux TROIS portes par
+ * lesquelles une date entre dans l'etat : l'ajout d'un evenement, la lecture
+ * depuis la base, et la rehydratation du stockage local (la plus facile a
+ * oublier — elle s'execute avant tout le reste, et ramene telles quelles les
+ * donnees ecrites par une version anterieure). Ce qui ne passe pas ces
+ * portes ne peut plus casser l'ecran.
+ */
+export function estInstantValide(valeur: unknown): boolean {
+  if (typeof valeur !== 'string' || !valeur.trim()) return false;
+
+  // parseISO exige une date ISO ; « 25/09/2026 » ou « vendredi » rendent
+  // Invalid Date.
+  // Le « Z » doit etre majuscule : parseISO refuse « ...T17:00:00z » la ou
+  // new Date() l'accepte. Accepter ici ce que parseISO rejettera ensuite
+  // viderait de son sens le seul controle qui les separe.
+  if (/z$/.test(valeur)) return false;
+
+  const m = valeur.match(/^(\d{4})-(\d{2})-(\d{2})([T ]\d{2}:\d{2}|$)/);
+  if (!m) return false;
+
+  // Le jour doit exister reellement. « 2026-02-31 » a la bonne forme, et
+  // new Date() l'accepte en le reportant au 3 mars — mais parseISO, lui,
+  // leve. Sans ce controle, la porte laisserait passer exactement le genre
+  // de date qu'elle est censee arreter. On compare donc les composants apres
+  // construction : un report change le mois ou le quantieme.
+  const [, a, mo, j] = m;
+  const d = new Date(Date.UTC(Number(a), Number(mo) - 1, Number(j)));
+  if (d.getUTCMonth() !== Number(mo) - 1 || d.getUTCDate() !== Number(j)) return false;
+
+  // Et l'heure, quand elle est presente, doit etre une vraie heure
+  // (« T25:00 » a la bonne forme sans exister).
+  return !Number.isNaN(new Date(valeur).getTime());
+}

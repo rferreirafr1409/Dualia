@@ -389,9 +389,16 @@ export default function AccueilScreen() {
                 const d = parseISO(ev.date);
                 const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
                 const qui = ev.enfant || parents[ev.parentId]?.nom.split(' ')[0] || '';
+                // Le jour, en plus de l'heure. Cet encart couvre sept jours et
+                // n'affichait que l'heure : deux entraînements de football à
+                // deux dates différentes s'y lisaient comme un doublon, et un
+                // parent ne pouvait pas savoir lequel était le bon.
+                const jourCourt = format(d, 'EEE', { locale: dateLocale });
                 return (
                   <View key={ev.id} style={styles.timelineLigne}>
-                    <Text style={styles.timelineHeure}>{aUneHeure ? format(d, 'HH:mm') : '—'}</Text>
+                    <Text style={styles.timelineHeure}>
+                      {jourCourt}{aUneHeure ? ` ${format(d, 'HH:mm')}` : ''}
+                    </Text>
                     <View style={styles.timelineTexteWrap}>
                       <View style={[styles.timelineDot, { backgroundColor: parents[ev.parentId]?.couleur ?? COLORS.vert }]} />
                       <Text style={styles.timelineTexte} numberOfLines={1}>{ev.titre}{qui ? ` — ${qui}` : ''}</Text>
@@ -791,7 +798,8 @@ const styles = StyleSheet.create({
   weekdayNumActive: { color: COLORS.blanc },
 
   timelineLigne: { flexDirection: 'row', gap: SPACING.sm, marginBottom: 4 },
-  timelineHeure: { fontFamily: FONTS.body, fontSize: 10.5, color: COLORS.ardoise, minWidth: 36 },
+  // Élargi : la colonne porte maintenant le jour en plus de l'heure.
+  timelineHeure: { fontFamily: FONTS.body, fontSize: 10.5, color: COLORS.ardoise, minWidth: 62 },
   timelineTexteWrap: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   timelineDot: { width: 6, height: 6, borderRadius: 3 },
   timelineTexte: { flex: 1, fontFamily: FONTS.body, fontSize: 11, color: COLORS.texte },
