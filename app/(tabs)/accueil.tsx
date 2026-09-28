@@ -43,6 +43,7 @@ import { useAnticiper } from '../../hooks/useAnticiper';
 import { useTransmission } from '../../hooks/useTransmission';
 import type { WidgetId } from '../../constants/widgetsCatalog';
 import SouvenirModal from '../../components/SouvenirModal';
+import DemandesEnAttente from '../../components/DemandesEnAttente';
 import JourneeModal from '../../components/JourneeModal';
 import Drapeau from '../../components/Drapeau';
 import MemoryAccordionRow from '../../components/MemoryAccordionRow';
@@ -601,6 +602,11 @@ export default function AccueilScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.contentInner, isDesktop && { maxWidth: LARGEUR_MAX_CONTENU, alignSelf: 'center', width: '100%' }]}>
+          {/* Une personne attend d'entrer dans l'espace familial. Place en
+              tete de l'accueil : c'est la page vue a chaque ouverture, et
+              une demande ignoree laisse le co-parent bloque dehors. Ne rend
+              rien quand il n'y a rien. */}
+          <DemandesEnAttente />
           {/* Sur téléphone, la date et le prochain échange passent sous le
               titre : côte à côte, ils sont tronqués en plein milieu d'un mot. */}
           <View style={[styles.entete, isMobile && styles.enteteMobile]}>

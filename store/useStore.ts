@@ -14,6 +14,7 @@ import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
 import { supabase, effacerSessionLocale } from '../constants/supabase';
 import { jourPourBase, depuisJourLocal, instantDepuisHeureLocale, estInstantValide } from '../lib/dates';
+import { oublierDerniereActivite } from '../lib/inactivite';
 
 const dernierDimancheDeMai = (annee: number): Date => {
   const d = new Date(annee, 4, 31);
@@ -799,7 +800,11 @@ interface DualiaStore {
   // que l'appareil est propre mais que la session reste ouverte ailleurs :
   // l'ecran doit le dire au parent plutot que de le laisser croire le
   // contraire.
-  seDeconnecter: () => Promise<boolean>;
+  // portee 'local' : ne ferme que cet appareil. Utilisee par la deconnexion
+  // automatique — expirer sur l'ordinateur familial ne doit pas deconnecter
+  // le telephone du parent, qui decouvrirait la chose le lendemain sans
+  // comprendre pourquoi.
+  seDeconnecter: (portee?: 'global' | 'local') => Promise<boolean>;
 }
 
 const rawStorage =
@@ -1451,7 +1456,8 @@ export const useStore = create<DualiaStore>()(
   // n'avait aucun moyen de retirer ses donnees d'un ordinateur partage, ni
   // meme de quitter son espace. La purge locale vient AVANT le signOut, pour
   // que rien ne subsiste si l'appel reseau echoue.
-  seDeconnecter: async () => {
+  seDeconnecter: async (portee = 'global') => {
+    oublierDerniereActivite();
     get().purgerDonneesFamiliales();
     set({ accesTiers: null, sessionActive: false, sessionVerifiee: true });
 
@@ -1468,7 +1474,10 @@ export const useStore = create<DualiaStore>()(
     // Et repasser par signOut({ scope: 'local' }) ne sert a rien : _signOut
     // teste la portee APRES la sortie en erreur, donc le second appel suit
     // exactement le meme chemin. On retire donc la cle du stockage nous-memes.
-    const { error } = await supabase.auth.signOut();
+    // signOut() vaut 'global' par defaut : il ferme la session sur TOUS les
+    // appareils. Acceptable quand la personne appuie elle-meme sur le bouton,
+    // pas quand un minuteur decide a sa place.
+    const { error } = await supabase.auth.signOut({ scope: portee });
     if (!error) return true;
 
     console.error('[Dualia] Déconnexion serveur refusée :', error);

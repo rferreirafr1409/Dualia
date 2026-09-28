@@ -25,6 +25,8 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { TRADUCTIONS } from '../constants/i18n';
+import { consommerMotifInactivite } from '../lib/inactivite';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -40,6 +42,13 @@ export default function ConnexionScreen() {
   const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
   const [chargement, setChargement] = useState(false);
+
+  // Pourquoi la personne se retrouve-t-elle ici ? Sans cette explication, une
+  // deconnexion automatique se lit comme une panne, et le parent recommence
+  // en se demandant ce qu'il a casse. La langue vient du stockage local, donc
+  // elle est connue avant meme la connexion.
+  const langue = useStore((s) => s.langue);
+  const [deconnexionInactivite] = useState(() => consommerMotifInactivite());
 
   const seConnecter = async () => {
     if (!email.trim() || !motDePasse) {
@@ -83,6 +92,12 @@ export default function ConnexionScreen() {
         <Text style={styles.sousTitre}>
           Retrouvez votre espace familial Dualia.
         </Text>
+
+        {deconnexionInactivite ? (
+          <Text style={styles.motifDeconnexion}>
+            {TRADUCTIONS[langue].inactivite.expiree}
+          </Text>
+        ) : null}
 
         <Text style={styles.label}>Email</Text>
         <TextInput
@@ -133,6 +148,12 @@ const styles = StyleSheet.create({
   contentCentre: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACING.xl },
   titre: { fontFamily: FONTS.display, fontSize: 24, color: COLORS.vertProfond, marginBottom: SPACING.sm },
   sousTitre: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, lineHeight: 19, marginBottom: SPACING.xl },
+  motifDeconnexion: {
+    fontFamily: FONTS.body, fontSize: 12, color: COLORS.vertProfond,
+    backgroundColor: COLORS.ivoire, borderRadius: RADIUS.md,
+    paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md,
+    marginTop: SPACING.md, lineHeight: 17,
+  },
   label: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond, marginBottom: 6, marginTop: SPACING.md },
   input: {
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: RADIUS.md,

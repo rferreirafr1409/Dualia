@@ -16,48 +16,63 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 export default function CreerEspaceLienScreen() {
   const router = useRouter();
   const [lienInvitation, setLienInvitation] = useState<string | null>(null);
+  const [code, setCode] = useState<string | null>(null);
+  const [erreur, setErreur] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
 
-  useEffect(() => {
-    supabase
-      .from('familles')
-      .select('invitations(token)')
-      .then(async () => {
-        // Le token a été généré par creer_famille() ; on le retrouve via
-        // la famille de l'utilisateur courant.
-        const { data: userData } = await supabase.auth.getUser();
-        const user = userData.user;
-        if (!user) {
-          setChargement(false);
-          return;
-        }
-        const { data: parentRow } = await supabase
-          .from('parents')
-          .select('famille_id')
-          .eq('user_id', user.id)
-          .single();
-        if (!parentRow) {
-          setChargement(false);
-          return;
-        }
-        const { data: invitationRow } = await supabase
-          .from('invitations')
-          .select('token')
-          .eq('famille_id', parentRow.famille_id)
-          .is('utilisee_le', null)
-          .order('cree_le', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (invitationRow?.token) {
-          setLienInvitation(`https://rferreirafr1409.github.io/Dualia/rejoindre?token=${invitationRow.token}`);
-        }
-        setChargement(false);
-      });
+  // On demande au serveur de fabriquer le lien ET le code. Le code n'est
+  // volontairement PAS dans l'URL : c'est tout l'interet. Un lien transfere,
+  // capture ou lu par-dessus l'epaule ne suffit plus.
+  const afficher = (ligne: any) => {
+    setLienInvitation(`https://rferreirafr1409.github.io/Dualia/rejoindre?token=${ligne.token}`);
+    setCode(ligne.code ?? null);
+  };
+
+  // Fabriquer un lien INVALIDE le precedent. Ce geste ne doit donc jamais
+  // etre declenche par un simple affichage : revenir sur cette page suffisait
+  // a annuler le lien et le code qu'on venait de dicter au telephone, sans
+  // que personne comprenne pourquoi.
+  const genererLien = React.useCallback(async () => {
+    setChargement(true);
+    setErreur(null);
+    const { data, error } = await supabase.rpc('creer_invitation');
+    const ligne = Array.isArray(data) ? data[0] : data;
+    if (error || !ligne?.token) {
+      setErreur(
+        error?.message?.includes('espace_complet')
+          ? "Cet espace familial est déjà complet : il n'y a personne à inviter."
+          : "Le lien n'a pas pu être créé. Réessayez dans un instant."
+      );
+      setChargement(false);
+      return;
+    }
+    afficher(ligne);
+    setChargement(false);
   }, []);
+
+  // A l'affichage, on RELIT le lien en cours. On n'en cree un que s'il n'y
+  // en a aucun de valide.
+  useEffect(() => {
+    let vivant = true;
+    (async () => {
+      const { data } = await supabase.rpc('mon_invitation_en_cours');
+      if (!vivant) return;
+      const ligne = Array.isArray(data) ? data[0] : data;
+      if (ligne?.token) {
+        afficher(ligne);
+        setChargement(false);
+      } else {
+        genererLien();
+      }
+    })();
+    return () => { vivant = false; };
+  }, [genererLien]);
 
   const partagerLien = async () => {
     if (!lienInvitation) return;
     try {
+      // Le code n'est deliberement pas joint : l'envoyer dans le meme
+      // message annulerait la protection qu'il apporte.
       await Share.share({ message: lienInvitation });
     } catch {
       // L'utilisateur peut aussi copier le lien affiché à l'écran.
@@ -77,9 +92,11 @@ export default function CreerEspaceLienScreen() {
       <View style={styles.contentCentre}>
         <Text style={styles.titre}>Votre espace est créé</Text>
         <Text style={styles.sousTitre}>
-          Envoyez ce lien à l'autre parent pour qu'il rejoigne votre espace familial. Il reste valable
-          7 jours. Vous pouvez aussi continuer sans l'envoyer maintenant.
+          Envoyez ce lien à l'autre parent, puis communiquez-lui le code par un autre moyen.
+          Valable 48 heures. Vous pourrez aussi le faire plus tard.
         </Text>
+
+        {erreur ? <Text style={styles.erreur}>{erreur}</Text> : null}
 
         {lienInvitation ? (
           <View style={styles.lienBox}>
@@ -87,11 +104,26 @@ export default function CreerEspaceLienScreen() {
           </View>
         ) : null}
 
+        {code ? (
+          <View style={styles.codeBox}>
+            <Text style={styles.codeLabel}>Code à transmettre séparément</Text>
+            <Text style={styles.codeValeur} selectable>{code}</Text>
+            <Text style={styles.codeAide}>
+              Dites-le au téléphone, de vive voix, ou par un autre message que celui qui porte le
+              lien. Envoyer les deux ensemble reviendrait à n'avoir aucun code.
+            </Text>
+          </View>
+        ) : null}
+
         {lienInvitation ? (
           <Pressable style={styles.boutonPrincipal} onPress={partagerLien}>
-            <Text style={styles.boutonPrincipalTexte}>Partager le lien</Text>
+            <Text style={styles.boutonPrincipalTexte}>Partager le lien seul</Text>
           </Pressable>
         ) : null}
+
+        <Pressable style={styles.boutonSecondaire} onPress={genererLien}>
+          <Text style={styles.boutonSecondaireTexte}>Générer un nouveau lien et un nouveau code</Text>
+        </Pressable>
 
         <Pressable style={styles.boutonSecondaire} onPress={() => router.replace('/(tabs)/accueil')}>
           <Text style={styles.boutonSecondaireTexte}>Continuer vers Dualia →</Text>
@@ -113,6 +145,26 @@ const styles = StyleSheet.create({
   boutonPrincipalTexte: { fontFamily: FONTS.bodySemibold, fontSize: 15, color: COLORS.blanc },
   boutonSecondaire: { paddingVertical: 14, alignItems: 'center', marginTop: SPACING.sm },
   boutonSecondaireTexte: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.vert },
+  erreur: {
+    fontFamily: FONTS.body, fontSize: 12, color: COLORS.erreur,
+    lineHeight: 17, marginBottom: SPACING.sm,
+  },
+  codeBox: {
+    backgroundColor: COLORS.ivoire, borderRadius: RADIUS.md,
+    padding: SPACING.md, marginTop: SPACING.md, alignItems: 'center',
+  },
+  codeLabel: {
+    fontFamily: FONTS.body, fontSize: 11, color: COLORS.ardoise,
+    textTransform: 'uppercase', letterSpacing: 1,
+  },
+  codeValeur: {
+    fontFamily: FONTS.display, fontSize: 32, color: COLORS.vertProfond,
+    letterSpacing: 6, marginVertical: SPACING.xs,
+  },
+  codeAide: {
+    fontFamily: FONTS.body, fontSize: 11, color: COLORS.ardoise,
+    lineHeight: 16, textAlign: 'center',
+  },
   lienBox: {
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: RADIUS.md,
     padding: SPACING.md, marginBottom: SPACING.lg,

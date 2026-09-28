@@ -231,7 +231,9 @@ export default function ParentsFoyersScreen() {
                    partagee. On le dit, au lieu d'afficher un champ vide qui
                    laisserait croire qu'aucune adresse n'est renseignee. */
                 <Text style={styles.adresseMasquee}>
-                  Adresse non partagée par l'autre parent.
+                  {foyerOuvert?.adresseVisible
+                    ? "Aucune adresse renseignée."
+                    : "Adresse masquée par l'autre parent."}
                 </Text>
               )}
 
@@ -251,9 +253,10 @@ export default function ParentsFoyersScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={styles.switchLabel}>Partager ma rue avec l'autre parent</Text>
                     <Text style={styles.switchDesc}>
-                      Tant que ce réglage est désactivé, votre rue n'est visible que par vous.
-                      L'autre parent voit le nom de votre foyer et votre ville — nécessaires pour
-                      organiser la garde — mais pas votre adresse précise.
+                      Activé par défaut : savoir où dort son enfant fait partie d'une
+                      coparentalité normale. Si vous le désactivez, l'autre parent ne verra plus
+                      que le nom de votre foyer et votre ville — de quoi organiser la garde, sans
+                      votre adresse précise.
                     </Text>
                   </View>
                   <Switch value={formAdresseVisible} onValueChange={setFormAdresseVisible} />

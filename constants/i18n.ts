@@ -2,6 +2,15 @@ export type Langue = 'fr' | 'pt' | 'es' | 'en';
 
 export const TRADUCTIONS = {
   fr: {
+    inactivite: {
+      titre: 'Toujours là ?',
+      corps: (s: number) =>
+        `Par sécurité, votre session va se fermer dans ${s} seconde${s > 1 ? 's' : ''}. ` +
+        `Sur un ordinateur partagé, cela évite que la personne suivante entre dans votre espace familial.`,
+      rester: 'Je suis là',
+      partir: 'Me déconnecter',
+      expiree: 'Session fermée après une période d’inactivité.',
+    },
     brand: 'Dualia',
     citation: "Un enfant épanoui n'a pas besoin d'un seul toit, mais de parents qui avancent ensemble.",
     accueil: {
@@ -694,6 +703,15 @@ export const TRADUCTIONS = {
     },
   },
   es: {
+    inactivite: {
+      titre: '¿Sigues ahí?',
+      corps: (s: number) =>
+        `Por seguridad, tu sesión se cerrará en ${s} segundo${s > 1 ? 's' : ''}. ` +
+        `En un ordenador compartido, esto evita que la siguiente persona entre en tu espacio familiar.`,
+      rester: 'Sigo aquí',
+      partir: 'Cerrar sesión',
+      expiree: 'Sesión cerrada tras un periodo de inactividad.',
+    },
     brand: 'Dualia',
     citation: 'Un niño feliz no necesita un solo techo, sino padres que avanzan juntos.',
     accueil: {
@@ -1386,6 +1404,15 @@ export const TRADUCTIONS = {
     },
   },
   pt: {
+    inactivite: {
+      titre: 'Ainda aí?',
+      corps: (s: number) =>
+        `Por segurança, a sua sessão vai fechar dentro de ${s} segundo${s > 1 ? 's' : ''}. ` +
+        `Num computador partilhado, isto evita que a pessoa seguinte entre no seu espaço familiar.`,
+      rester: 'Estou aqui',
+      partir: 'Terminar sessão',
+      expiree: 'Sessão fechada após um período de inatividade.',
+    },
     brand: 'Dualia',
     citation: 'Uma criança feliz não precisa de um só teto, mas de pais que avançam juntos.',
     accueil: {
@@ -2078,6 +2105,15 @@ export const TRADUCTIONS = {
     },
   },
   en: {
+    inactivite: {
+      titre: 'Still there?',
+      corps: (s: number) =>
+        `For your security, your session will close in ${s} second${s > 1 ? 's' : ''}. ` +
+        `On a shared computer, this stops the next person walking into your family space.`,
+      rester: 'I\'m here',
+      partir: 'Sign out',
+      expiree: 'Session closed after a period of inactivity.',
+    },
     brand: 'Dualia',
     citation: "A happy child doesn't need a single roof, but parents who move forward together.",
     accueil: {

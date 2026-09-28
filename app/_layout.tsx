@@ -6,6 +6,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { supabase } from '../constants/supabase';
+import GardeInactivite from '../components/GardeInactivite';
 
 // Écrans depuis lesquels on ne redirige jamais : parcours d'authentification
 // et d'inscription, où l'absence de configuration de foyers est normale.
@@ -152,6 +153,10 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" backgroundColor={COLORS.vertProfond} />
+      {/* Pose une seule fois, au-dessus de tout : la surveillance ne doit pas
+          repartir de zero a chaque changement d'ecran. Ne rend rien tant
+          qu'aucune session n'est ouverte. */}
+      <GardeInactivite />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
