@@ -34,7 +34,13 @@ export default function DemandesEnAttente() {
 
   const charger = React.useCallback(async () => {
     if (sessionActive === false || !familleId) return;
-    const { data, error } = await supabase.rpc('demandes_en_attente');
+    // Limite a l'espace affiche : la fonction couvrait tous les espaces du
+    // compte, et la carte annonçait « demande d'acces a VOTRE espace »
+    // sans dire lequel. Accepter sans savoir de quel espace il s'agit,
+    // c'est exactement ce que le code et la validation doivent empecher.
+    const { data, error } = await supabase.rpc('demandes_en_attente', {
+      p_famille_id: familleId,
+    });
     if (error) {
       console.error('[Dualia] Lecture des demandes en attente :', error);
       return;

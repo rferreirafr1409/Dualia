@@ -2683,7 +2683,10 @@ export const useStore = create<DualiaStore>()(
     // habite le foyer, ou si son proprietaire a choisi de la partager — et
     // ajoute le drapeau « modifiable » qui dit a l'ecran ce qu'il peut
     // proposer.
-    const lire = async () => supabase.rpc('foyers_de_ma_famille');
+    // L'espace est precise : la fonction rendait sinon les foyers de TOUS
+    // les espaces du compte. Une personne separee de deux co-parents
+    // voyait donc, sur l'espace de l'une, le foyer de l'autre.
+    const lire = async () => supabase.rpc('foyers_de_ma_famille', { p_famille_id: familleId });
 
     let { data: foyersDB, error: erreurFoyers } = await lire();
 
@@ -2694,7 +2697,11 @@ export const useStore = create<DualiaStore>()(
     // lieu de laisser la personne devant des champs grises sans explication.
     if (!erreurFoyers && (foyersDB ?? []).length > 0 &&
         !(foyersDB ?? []).some((f: any) => f.modifiable === true)) {
-      const { error: erreurRattachement } = await supabase.rpc('rattacher_mon_foyer');
+      // La famille est precisee : avec deux espaces, laisser le serveur
+      // deviner reviendrait a rattacher le parent au mauvais foyer.
+      const { error: erreurRattachement } = await supabase.rpc('rattacher_mon_foyer', {
+        p_famille_id: familleId,
+      });
       if (erreurRattachement) {
         console.error('[Dualia] Échec rattachement du parent à un foyer :', erreurRattachement);
       } else {
@@ -2736,7 +2743,10 @@ export const useStore = create<DualiaStore>()(
   },
 
   configurerFoyersInitial: async (config) => {
-    const { error } = await supabase.rpc('configurer_foyers_initial', { p_config: config });
+    const { error } = await supabase.rpc('configurer_foyers_initial', {
+      p_config: config,
+      p_famille_id: get().familleId,
+    });
     if (error) {
       console.error('[Dualia] Échec configuration initiale des foyers :', error);
       throw error;
@@ -3172,6 +3182,22 @@ export const useStore = create<DualiaStore>()(
   changerEspaceFamilial: async (familleId: string) => {
     if (get().familleId === familleId) return;
     set({ chargementInitial: true });
+    // On VIDE avant de charger. Le chargement remplace les collections une
+    // par une, au fil d'une quinzaine d'allers-retours : sans cette purge,
+    // les messages, depenses et documents de l'espace precedent restaient
+    // affiches plusieurs secondes sous l'entete du nouvel espace — et une
+    // reponse ecrite pendant ce laps partait vers le mauvais co-parent.
+    //
+    // Certaines donnees ne sont d'ailleurs jamais rechargees (les
+    // propositions de repartition, par exemple) : sans purge, elles
+    // passaient definitivement d'un espace a l'autre.
+    //
+    // La liste des espaces, elle, doit survivre : la purge l'efface aussi,
+    // et seul initialiserSession la reconstruit. Sans cette precaution, le
+    // selecteur disparaissait au moment precis ou l'on vient de s'en servir.
+    const espaces = get().espacesFamiliaux;
+    get().purgerDonneesFamiliales();
+    set({ espacesFamiliaux: espaces });
     await get().chargerEspaceFamilial(familleId);
   },
 

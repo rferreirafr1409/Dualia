@@ -11,12 +11,15 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
+import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 
 export default function CreerEspaceLienScreen() {
   const router = useRouter();
   const [lienInvitation, setLienInvitation] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
+  const [espaceComplet, setEspaceComplet] = useState(false);
+  const familleId = useStore((s) => s.familleId);
   const [erreur, setErreur] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
 
@@ -35,7 +38,9 @@ export default function CreerEspaceLienScreen() {
   const genererLien = React.useCallback(async () => {
     setChargement(true);
     setErreur(null);
-    const { data, error } = await supabase.rpc('creer_invitation');
+    const { data, error } = await supabase.rpc('creer_invitation', {
+      p_famille_id: familleId,
+    });
     const ligne = Array.isArray(data) ? data[0] : data;
     if (error || !ligne?.token) {
       setErreur(
@@ -48,17 +53,39 @@ export default function CreerEspaceLienScreen() {
     }
     afficher(ligne);
     setChargement(false);
-  }, []);
+  }, [familleId]);
 
   // A l'affichage, on RELIT le lien en cours. On n'en cree un que s'il n'y
   // en a aucun de valide.
   useEffect(() => {
     let vivant = true;
     (async () => {
-      const { data } = await supabase.rpc('mon_invitation_en_cours');
+      // On attend de savoir quel espace est actif. Monter cet ecran avant
+      // que la session soit chargee envoyait un espace nul : le serveur
+      // repondait « espace_a_preciser » pour un compte a deux espaces, et
+      // l'erreur etait avalee — ecran mort, sans explication.
+      if (!familleId) return;
+
+      const { data, error } = await supabase.rpc('mon_invitation_en_cours', {
+        p_famille_id: familleId,
+      });
       if (!vivant) return;
+      if (error) {
+        setErreur(
+          error.message?.includes('espace_a_preciser')
+            ? "Choisissez d'abord l'espace familial concerné, en haut de l'écran."
+            : "Le lien n'a pas pu être chargé. Réessayez dans un instant."
+        );
+        setChargement(false);
+        return;
+      }
       const ligne = Array.isArray(data) ? data[0] : data;
-      if (ligne?.token) {
+      // L'espace est deja a deux : il n'y a personne a inviter, et
+      // proposer un lien serait mentir — le serveur le refuserait.
+      if (ligne?.espace_complet) {
+        setEspaceComplet(true);
+        setChargement(false);
+      } else if (ligne?.token) {
         afficher(ligne);
         setChargement(false);
       } else {
@@ -66,7 +93,7 @@ export default function CreerEspaceLienScreen() {
       }
     })();
     return () => { vivant = false; };
-  }, [genererLien]);
+  }, [genererLien, familleId]);
 
   const partagerLien = async () => {
     if (!lienInvitation) return;
@@ -98,13 +125,22 @@ export default function CreerEspaceLienScreen() {
 
         {erreur ? <Text style={styles.erreur}>{erreur}</Text> : null}
 
-        {lienInvitation ? (
+        {espaceComplet ? (
+          <View style={styles.codeBox}>
+            <Text style={styles.codeAide}>
+              Cet espace familial est complet : vous et l'autre parent y êtes tous les deux. Il n'y
+              a donc plus personne à inviter.
+            </Text>
+          </View>
+        ) : null}
+
+        {lienInvitation && !espaceComplet ? (
           <View style={styles.lienBox}>
             <Text style={styles.lienTexte} selectable>{lienInvitation}</Text>
           </View>
         ) : null}
 
-        {code ? (
+        {code && !espaceComplet ? (
           <View style={styles.codeBox}>
             <Text style={styles.codeLabel}>Code à transmettre séparément</Text>
             <Text style={styles.codeValeur} selectable>{code}</Text>
@@ -115,15 +151,17 @@ export default function CreerEspaceLienScreen() {
           </View>
         ) : null}
 
-        {lienInvitation ? (
+        {lienInvitation && !espaceComplet ? (
           <Pressable style={styles.boutonPrincipal} onPress={partagerLien}>
             <Text style={styles.boutonPrincipalTexte}>Partager le lien seul</Text>
           </Pressable>
         ) : null}
 
-        <Pressable style={styles.boutonSecondaire} onPress={genererLien}>
-          <Text style={styles.boutonSecondaireTexte}>Générer un nouveau lien et un nouveau code</Text>
-        </Pressable>
+        {!espaceComplet ? (
+          <Pressable style={styles.boutonSecondaire} onPress={genererLien}>
+            <Text style={styles.boutonSecondaireTexte}>Générer un nouveau lien et un nouveau code</Text>
+          </Pressable>
+        ) : null}
 
         <Pressable style={styles.boutonSecondaire} onPress={() => router.replace('/(tabs)/accueil')}>
           <Text style={styles.boutonSecondaireTexte}>Continuer vers Dualia →</Text>

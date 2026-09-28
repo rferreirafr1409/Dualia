@@ -67,7 +67,7 @@ export default function CreerEspaceScreen() {
         return;
       }
 
-      const { error: familleError } = await supabase.rpc('creer_famille', {
+      const { data: creation, error: familleError } = await supabase.rpc('creer_famille', {
         p_nom: prenom.trim(),
       });
 
@@ -78,6 +78,15 @@ export default function CreerEspaceScreen() {
       // ses valeurs par défaut jusqu'au prochain F5 involontaire.
       // On force ici le chargement de la vraie session.
       await useStore.getState().initialiserSession();
+
+      // Un compte peut désormais avoir plusieurs espaces. On rend ACTIF
+      // celui qu'on vient de créer : sans cela, l'écran suivant
+      // configurerait les foyers d'un autre espace, celui qui se serait
+      // trouvé chargé par défaut.
+      const nouvelle = Array.isArray(creation) ? creation[0] : creation;
+      if (nouvelle?.famille_id) {
+        await useStore.getState().changerEspaceFamilial(nouvelle.famille_id);
+      }
 
       router.replace('/configurer-foyer' as any);
     } catch (err: any) {
