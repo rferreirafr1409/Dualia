@@ -24,6 +24,10 @@ export interface Foyer {
   pays?: string;
   couleur?: string;
   adresseVisible: boolean;
+  // Ce parent-ci a-t-il le droit de modifier ce foyer ? Rendu par le
+  // serveur, jamais calcule par le client : c'est la base qui tranche, et
+  // elle refusera l'ecriture meme si l'application se trompait.
+  modifiable: boolean;
   actif: boolean;
   estPlaceholder: boolean;
   personneIds: string[]; // dérivé de foyer_personnes

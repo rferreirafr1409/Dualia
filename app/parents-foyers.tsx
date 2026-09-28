@@ -31,6 +31,12 @@ export default function ParentsFoyersScreen() {
   const [formVille, setFormVille] = useState('');
   const [formAdresseVisible, setFormAdresseVisible] = useState(false);
   const [sauvegarde, setSauvegarde] = useState(false);
+  const [refus, setRefus] = useState(false);
+
+  // Le foyer ouvert m'appartient-il ? C'est le serveur qui l'a dit, via le
+  // drapeau modifiable. L'ecran s'y conforme pour ne pas proposer une
+  // modification que la base refusera.
+  const monFoyer = foyerOuvert?.modifiable === true;
 
   // Les foyers placeholder ("Second foyer") ne s'affichent que s'ils sont
   // déjà réclamés — sinon ils n'existent que côté technique, en attente
@@ -38,6 +44,7 @@ export default function ParentsFoyersScreen() {
   const foyersVisibles = foyers.filter((f) => !f.estPlaceholder);
 
   const ouvrirFoyer = (foyer: Foyer) => {
+    setRefus(false);
     setFoyerOuvert(foyer);
     setFormNom(foyer.nom);
     setFormAdresse(foyer.adresse ?? '');
@@ -48,13 +55,20 @@ export default function ParentsFoyersScreen() {
   const enregistrerFoyer = async () => {
     if (!foyerOuvert) return;
     setSauvegarde(true);
+    setRefus(false);
     try {
-      await modifierFoyer(foyerOuvert.id, {
+      const enregistre = await modifierFoyer(foyerOuvert.id, {
         nom: formNom.trim() || foyerOuvert.nom,
         adresse: formAdresse.trim() || undefined,
         ville: formVille.trim() || undefined,
         adresseVisible: formAdresseVisible,
       });
+      // Refus de la base : on garde la fenetre ouverte et on le dit. La
+      // fermer donnerait a voir un enregistrement qui n'a pas eu lieu.
+      if (!enregistre) {
+        setRefus(true);
+        return;
+      }
       setFoyerOuvert(null);
     } finally {
       setSauvegarde(false);
@@ -150,7 +164,13 @@ export default function ParentsFoyersScreen() {
             <Pressable key={foyer.id} style={styles.foyerCard} onPress={() => ouvrirFoyer(foyer)}>
               <View style={[styles.foyerPuce, { backgroundColor: foyer.couleur || COLORS.vert }]} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.foyerNom}>{foyer.nom}</Text>
+                <View style={styles.foyerTitreLigne}>
+                  <Text style={styles.foyerNom}>{foyer.nom}</Text>
+                  {/* Le cadenas dit tout de suite ce qui se passera au clic. */}
+                  {!foyer.modifiable ? (
+                    <Ionicons name="lock-closed-outline" size={13} color={COLORS.ardoise} />
+                  ) : null}
+                </View>
                 {foyer.ville ? <Text style={styles.foyerVille}>{foyer.ville}</Text> : null}
                 {foyer.enfantIds.length > 0 ? (
                   <Text style={styles.foyerEnfants}>{prenomsEnfants(foyer.enfantIds)}</Text>
@@ -171,45 +191,74 @@ export default function ParentsFoyersScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitre}>Modifier le foyer</Text>
+              <Text style={styles.modalTitre}>
+                {monFoyer ? 'Modifier le foyer' : foyerOuvert?.nom}
+              </Text>
+
+              {/* Foyer de l'autre parent : on annonce la regle avant les
+                  champs, pour que le gris des zones de saisie ne passe pas
+                  pour une panne. */}
+              {!monFoyer ? (
+                <Text style={styles.lectureSeuleNote}>
+                  Ce foyer est celui de l'autre parent. Vous pouvez le consulter et indiquer
+                  quels enfants y vivent, mais son nom et son adresse ne sont modifiables que
+                  par lui.
+                </Text>
+              ) : null}
 
               <Text style={styles.fieldLabel}>Nom du foyer</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, !monFoyer && styles.inputVerrouille]}
                 value={formNom}
                 onChangeText={setFormNom}
+                editable={monFoyer}
                 placeholder="Ex. Chez Ricardo"
                 placeholderTextColor={COLORS.ardoise}
               />
 
               <Text style={styles.fieldLabel}>Adresse (optionnel)</Text>
-              <TextInput
-                style={styles.input}
-                value={formAdresse}
-                onChangeText={setFormAdresse}
-                placeholder="12 rue de..."
-                placeholderTextColor={COLORS.ardoise}
-              />
+              {monFoyer || foyerOuvert?.adresse ? (
+                <TextInput
+                  style={[styles.input, !monFoyer && styles.inputVerrouille]}
+                  value={formAdresse}
+                  onChangeText={setFormAdresse}
+                  editable={monFoyer}
+                  placeholder="12 rue de..."
+                  placeholderTextColor={COLORS.ardoise}
+                />
+              ) : (
+                /* La rue n'est pas arrivee du serveur : elle n'est pas
+                   partagee. On le dit, au lieu d'afficher un champ vide qui
+                   laisserait croire qu'aucune adresse n'est renseignee. */
+                <Text style={styles.adresseMasquee}>
+                  Adresse non partagée par l'autre parent.
+                </Text>
+              )}
 
               <Text style={styles.fieldLabel}>Ville (optionnel)</Text>
               <TextInput
-                style={styles.input}
+                style={[styles.input, !monFoyer && styles.inputVerrouille]}
                 value={formVille}
                 onChangeText={setFormVille}
+                editable={monFoyer}
                 placeholder="Paris"
                 placeholderTextColor={COLORS.ardoise}
               />
 
-              <View style={styles.switchLigne}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.switchLabel}>Rendre l'adresse visible</Text>
-                  <Text style={styles.switchDesc}>
-                    Par défaut, l'adresse n'est visible que par vous. Active pour la partager avec les
-                    autres membres de la famille ayant accès à Dualia.
-                  </Text>
+              {/* Le reglage n'a de sens que sur son propre foyer. */}
+              {monFoyer ? (
+                <View style={styles.switchLigne}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.switchLabel}>Partager ma rue avec l'autre parent</Text>
+                    <Text style={styles.switchDesc}>
+                      Tant que ce réglage est désactivé, votre rue n'est visible que par vous.
+                      L'autre parent voit le nom de votre foyer et votre ville — nécessaires pour
+                      organiser la garde — mais pas votre adresse précise.
+                    </Text>
+                  </View>
+                  <Switch value={formAdresseVisible} onValueChange={setFormAdresseVisible} />
                 </View>
-                <Switch value={formAdresseVisible} onValueChange={setFormAdresseVisible} />
-              </View>
+              ) : null}
 
               {enfants.length > 0 ? (
                 <>
@@ -252,13 +301,24 @@ export default function ParentsFoyersScreen() {
                 </>
               ) : null}
 
+              {refus ? (
+                <Text style={styles.refusTxt}>
+                  Cette modification n'a pas été enregistrée : ce foyer appartient à l'autre
+                  parent. Rien n'a été changé.
+                </Text>
+              ) : null}
+
               <View style={styles.modalActions}>
                 <Pressable style={styles.btnAnnuler} onPress={() => setFoyerOuvert(null)}>
                   <Text style={styles.btnAnnulerTxt}>Fermer</Text>
                 </Pressable>
-                <Pressable style={styles.btnValider} onPress={enregistrerFoyer} disabled={sauvegarde}>
-                  <Text style={styles.btnValiderTxt}>{sauvegarde ? '...' : 'Enregistrer'}</Text>
-                </Pressable>
+                {/* Pas de bouton Enregistrer sur le foyer de l'autre : rien
+                    a enregistrer, et le proposer serait mentir. */}
+                {monFoyer ? (
+                  <Pressable style={styles.btnValider} onPress={enregistrerFoyer} disabled={sauvegarde}>
+                    <Text style={styles.btnValiderTxt}>{sauvegarde ? '...' : 'Enregistrer'}</Text>
+                  </Pressable>
+                ) : null}
               </View>
             </ScrollView>
           </View>
@@ -270,6 +330,20 @@ export default function ParentsFoyersScreen() {
 
 const styles = StyleSheet.create({
   conteneur: { flex: 1, backgroundColor: COLORS.ivoire },
+  foyerTitreLigne: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  inputVerrouille: { backgroundColor: COLORS.ivoire, color: COLORS.ardoise },
+  lectureSeuleNote: {
+    fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise,
+    lineHeight: 17, marginBottom: SPACING.md,
+  },
+  adresseMasquee: {
+    fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise,
+    fontStyle: 'italic', marginBottom: SPACING.sm,
+  },
+  refusTxt: {
+    fontFamily: FONTS.body, fontSize: 12, color: COLORS.erreur,
+    lineHeight: 17, marginTop: SPACING.sm,
+  },
   header: {
     flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm,
     paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.md,

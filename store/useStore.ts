@@ -605,6 +605,10 @@ const construireFoyers = (
     pays: f.pays ?? undefined,
     couleur: f.couleur ?? undefined,
     adresseVisible: f.adresse_visible ?? false,
+    // Le serveur dit qui a le droit d'ecrire. En son absence on suppose
+    // que non : refuser a tort se repare d'un rechargement, autoriser a
+    // tort affiche un formulaire dont l'enregistrement echouera.
+    modifiable: f.modifiable === true,
     actif: f.actif ?? true,
     estPlaceholder: f.est_placeholder ?? false,
     personneIds: personnesDB.filter((p) => p.foyer_id === f.id).map((p) => p.parent_id),
@@ -759,10 +763,13 @@ interface DualiaStore {
   configFoyers: ConfigFoyers | null;
   chargerFoyers: (familleId: string) => Promise<void>;
   configurerFoyersInitial: (config: ConfigFoyers) => Promise<void>;
+  // Rend VRAI si la base a bien enregistre. FAUX si le foyer appartient a
+  // l'autre parent, ou si l'ecriture a ete refusee : l'ecran doit le dire
+  // plutot que d'afficher une modification qui n'existe pas.
   modifierFoyer: (
     id: string,
     updates: Partial<Pick<Foyer, 'nom' | 'adresse' | 'ville' | 'codePostal' | 'pays' | 'couleur' | 'adresseVisible' | 'actif'>>
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   associerEnfantAuFoyer: (foyerId: string, enfantId: string, residencePrincipale?: boolean) => Promise<void>;
   retirerEnfantDuFoyer: (foyerId: string, enfantId: string) => Promise<void>;
   definirResidencePrincipale: (foyerId: string, enfantId: string, valeur: boolean) => Promise<void>;
@@ -1620,7 +1627,11 @@ export const useStore = create<DualiaStore>()(
       absence: 'Absence',
     };
     const prenomEnfant = a.enfantId ? enfants.find((e) => e.id === a.enfantId)?.prenom : undefined;
-    ajouterEvenementCalendrier({
+    // Le reflet de l'agenda dans le calendrier peut etre refuse si la date
+    // d'echeance est illisible. L'entree d'agenda, elle, est creee quand
+    // meme : les deux ecrans montreraient alors des choses differentes sans
+    // que personne ne le sache. On le trace au moins.
+    const refletCree = ajouterEvenementCalendrier({
       id: 'cal-agenda-' + a.id,
       titre: `${LABEL_TYPE[a.type] || 'École'} : ${a.titre}`,
       date: a.dateEcheance,
@@ -1628,6 +1639,12 @@ export const useStore = create<DualiaStore>()(
       enfant: prenomEnfant,
       enfantId: a.enfantId,
     });
+    if (!refletCree) {
+      console.error(
+        '[Dualia] Agenda scolaire créé sans reflet au calendrier (échéance illisible) :',
+        JSON.stringify(a.dateEcheance)
+      );
+    }
 
     const auteurUuid = parents[a.auteurId]?.uuid;
     supabase
@@ -2649,11 +2666,33 @@ export const useStore = create<DualiaStore>()(
   configFoyers: null,
 
   chargerFoyers: async (familleId) => {
-    const { data: foyersDB, error: erreurFoyers } = await supabase
-      .from('foyers')
-      .select('*')
-      .eq('famille_id', familleId)
-      .order('cree_le', { ascending: true });
+    // La lecture passe par le serveur, plus par la table.
+    //
+    // La rue est desormais hors de portee du client : le droit de lire la
+    // colonne adresse a ete retire, et un select('*') serait refuse. La
+    // fonction applique la regle — la rue n'est rendue qu'au parent qui
+    // habite le foyer, ou si son proprietaire a choisi de la partager — et
+    // ajoute le drapeau « modifiable » qui dit a l'ecran ce qu'il peut
+    // proposer.
+    const lire = async () => supabase.rpc('foyers_de_ma_famille');
+
+    let { data: foyersDB, error: erreurFoyers } = await lire();
+
+    // Filet : un parent rattache a aucun foyer ne pourrait plus rien
+    // modifier, pas meme son propre domicile. Cet etat existe en base — un
+    // second parent qui rejoint avant que la configuration des foyers soit
+    // choisie n'etait rattache nulle part. On le repare ici, une fois, au
+    // lieu de laisser la personne devant des champs grises sans explication.
+    if (!erreurFoyers && (foyersDB ?? []).length > 0 &&
+        !(foyersDB ?? []).some((f: any) => f.modifiable === true)) {
+      const { error: erreurRattachement } = await supabase.rpc('rattacher_mon_foyer');
+      if (erreurRattachement) {
+        console.error('[Dualia] Échec rattachement du parent à un foyer :', erreurRattachement);
+      } else {
+        ({ data: foyersDB, error: erreurFoyers } = await lire());
+      }
+    }
+
     if (erreurFoyers) {
       console.error('[Dualia] Échec chargement foyers :', erreurFoyers);
       set({ foyers: [] });
@@ -2702,6 +2741,17 @@ export const useStore = create<DualiaStore>()(
   },
 
   modifierFoyer: async (id, updates) => {
+    // Un foyer qui ne nous appartient pas n'est plus modifiable : la base
+    // refuse l'ecriture. On s'arrete donc AVANT de toucher a l'etat local,
+    // sinon l'ecran afficherait une modification que le serveur n'a jamais
+    // acceptee — et le parent croirait avoir corrige l'adresse de l'autre.
+    const foyerVise = get().foyers.find((f) => f.id === id);
+    if (foyerVise && !foyerVise.modifiable) {
+      console.error('[Dualia] Modification refusée : ce foyer appartient à l’autre parent.');
+      return false;
+    }
+
+    const avant = get().foyers;
     set((state) => ({
       foyers: state.foyers.map((f) => (f.id === id ? { ...f, ...updates } : f)),
     }));
@@ -2715,10 +2765,24 @@ export const useStore = create<DualiaStore>()(
     if (updates.couleur !== undefined) dbUpdates.couleur = updates.couleur || null;
     if (updates.adresseVisible !== undefined) dbUpdates.adresse_visible = updates.adresseVisible;
     if (updates.actif !== undefined) dbUpdates.actif = updates.actif;
-    if (Object.keys(dbUpdates).length === 0) return;
+    if (Object.keys(dbUpdates).length === 0) return true;
 
-    const { error } = await supabase.from('foyers').update(dbUpdates).eq('id', id);
-    if (error) console.error('[Dualia] Échec sync modification foyer (distant) :', error);
+    // On redemande la ligne touchee. Une regle de securite qui refuse ne
+    // leve pas d'erreur : elle ne renvoie simplement aucune ligne. Sans ce
+    // controle, un refus serait indistinguable d'une reussite, et l'ecran
+    // garderait une adresse que la base n'a pas enregistree.
+    const { data, error } = await supabase
+      .from('foyers')
+      .update(dbUpdates)
+      .eq('id', id)
+      .select('id');
+
+    if (error || !data || data.length === 0) {
+      console.error('[Dualia] Modification du foyer refusée ou non enregistrée :', error);
+      set({ foyers: avant });
+      return false;
+    }
+    return true;
   },
 
   associerEnfantAuFoyer: async (foyerId, enfantId, residencePrincipale = false) => {
