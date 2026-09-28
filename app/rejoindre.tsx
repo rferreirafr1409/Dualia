@@ -145,16 +145,54 @@ export default function RejoindreScreen() {
 
     setChargement(true);
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password: motDePasse,
-      });
-      if (authError) throw authError;
-      if (!authData.session) {
-        alertCompat(
-          'Confirmation requise',
-          'Vérifie ta boîte mail pour confirmer ton adresse, puis reviens te connecter.'
-        );
+      // Trois situations mènent ici, et l'écran doit les traverser toutes :
+      //   - compte à créer, sans confirmation d'e-mail : session immédiate ;
+      //   - compte à créer AVEC confirmation obligatoire : pas de session,
+      //     il faut confirmer puis revenir sur ce même lien ;
+      //   - compte déjà existant : on se connecte au lieu de s'inscrire.
+      //
+      // La version précédente ne connaissait que la première. Activer la
+      // confirmation d'e-mail — ce qu'on veut faire — condamnait donc toute
+      // arrivée de co-parent : inscription impossible, connexion inexistante.
+      const { data: dejaConnecte } = await supabase.auth.getSession();
+      let session = dejaConnecte.session;
+
+      if (!session) {
+        const { data: inscription, error: erreurInscription } = await supabase.auth.signUp({
+          email: email.trim(),
+          password: motDePasse,
+        });
+
+        const dejaInscrit =
+          erreurInscription &&
+          /already registered|already been registered|user already exists/i.test(
+            erreurInscription.message ?? ''
+          );
+
+        if (dejaInscrit) {
+          const { data: connexion, error: erreurConnexion } =
+            await supabase.auth.signInWithPassword({
+              email: email.trim(),
+              password: motDePasse,
+            });
+          if (erreurConnexion) throw erreurConnexion;
+          session = connexion.session;
+        } else if (erreurInscription) {
+          throw erreurInscription;
+        } else if (!inscription.session) {
+          alertCompat(
+            'Confirmez votre adresse',
+            "Un e-mail vient de vous être envoyé. Confirmez votre adresse, puis revenez sur ce même lien et validez ce formulaire avec le même mot de passe : votre demande sera déposée."
+          );
+          setChargement(false);
+          return;
+        } else {
+          session = inscription.session;
+        }
+      }
+
+      if (!session) {
+        alertCompat('Connexion impossible', "Réessayez dans un instant.");
         setChargement(false);
         return;
       }
