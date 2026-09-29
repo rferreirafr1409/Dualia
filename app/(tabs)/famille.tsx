@@ -66,7 +66,7 @@ export default function FamilleScreen() {
     // pendant la creation de l'espace. Un parent qui passait cette etape
     // ne pouvait plus JAMAIS inviter son co-parent, ni regenerer un lien
     // ou un code perimes.
-    { icone: 'person-add-outline', couleur: COLORS.terracotta, fond: '#F6EFEA', titre: 'Inviter le co-parent', desc: 'Lien et code à transmettre séparément', route: '/creer-espace-lien' },
+    { icone: 'person-add-outline', couleur: COLORS.terracotta, fond: '#F6EFEA', titre: 'Inviter le co-parent', desc: 'Lien et code à transmettre séparément', route: '/creer-espace-lien?depuis=famille' },
     { icone: 'shield-checkmark-outline', couleur: COLORS.vertProfond, fond: '#E8ECEB', titre: t.cadreFamilial, desc: t.cadreFamilialDesc, route: '/validation-cadre' },
     { icone: 'people-outline', couleur: COLORS.terracotta, fond: '#F3E9E4', titre: t.accesTiers, desc: t.accesTiersDesc, route: '/acces-tiers' },
     // Mon compte : double authentification et déconnexion. L'écran existait

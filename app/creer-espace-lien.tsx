@@ -9,13 +9,20 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, Pressable, StyleSheet, Share, ActivityIndicator,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 
 export default function CreerEspaceLienScreen() {
   const router = useRouter();
+  // Cet ecran sert a deux moments de vie tres differents : la fin de la
+  // creation de l'espace, et « Famille -> Inviter le co-parent », des mois
+  // plus tard. Sans savoir d'ou l'on vient, la page annonçait « Votre
+  // espace est cree » a un parent qui l'avait cree en janvier, et proposait
+  // de « continuer vers Dualia » alors qu'il y etait deja.
+  const params = useLocalSearchParams<{ depuis?: string }>();
+  const depuisFamille = params.depuis === 'famille';
   const [lienInvitation, setLienInvitation] = useState<string | null>(null);
   const [code, setCode] = useState<string | null>(null);
   const [espaceComplet, setEspaceComplet] = useState(false);
@@ -117,11 +124,15 @@ export default function CreerEspaceLienScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.contentCentre}>
-        <Text style={styles.titre}>Votre espace est créé</Text>
-        <Text style={styles.sousTitre}>
-          Envoyez ce lien à l'autre parent, puis communiquez-lui le code par un autre moyen.
-          Valable 48 heures. Vous pourrez aussi le faire plus tard.
+        <Text style={styles.titre}>
+          {espaceComplet || depuisFamille ? 'Inviter le co-parent' : 'Votre espace est créé'}
         </Text>
+        {!espaceComplet ? (
+          <Text style={styles.sousTitre}>
+            Envoyez ce lien à l'autre parent, puis communiquez-lui le code par un autre moyen.
+            Valable 48 heures.{depuisFamille ? '' : ' Vous pourrez aussi le faire plus tard.'}
+          </Text>
+        ) : null}
 
         {erreur ? <Text style={styles.erreur}>{erreur}</Text> : null}
 
@@ -163,8 +174,17 @@ export default function CreerEspaceLienScreen() {
           </Pressable>
         ) : null}
 
-        <Pressable style={styles.boutonSecondaire} onPress={() => router.replace('/(tabs)/accueil')}>
-          <Text style={styles.boutonSecondaireTexte}>Continuer vers Dualia →</Text>
+        {/* Venu de Famille, on y retourne : « Continuer vers Dualia » vers
+            l'accueil n'a de sens qu'a la fin de l'inscription. */}
+        <Pressable
+          style={styles.boutonSecondaire}
+          onPress={() =>
+            router.replace((depuisFamille ? '/(tabs)/famille' : '/(tabs)/accueil') as any)
+          }
+        >
+          <Text style={styles.boutonSecondaireTexte}>
+            {espaceComplet || depuisFamille ? 'Retour' : 'Continuer vers Dualia →'}
+          </Text>
         </Pressable>
       </View>
     </View>
