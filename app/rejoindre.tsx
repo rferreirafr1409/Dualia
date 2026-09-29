@@ -17,6 +17,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
 
@@ -75,10 +76,20 @@ export default function RejoindreScreen() {
   // personne revenait sur le formulaire, tentait de recreer son compte, et
   // se heurtait a « adresse deja utilisee » sans aucun moyen de revenir a
   // sa demande — bloquee dehors pour de bon.
+  // On arrive aussi ici SANS jeton : l'application y renvoie tout compte
+  // dont la demande attend une validation, precisement pour qu'il retrouve
+  // sa salle d'attente sans avoir a remettre la main sur le SMS d'origine.
+  // Tant que cette question n'a pas de reponse, on ne declare pas le lien
+  // invalide — sinon ce parent lisait « ce lien n'est pas valide » alors que
+  // sa demande suivait son cours.
+  const [demandeVerifiee, setDemandeVerifiee] = useState(false);
+
   useEffect(() => {
     let vivant = true;
     supabase.rpc('etat_de_ma_demande').then(({ data }) => {
-      if (vivant && data === 'en_attente_validation') setEnAttente(true);
+      if (!vivant) return;
+      if (data === 'en_attente_validation') setEnAttente(true);
+      setDemandeVerifiee(true);
     });
     return () => { vivant = false; };
   }, []);
@@ -158,9 +169,14 @@ export default function RejoindreScreen() {
       let session = dejaConnecte.session;
 
       if (!session) {
+        // emailRedirectTo ramene sur CE lien d'invitation, jeton compris.
+        // Sans lui, Supabase renvoie vers la « Site URL » du projet : le
+        // jeton disparaissait de l'URL, et la personne devait retrouver le
+        // SMS d'origine pour reprendre — ou renoncer.
         const { data: inscription, error: erreurInscription } = await supabase.auth.signUp({
           email: email.trim(),
           password: motDePasse,
+          options: { emailRedirectTo: lienApplication('rejoindre', { token }) },
         });
 
         const dejaInscrit =
@@ -182,7 +198,7 @@ export default function RejoindreScreen() {
         } else if (!inscription.session) {
           alertCompat(
             'Confirmez votre adresse',
-            "Un e-mail vient de vous être envoyé. Confirmez votre adresse, puis revenez sur ce même lien et validez ce formulaire avec le même mot de passe : votre demande sera déposée."
+            "Un e-mail vient de vous être envoyé. Cliquez sur le lien qu'il contient : il vous ramènera sur cette page. Il vous restera à ressaisir le code et votre mot de passe, puis votre demande sera déposée."
           );
           setChargement(false);
           return;
@@ -221,7 +237,32 @@ export default function RejoindreScreen() {
     }
   };
 
-  if (verification === 'en_cours') {
+  // Le nom de l'invitant vient du jeton : arrivé sans jeton, on ne l'a pas.
+  // La phrase doit donc tenir dans les deux cas.
+  const salleDAttente = () => (
+    <View style={styles.screen}>
+      <View style={styles.contentCentre}>
+        <Text style={styles.titre}>Demande envoyée</Text>
+        <Text style={styles.sousTitre}>
+          {nomInvitant
+            ? `${nomInvitant} doit maintenant valider votre arrivée.`
+            : "L'autre parent doit maintenant valider votre arrivée."}{' '}
+          Vous verrez l'espace familial dès que ce sera fait — vous pouvez laisser cette page
+          ouverte.
+        </Text>
+        <ActivityIndicator size="small" color={COLORS.vert} style={{ marginTop: SPACING.lg }} />
+      </View>
+    </View>
+  );
+
+  // Une demande en cours passe AVANT tout : elle vaut pour elle-meme, jeton
+  // ou pas. C'est ce qui permet a ce parent de revenir par l'adresse
+  // ordinaire de Dualia, des jours plus tard, et de retrouver sa demande.
+  if (enAttente) {
+    return salleDAttente();
+  }
+
+  if (verification === 'en_cours' || !demandeVerifiee) {
     return (
       <View style={styles.centreEcran}>
         <ActivityIndicator size="large" color={COLORS.vert} />
@@ -238,21 +279,6 @@ export default function RejoindreScreen() {
             Ce lien d'invitation n'est plus valable. Demande à l'autre parent de t'en renvoyer un nouveau
             depuis son écran Dualia.
           </Text>
-        </View>
-      </View>
-    );
-  }
-
-  if (enAttente) {
-    return (
-      <View style={styles.screen}>
-        <View style={styles.contentCentre}>
-          <Text style={styles.titre}>Demande envoyée</Text>
-          <Text style={styles.sousTitre}>
-            {nomInvitant} doit maintenant valider votre arrivée. Vous verrez l'espace familial
-            dès que ce sera fait — vous pouvez laisser cette page ouverte.
-          </Text>
-          <ActivityIndicator size="small" color={COLORS.vert} style={{ marginTop: SPACING.lg }} />
         </View>
       </View>
     );

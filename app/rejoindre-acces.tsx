@@ -25,6 +25,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
 
@@ -296,9 +297,14 @@ export default function RejoindreAccesScreen() {
     setChargement(true);
     let sessionCreee = false;
     try {
+      // emailRedirectTo ramene sur CE lien d'acces, jeton compris. Sans lui,
+      // Supabase renvoie vers la « Site URL » du projet et le jeton
+      // disparait : une nounou ou un grand-parent devait retrouver le
+      // message d'origine pour reprendre.
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password: motDePasse,
+        options: { emailRedirectTo: lienApplication('rejoindre-acces', { token }) },
       });
 
       if (authError) {

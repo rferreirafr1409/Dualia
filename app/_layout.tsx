@@ -28,6 +28,24 @@ const ECRANS_SANS_REDIRECTION = [
   'reinitialiser-mot-de-passe',
 ];
 
+// Écrans accessibles SANS session. La liste ci-dessus ne pouvait pas servir
+// à cela : elle contient `configurer-foyer` et `creer-espace-lien`, exemptés
+// pour ne pas boucler avec les redirections qui y mènent. Les deux listes
+// n'en faisaient qu'une, si bien qu'un visiteur sans aucune session pouvait
+// ouvrir /Dualia/configurer-foyer, remplir l'écran, et ne récolter qu'une
+// erreur brute du serveur — sur un écran sans bouton retour.
+const ECRANS_PUBLICS = [
+  '',
+  'index',
+  'connexion',
+  'creer-espace',
+  'rejoindre',
+  'rejoindre-acces',
+  'espace-tiers',
+  'mot-de-passe-oublie',
+  'reinitialiser-mot-de-passe',
+];
+
 // initialiserSession() charge les vraies données (session Supabase, espace
 // familial, parents, enfants...) une fois au tout premier démarrage de
 // l'app — quelle que soit la page d'entrée (accueil, un lien direct, un
@@ -43,6 +61,7 @@ export default function RootLayout() {
   const familleId = useStore((s) => s.familleId);
   const accesTiers = useStore((s) => s.accesTiers);
   const configFoyers = useStore((s) => s.configFoyers);
+  const rattachement = useStore((s) => s.rattachement);
   const router = useRouter();
   const segments = useSegments();
 
@@ -77,15 +96,17 @@ export default function RootLayout() {
   // Sans elle, ouvrir Dualia sur un navigateur ou un parent s'etait connecte
   // affichait son espace familial reconstitue depuis le stockage local, sans
   // qu'aucun mot de passe soit demande. La purge est faite dans le store ; ici
-  // on renvoie vers la connexion, et on le fait AVANT les autres redirections
-  // pour ne pas envoyer un visiteur sans session vers la configuration de
-  // foyers d'une famille a laquelle il n'appartient pas.
+  // on renvoie vers la connexion.
+  //
+  // Cette garde s'exclut des trois suivantes par sa condition meme
+  // (sessionActive === false contre !== false) : elles ne peuvent donc pas
+  // se disputer la redirection, quel que soit l'ordre des effets.
   useEffect(() => {
     if (chargementInitial) return;
     if (sessionActive !== false) return;
 
     const ecranCourant = segments[0] ?? '';
-    if (ECRANS_SANS_REDIRECTION.includes(ecranCourant)) return;
+    if (ECRANS_PUBLICS.includes(ecranCourant)) return;
 
     router.replace('/connexion' as any);
   }, [chargementInitial, sessionActive, segments]);
@@ -118,11 +139,49 @@ export default function RootLayout() {
     if (!accesTiers) return;
 
     const ecranCourant = segments[0] ?? '';
-    if (ecranCourant === 'espace-tiers') return;
     if (ECRANS_SANS_REDIRECTION.includes(ecranCourant)) return;
 
     router.replace('/espace-tiers' as any);
   }, [chargementInitial, sessionActive, familleId, accesTiers, segments]);
+
+  // Compte rattaché à rien.
+  //
+  // Un parent qui cree son compte depuis creer-espace.tsx recoit d'abord un
+  // e-mail de confirmation : signUp ne rend alors AUCUNE session, et l'ecran
+  // s'arrete avant creer_famille(). L'espace n'existe donc pas encore quand
+  // la personne revient se connecter — et elle atterrissait sur un accueil
+  // vide, definitivement, puisque l'ecran de creation n'est propose qu'aux
+  // visiteurs sans session. Deux comptes reels etaient deja dans cet etat.
+  //
+  // On ne se fie pas a `familleId`, qui vaut aussi null pendant un chargement
+  // ou hors ligne, ni a une liste vide : seules ces deux valeurs sont des
+  // reponses claires du serveur. 'inconnu' ne redirige vers rien.
+  //
+  // 'acces_retire' merite son propre chemin : envoyer une nounou dont
+  // l'acces vient d'etre coupe vers « Terminons votre espace familial »
+  // serait faux deux fois, et lui proposerait de creer un espace de
+  // coparentalite dont elle n'a que faire.
+  //
+  // 'demande_en_attente' aussi : un co-parent invite n'a pas encore de
+  // ligne dans `parents` tant que l'autre parent n'a pas valide. Lui
+  // proposer de creer un espace lui en fabriquait un a lui, et les deux
+  // parents finissaient chacun dans le sien.
+  useEffect(() => {
+    if (chargementInitial) return;
+    if (sessionActive === false) return;
+    const DESTINATIONS: Record<string, string> = {
+      jamais_rattache: '/creer-espace',
+      acces_retire: '/espace-tiers',
+      demande_en_attente: '/rejoindre',
+    };
+    const destination = DESTINATIONS[rattachement];
+    if (!destination) return;
+
+    const ecranCourant = segments[0] ?? '';
+    if (ECRANS_SANS_REDIRECTION.includes(ecranCourant)) return;
+
+    router.replace(destination as any);
+  }, [chargementInitial, sessionActive, rattachement, segments]);
 
   // Rien n'est rendu tant qu'on ne sait pas s'il y a une session.
   //

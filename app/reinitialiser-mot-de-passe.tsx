@@ -49,7 +49,17 @@ function lireTokens(): { access_token: string; refresh_token: string } | null {
     if (!brut) return null;
     const parsed = JSON.parse(brut);
     if (!parsed?.access_token || !parsed?.refresh_token) return null;
-    return parsed;
+    // Le type distingue les liens : 'recovery' pour une réinitialisation,
+    // 'signup' pour une confirmation d'adresse. Ce contrôle manquait, et
+    // cet écran aurait accepté des jetons de confirmation — ouvrant une
+    // session et proposant de changer le mot de passe à quelqu'un qui
+    // venait simplement de confirmer son adresse. Aucune route interne n'y
+    // menait, donc la protection tenait à l'absence de chemin plutôt qu'à
+    // une vérification. Les anciens jetons, déposés avant l'ajout du champ,
+    // n'ont pas de type : on les accepte, cet écran étant leur seul
+    // destinataire possible.
+    if (parsed.type && parsed.type !== 'recovery') return null;
+    return { access_token: parsed.access_token, refresh_token: parsed.refresh_token };
   } catch (e) {
     return null;
   }

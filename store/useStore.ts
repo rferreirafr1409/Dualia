@@ -632,6 +632,40 @@ interface EspaceFamilial {
   monRole: ParentRole;
 }
 
+/**
+ * A quoi le compte connecte est-il rattache.
+ *
+ *   'inconnu'          : pas de reponse claire. Hors ligne, erreur reseau,
+ *                        lecture refusee, chargement en cours. AUCUNE
+ *                        redirection ne doit se declencher sur cette valeur.
+ *   'parent'           : au moins un espace familial.
+ *   'tiers'            : un acces tiers actif (nounou, grand-parent, ecole).
+ *   'acces_retire'     : un acces tiers a existe et n'est plus valide.
+ *                        Different de 'jamais_rattache' : proposer a cette
+ *                        personne de creer un espace de coparentalite serait
+ *                        absurde, et lui dire que son espace « n'a pas
+ *                        encore ete cree » serait faux.
+ *   'demande_en_attente' : un co-parent invite a depose sa demande et attend
+ *                        la validation. Sa ligne dans `parents` n'existe pas
+ *                        encore — elle nait a l'acceptation. Le confondre
+ *                        avec un compte neuf lui faisait creer SON espace a
+ *                        lui : les deux parents se retrouvaient chacun dans
+ *                        le sien, sans un mot d'erreur.
+ *   'jamais_rattache'  : compte confirme, rien de rattache, rien de revoque.
+ *                        C'est le seul etat ou l'on propose de creer un
+ *                        espace.
+ */
+type Rattachement =
+  | 'inconnu'
+  | 'parent'
+  | 'tiers'
+  | 'acces_retire'
+  | 'demande_en_attente'
+  | 'jamais_rattache';
+
+/** Ce que la lecture des acces tiers a pu etablir — ou non. */
+type VerdictTiers = 'tiers' | 'acces_retire' | 'aucun_acces' | 'indetermine';
+
 interface DualiaStore {
   parents: Record<ParentRole, Parent>;
   evenements: EvenementGarde[];
@@ -688,7 +722,10 @@ interface DualiaStore {
   // Session d'un tiers (nounou, grand-parent, ecole). Renseigne uniquement
   // quand l'utilisateur connecte n'est parent d'aucun espace.
   accesTiers: AccesTiersActif | null;
-  chargerEspaceTiers: () => Promise<boolean>;
+  // Rend un VERDICT, et non un booleen : « pas de tiers » et « je n'ai pas
+  // pu savoir » menaient au meme false, et ce false decidait ensuite si l'on
+  // propose a quelqu'un de creer un espace familial.
+  chargerEspaceTiers: () => Promise<VerdictTiers>;
   // Vide les donnees de l'espace familial gardees sur l'appareil. A appeler
   // a chaque changement d'utilisateur : le stockage local est partage par
   // tous ceux qui ouvrent l'application sur ce navigateur.
@@ -777,6 +814,10 @@ interface DualiaStore {
 
   espacesFamiliaux: EspaceFamilial[];
   chargerEspaceFamilial: (familleId: string) => Promise<void>;
+  // Le chargement lui-meme, sans la mise en file. Reserve a
+  // chargerEspaceFamilial : l'appeler directement fait perdre la garantie
+  // que deux espaces ne se chargent jamais en meme temps.
+  chargerEspaceFamilialSansFile: (familleId: string) => Promise<void>;
   changerEspaceFamilial: (familleId: string) => Promise<void>;
 
   familleId: string | null;
@@ -795,6 +836,25 @@ interface DualiaStore {
   // ouverture, alors qu'une seule question doit etre tranchee avant de rendre
   // quoi que ce soit.
   sessionVerifiee: boolean;
+  // A quoi ce compte est-il rattache ? Quatre reponses possibles, et
+  // 'inconnu' en est une : c'est tout l'objet de ce champ.
+  //
+  // Un compte d'authentification peut exister SANS rien : c'est l'etat d'un
+  // parent qui a cree son compte, recu l'e-mail de confirmation, et dont
+  // l'espace n'a jamais ete fabrique — puisque creer_famille() est appelee
+  // juste apres l'inscription, session en main, et que la confirmation
+  // obligatoire retire cette session. Cette personne atterrissait sur un
+  // accueil vide sans aucun chemin de retour, l'ecran de creation n'etant
+  // propose qu'aux visiteurs SANS session. Deux comptes reels sont deja
+  // dans cet etat.
+  //
+  // Mais « je ne trouve rien » n'est pas « il n'y a rien » : une panne
+  // reseau, un refus de lecture, un acces tiers retire donnent tous une
+  // reponse vide, pour des raisons entierement differentes. Les confondre
+  // proposait a une nounou de creer un espace de coparentalite parce que sa
+  // 4G avait faibli. D'ou une valeur par reponse, et 'inconnu' par defaut :
+  // aucune redirection ne s'appuie sur une absence de reponse.
+  rattachement: Rattachement;
   initialiserSession: () => Promise<void>;
   // Rend true si la session a bien ete fermee cote serveur. false signifie
   // que l'appareil est propre mais que la session reste ouverte ailleurs :
@@ -840,6 +900,11 @@ const storageAvecAlerte = {
 };
 
 const dualiaStorage = createJSONStorage(() => storageAvecAlerte as any);
+
+// Chargement d'espace familial en cours, s'il y en a un. Vit hors du store :
+// c'est une file d'attente, pas un etat a afficher ni a persister. Voir
+// chargerEspaceFamilial.
+let chargementEnVol: Promise<void> | null = null;
 
 export const useStore = create<DualiaStore>()(
   persist(
@@ -1495,6 +1560,11 @@ export const useStore = create<DualiaStore>()(
       generationDonnees: etat.generationDonnees + 1,
       familleId: null,
       espacesFamiliaux: [],
+      // Une purge n'est pas un verdict sur le compte : on repasse a
+      // 'inconnu', sinon un changement d'espace (qui purge) ferait croire, le
+      // temps du rechargement, a un compte sans espace — et declencherait la
+      // redirection vers la creation d'un nouvel espace.
+      rattachement: 'inconnu' as Rattachement,
       parents: { ...PARENTS },
       parentActif: 'A',
       decisions: [],
@@ -1522,33 +1592,52 @@ export const useStore = create<DualiaStore>()(
   chargerEspaceTiers: async () => {
     const { data: userData } = await supabase.auth.getUser();
     const user = userData.user;
-    if (!user) return false;
+    if (!user) return 'indetermine';
 
-    const { data: mesAcces, error } = await supabase
+    // On lit TOUTES les lignes de cette personne, revoquees comprises, et on
+    // trie ensuite. Le filtre etait pose dans la requete : un acces retire
+    // rendait alors exactement la meme reponse qu'un compte qui n'a jamais
+    // eu d'acces — zero ligne — alors que ce qu'il faut dire aux deux n'a
+    // rien de commun.
+    //
+    // La regle serveur « tiers_lecture_de_soi » autorise bien la lecture de
+    // ses propres lignes sans condition de statut.
+    const { data: toutesMesLignes, error } = await supabase
       .from('tiers')
       .select('*')
       .eq('user_id', user.id)
-      .eq('statut', 'actif')
-      .is('revoque_le', null)
       .order('cree_le', { ascending: false });
 
     if (error) {
       // Une panne reseau n'est pas une revocation. Sans cette distinction, on
       // annonce a une nounou que le parent lui a coupe l'acces parce que la
       // requete a echoue. On garde l'etat precedent et on ne conclut rien.
+      //
+      // Le verdict rendu etait « get().accesTiers !== null » : or accesTiers
+      // n'est PAS persiste, donc il vaut null a chaque ouverture de page. Une
+      // nounou au reseau instable etait ainsi declaree « sans aucun acces »
+      // — et, depuis que cet etat declenche une redirection, invitee a creer
+      // un espace de coparentalite.
       console.error('[Dualia] Échec chargement de l\'accès tiers :', error);
       set({ chargementInitial: false });
-      return get().accesTiers !== null;
+      return 'indetermine';
     }
 
-    if (!mesAcces || mesAcces.length === 0) {
-      // Compte sans acces : c'est justement le cas ou il ne faut rien laisser
-      // trainer. Un tiers revoque, ou un compte cree puis abandonne, heritait
-      // sinon de l'espace familial persiste par le parent precedent sur ce
-      // navigateur — messages et depenses compris.
+    const lignes = toutesMesLignes ?? [];
+    const mesAcces = lignes.filter((a: any) => a.statut === 'actif' && !a.revoque_le);
+
+    if (mesAcces.length === 0) {
+      // Compte sans acces actif : c'est justement le cas ou il ne faut rien
+      // laisser trainer. Un tiers revoque, ou un compte cree puis abandonne,
+      // heritait sinon de l'espace familial persiste par le parent precedent
+      // sur ce navigateur — messages et depenses compris.
       get().purgerDonneesFamiliales();
       set({ accesTiers: null, chargementInitial: false });
-      return false;
+      // « Retire » veut dire retire, pas « pas actif » : une ligne en
+      // attente ne doit pas faire lire « votre acces a ete retire » a
+      // quelqu'un dont l'acces n'a jamais encore ete ouvert.
+      const retire = lignes.some((a: any) => a.revoque_le || a.statut === 'revoque');
+      return retire ? 'acces_retire' : 'aucun_acces';
     }
 
     const acces = mesAcces[0];
@@ -1615,7 +1704,7 @@ export const useStore = create<DualiaStore>()(
       },
       chargementInitial: false,
     });
-    return true;
+    return 'tiers';
   },
 
   agendaScolaire: [],
@@ -2883,7 +2972,37 @@ export const useStore = create<DualiaStore>()(
     if (error) console.error('[Dualia] Échec définition résidence principale (distant) :', error);
   },
 
+  // Deux chargements d'espace ne doivent JAMAIS s'entrelacer.
+  //
+  // Le chargement remplace les collections une par une, sur une quinzaine
+  // d'allers-retours. Deux chargements simultanes melangeaient donc les
+  // donnees de deux familles dans le store, et leurs deux controles de fin se
+  // marchaient dessus : selon l'ordre d'arrivee, celui qui finissait en
+  // dernier purgeait ce que l'autre venait d'ecrire. Resultat observable —
+  // recharger la page puis cliquer aussitot le second espace dans le
+  // selecteur (deja rempli depuis le stockage local) : tout se vide, plus
+  // d'enfants, plus de messages, plus de selecteur, et aucune garde ne
+  // rattrape cet etat. Il fallait recharger a la main.
+  //
+  // On les met donc en file : chaque chargement attend la fin du precedent.
   chargerEspaceFamilial: async (familleId: string) => {
+    const precedent = chargementEnVol;
+    const courant = (async () => {
+      if (precedent) {
+        try { await precedent; } catch { /* l'echec du precedent ne bloque pas la suite */ }
+      }
+      await get().chargerEspaceFamilialSansFile(familleId);
+    })();
+
+    chargementEnVol = courant;
+    try {
+      await courant;
+    } finally {
+      if (chargementEnVol === courant) chargementEnVol = null;
+    }
+  },
+
+  chargerEspaceFamilialSansFile: async (familleId: string) => {
     // Generation capturee au depart : si une purge survient pendant ce
     // chargement (deconnexion, session revoquee), on ne doit pas laisser les
     // donnees fraichement lues se reinscrire dans le stockage local.
@@ -3195,9 +3314,29 @@ export const useStore = create<DualiaStore>()(
     // La liste des espaces, elle, doit survivre : la purge l'efface aussi,
     // et seul initialiserSession la reconstruit. Sans cette precaution, le
     // selecteur disparaissait au moment precis ou l'on vient de s'en servir.
+    // On attend la fin du chargement en cours AVANT de purger.
+    //
+    // Sinon il continue d'ecrire les donnees de l'espace precedent
+    // par-dessus la purge, puis conclut — voyant la generation changee —
+    // qu'une deconnexion a eu lieu : il purge une seconde fois, et la liste
+    // des espaces disparait au moment precis ou l'on vient de s'en servir.
+    // Plus aucune garde ne rattrape cet etat : accueil vide, sans selecteur,
+    // sans redirection, jusqu'a un rechargement a la main.
+    if (chargementEnVol) {
+      try { await chargementEnVol; } catch { /* son echec ne nous concerne pas */ }
+    }
+    if (get().familleId === familleId) {
+      set({ chargementInitial: false });
+      return;
+    }
+
     const espaces = get().espacesFamiliaux;
     get().purgerDonneesFamiliales();
-    set({ espacesFamiliaux: espaces });
+    // Changer d'espace prouve qu'il en existe au moins un : on rend son
+    // verdict au drapeau que la purge vient de remettre a 'inconnu'. Et on
+    // repose chargementInitial, que le chargement attendu ci-dessus a pu
+    // remettre a false en terminant.
+    set({ espacesFamiliaux: espaces, rattachement: 'parent', chargementInitial: true });
     await get().chargerEspaceFamilial(familleId);
   },
 
@@ -3205,6 +3344,7 @@ export const useStore = create<DualiaStore>()(
   chargementInitial: true,
   sessionActive: null,
   sessionVerifiee: false,
+  rattachement: 'inconnu',
   generationDonnees: 0,
 
   initialiserSession: async () => {
@@ -3212,7 +3352,19 @@ export const useStore = create<DualiaStore>()(
     // encore persiste laisse les redirections du layout se declencher pendant
     // le chargement : on atterrit sur la configuration de foyers d'une famille
     // a laquelle on n'appartient plus.
-    set({ chargementInitial: true });
+    //
+    // rattachement repart a 'inconnu' : tant que cette execution n'a pas
+    // tranche, aucune redirection ne doit s'appuyer sur la reponse de la
+    // precedente.
+    set({ chargementInitial: true, rattachement: 'inconnu' });
+
+    // Capture AVANT tout appel. La verification des acces tiers purge le
+    // store quand elle ne trouve rien, familleId compris : lu plus bas, ce
+    // champ valait donc toujours null et la garde qui s'appuie dessus ne
+    // s'executait jamais. Elle existe pour un cas precis — une regle de
+    // securite qui ecarte des lignes rend une liste vide SANS erreur — et
+    // elle doit donc lire l'etat d'avant.
+    const familleIdPersistee = get().familleId;
 
     // getSession() et non getUser() : getSession lit la session stockee sur
     // l'appareil, sans aller au reseau. Une coupure de reseau ne doit pas etre
@@ -3285,15 +3437,81 @@ export const useStore = create<DualiaStore>()(
       .select('famille_id, role')
       .eq('user_id', user.id);
 
-    if (erreurAppartenances || !mesAppartenances || mesAppartenances.length === 0) {
+    // Une erreur de lecture n'est PAS une absence d'appartenance. Les deux
+    // etaient traitees ensemble : une coupure de reseau au demarrage vidait
+    // donc la liste des espaces d'un parent parfaitement installe — et,
+    // depuis que cet etat declenche une redirection, l'aurait envoye creer
+    // un nouvel espace par-dessus le sien.
+    if (erreurAppartenances) {
+      console.error('[Dualia] Appartenances illisibles, on conserve l’état local :', erreurAppartenances);
+      set({ chargementInitial: false });
+      return;
+    }
+
+    if (!mesAppartenances || mesAppartenances.length === 0) {
       // Avant de conclure a un compte orphelin : cette personne est peut-etre
       // un tiers (nounou, grand-parent, ecole). Sans ce detour, elle arrivait
       // sur un message d'erreur alors que son acces est parfaitement valide.
-      const estUnTiers = await get().chargerEspaceTiers();
-      if (estUnTiers) return;
+      const verdict = await get().chargerEspaceTiers();
 
-      console.error('[Dualia] Aucun espace familial trouvé pour cet utilisateur :', erreurAppartenances);
-      set({ chargementInitial: false, espacesFamiliaux: [] });
+      if (verdict === 'tiers') {
+        set({ rattachement: 'tiers' });
+        return;
+      }
+      if (verdict === 'indetermine') {
+        // La lecture des acces a echoue : on ne sait rien de plus qu'avant.
+        set({ chargementInitial: false, rattachement: 'inconnu' });
+        return;
+      }
+      if (verdict === 'acces_retire') {
+        set({ chargementInitial: false, espacesFamiliaux: [], rattachement: 'acces_retire' });
+        return;
+      }
+
+      // Derniere precaution avant de conclure au compte neuf.
+      //
+      // PostgREST ne rend PAS d'erreur quand une regle de securite ecarte des
+      // lignes : il rend une liste vide. Le jour ou une politique sur
+      // `parents` changerait de forme — renommage, migration d'identites —
+      // tous les parents installes deviendraient « comptes neufs », et se
+      // verraient proposer de creer un espace par-dessus le leur.
+      //
+      // Un familleId persiste sur cet appareil signifie qu'un espace y a
+      // deja ete charge pour ce compte. La deconnexion purge ce champ, donc
+      // un vrai compte neuf le trouve toujours vide. Sa presence face a une
+      // liste vide est donc une contradiction : on ne conclut pas.
+      if (familleIdPersistee) {
+        console.error(
+          '[Dualia] Aucune appartenance lue alors qu’un espace est mémorisé sur cet appareil : lecture probablement refusée, aucune conclusion tirée.'
+        );
+        set({ chargementInitial: false, rattachement: 'inconnu' });
+        return;
+      }
+
+      // Un co-parent invite qui attend la validation est exactement dans cet
+      // etat : son compte existe, sa demande est deposee, et sa ligne dans
+      // `parents` ne naitra qu'a l'acceptation. Sans cette question, il etait
+      // envoye vers « Terminons votre espace familial — c'est la derniere
+      // etape » et fabriquait SON espace. A l'acceptation, son compte en
+      // avait deux, et tout ce qu'il avait saisi entre-temps se trouvait dans
+      // l'espace orphelin : deux parents separes, chacun chez soi, sans le
+      // moindre message.
+      const { data: etatDemande, error: erreurDemande } = await supabase.rpc('etat_de_ma_demande');
+      if (erreurDemande) {
+        console.error('[Dualia] État de la demande illisible :', erreurDemande);
+        set({ chargementInitial: false, rattachement: 'inconnu' });
+        return;
+      }
+      if (etatDemande === 'en_attente_validation') {
+        set({ chargementInitial: false, espacesFamiliaux: [], rattachement: 'demande_en_attente' });
+        return;
+      }
+
+      // Reponse claire et vide : compte d'authentification sans espace ni
+      // acces tiers. L'application doit proposer d'en creer un, pas afficher
+      // un accueil vide.
+      console.warn('[Dualia] Compte sans espace familial : reprise de la création proposée.');
+      set({ chargementInitial: false, espacesFamiliaux: [], rattachement: 'jamais_rattache' });
       return;
     }
 
@@ -3314,7 +3532,7 @@ export const useStore = create<DualiaStore>()(
       };
     });
 
-    set({ espacesFamiliaux });
+    set({ espacesFamiliaux, rattachement: 'parent' });
 
     const familleActivePersistee = get().familleId;
     const espaceActif =

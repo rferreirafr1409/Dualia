@@ -23,9 +23,15 @@ export default function Index() {
   // aussi une course avec la garde du layout.
   const sessionActive = useStore((s) => s.sessionActive);
   const sessionVerifiee = useStore((s) => s.sessionVerifiee);
+  const rattachement = useStore((s) => s.rattachement);
 
   useEffect(() => {
-    // Priorité absolue : si on arrive ici après un rebond depuis
+    // Filet de secours, normalement inutile : le script de app/+html.tsx
+    // consomme cette clé et restaure l'URL lui-même, avant même que ce
+    // bundle ne soit chargé. On la garde au cas où ce script serait absent
+    // (rendu natif, page servie autrement), mais c'est bien lui qui agit.
+    //
+    // Si on arrive ici après un rebond depuis
     // public/404.html (lien profond cliqué depuis l'extérieur, ex. un lien
     // d'invitation reçu par SMS), on doit aller vers CETTE page précise —
     // peu importe si une session existe déjà. C'est justement le cas pour
@@ -60,6 +66,26 @@ export default function Index() {
   // création d'un espace.
   if (sessionActive === false) {
     return <Redirect href="/creer-espace" />;
+  }
+
+  // Session valide, mais rien de rattache a ce compte : la creation d'espace
+  // a ete interrompue par la confirmation d'e-mail. On y renvoie directement.
+  // La garde du layout couvre le meme cas ; ici on evite en plus le passage
+  // par un accueil vide quand la reponse est deja connue.
+  if (rattachement === 'jamais_rattache') {
+    return <Redirect href="/creer-espace" />;
+  }
+
+  // Un acces tiers retire n'est pas un compte neuf : on ne propose pas de
+  // creer un espace familial, on l'envoie sur l'ecran qui saura le dire.
+  if (rattachement === 'acces_retire') {
+    return <Redirect href="/espace-tiers" />;
+  }
+
+  // Co-parent invite dont la demande attend la validation : sa place est la
+  // salle d'attente, pas la creation d'un espace a lui.
+  if (rattachement === 'demande_en_attente') {
+    return <Redirect href="/rejoindre" />;
   }
 
   // true (session confirmée) comme null (indéterminée, typiquement hors ligne)

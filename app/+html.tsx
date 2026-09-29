@@ -36,13 +36,26 @@ export default function Root({ children }: PropsWithChildren) {
                 try {
                   var chemin = sessionStorage.getItem('chemin_avant_404');
                   var hashADetecter = location.hash;
+                  var hashVivant = !!(location.hash && location.hash.length > 1);
 
                   if (chemin) {
                     sessionStorage.removeItem('chemin_avant_404');
                     if (location.pathname === '/Dualia/' || location.pathname === '/Dualia') {
-                      history.replaceState(null, '', chemin);
                       var indexHash = chemin.indexOf('#');
-                      hashADetecter = indexHash >= 0 ? chemin.substring(indexHash) : '';
+                      // Un rebond 404 resté en attente (navigation
+                      // interrompue) ne doit pas detourner un vrai lien
+                      // d'e-mail. Deux degats distincts : il ecrasait le hash
+                      // porteur des jetons, et il remplaçait l'adresse
+                      // courante par une page sans rapport — la personne
+                      // venue confirmer son adresse atterrissait sur un
+                      // ecran d'invitation, sans session, et ses jetons
+                      // restaient inutilises.
+                      if (indexHash >= 0) {
+                        history.replaceState(null, '', chemin);
+                        hashADetecter = chemin.substring(indexHash);
+                      } else if (!hashVivant) {
+                        history.replaceState(null, '', chemin);
+                      }
                     }
                   }
 
@@ -51,9 +64,16 @@ export default function Root({ children }: PropsWithChildren) {
                     var access_token = params.get('access_token');
                     var refresh_token = params.get('refresh_token');
                     if (access_token && refresh_token) {
+                      // Le "type" distingue les liens qui arrivent ici :
+                      // 'recovery' pour une reinitialisation de mot de passe,
+                      // 'signup' pour une confirmation d'adresse. Sans lui,
+                      // un ecran ne pouvait pas savoir si les jetons trouves
+                      // le concernaient — et confirmer son adresse ne
+                      // pouvait pas ouvrir de session.
                       sessionStorage.setItem('dualia_reset_tokens', JSON.stringify({
                         access_token: access_token,
                         refresh_token: refresh_token,
+                        type: params.get('type') || '',
                       }));
                     }
                   }

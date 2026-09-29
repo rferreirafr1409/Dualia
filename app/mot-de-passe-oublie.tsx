@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
+import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 
 function alertCompat(titre: string, message?: string) {
@@ -25,7 +26,11 @@ function alertCompat(titre: string, message?: string) {
   }
 }
 
-const URL_REDIRECTION = 'https://rferreirafr1409.github.io/Dualia/reinitialiser-mot-de-passe';
+// L'adresse de base vit dans constants/liens.ts, avec celles des autres
+// e-mails. Elle etait recopiee ici a la main : le jour du demenagement vers
+// dualia.app, la reinitialisation aurait continue de pointer vers l'ancienne
+// adresse, sans que rien ne le signale.
+const URL_REDIRECTION = lienApplication('reinitialiser-mot-de-passe');
 
 export default function MotDePasseOublieScreen() {
   const router = useRouter();

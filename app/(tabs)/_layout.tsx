@@ -147,6 +147,7 @@ function SidebarDesktop() {
   const espacesFamiliaux = useStore((state) => state.espacesFamiliaux);
   const familleId = useStore((state) => state.familleId);
   const changerEspaceFamilial = useStore((state) => state.changerEspaceFamilial);
+  const chargementInitial = useStore((state) => state.chargementInitial);
   const [switcherOuvert, setSwitcherOuvert] = useState(false);
 
   const espaceActif = espacesFamiliaux.find((e) => e.familleId === familleId);
@@ -182,9 +183,15 @@ function SidebarDesktop() {
                   <Pressable
                     key={espace.familleId}
                     style={[styles.spaceSwitcherOption, actif && styles.spaceSwitcherOptionActive]}
+                    // Le sélecteur est rempli depuis le stockage local, donc
+                    // cliquable avant la fin du chargement de l'espace en
+                    // cours. La mise en file dans le store empêche les deux
+                    // chargements de se mélanger ; ici on évite simplement
+                    // d'empiler des changements que personne n'a voulus.
+                    disabled={chargementInitial}
                     onPress={() => {
                       setSwitcherOuvert(false);
-                      if (!actif) changerEspaceFamilial(espace.familleId);
+                      if (!actif && !chargementInitial) changerEspaceFamilial(espace.familleId);
                     }}
                   >
                     <Text
