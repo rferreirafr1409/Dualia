@@ -32,21 +32,18 @@ const TAB_LABELS: Record<string, { fr: string; pt: string; es: string; en: strin
   famille: { fr: 'Famille', pt: 'Família', es: 'Familia', en: 'Family' },
 };
 
-// Sur telephone, la barre du bas est la SEULE navigation : sans 'enfants',
-// on ajoutait son premier enfant depuis la carte vide de Famille, puis
-// cette carte disparaissait — et il n'existait plus aucun chemin vers le
-// formulaire pour en ajouter un second.
-const ONGLETS_VISIBLES = ['accueil', 'calendrier', 'enfants', 'messagerie', 'famille'];
+// Un enfant, un ecran.
+//
+// L'ecran « Enfants » faisait doublon avec Famille : il listait les memes
+// enfants en affichant trois fois moins d'informations que leur fiche,
+// tout en portant seul les actions de creation et de modification. La
+// fiche enfant a recupere ces actions, Famille a recupere l'ajout, et
+// cet ecran n'a plus de raison d'exister dans la navigation.
+const ONGLETS_VISIBLES = ['accueil', 'calendrier', 'messagerie', 'famille'];
 
 const SIDEBAR_ITEMS: { route: string; iconOn: IoniconName; iconOff: IoniconName }[] = [
   { route: 'accueil', iconOn: 'home', iconOff: 'home-outline' },
   { route: 'calendrier', iconOn: 'calendar', iconOff: 'calendar-outline' },
-  // Sans cette entrée, l'écran des enfants n'était atteignable qu'en tapant
-  // /enfants dans la barre d'adresse — et c'est le SEUL endroit de
-  // l'application où l'on peut ajouter un enfant. Un espace neuf n'avait
-  // donc aucun chemin vers son premier enfant : le bouton « + Ajouter un
-  // enfant » de Famille renvoyait sur Famille elle-même.
-  { route: 'enfants', iconOn: 'happy', iconOff: 'happy-outline' },
   { route: 'decisions', iconOn: 'checkmark-circle', iconOff: 'checkmark-circle-outline' },
   { route: 'finances', iconOn: 'wallet', iconOff: 'wallet-outline' },
   { route: 'documents', iconOn: 'folder', iconOff: 'folder-outline' },
@@ -317,16 +314,6 @@ function TabsInterieur({ isDesktop }: { isDesktop: boolean }) {
               title: titre('calendrier'),
               tabBarIcon: ({ focused, color }) => (
                 <Ionicons name={focused ? 'calendar' : ('calendar-outline' as IoniconName)} size={22} color={color} />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="enfants"
-            options={{
-              title: titre('enfants'),
-              headerShown: false,
-              tabBarIcon: ({ focused, color }) => (
-                <Ionicons name={focused ? 'happy' : ('happy-outline' as IoniconName)} size={22} color={color} />
               ),
             }}
           />

@@ -768,7 +768,10 @@ interface DualiaStore {
   enfants: Enfant[];
   ajouterEnfant: (e: Enfant, photoUri?: string) => Promise<void>;
   modifierEnfant: (id: string, updates: Partial<Enfant>, photoUri?: string) => Promise<void>;
-  supprimerEnfant: (id: string) => void;
+  // Rend VRAI si la base a bien supprime. FAUX si le serveur a refuse,
+  // auquel cas l'enfant est remis dans la liste : l'ecran doit le dire
+  // plutot que d'afficher une suppression qui n'a pas eu lieu.
+  supprimerEnfant: (id: string) => Promise<boolean>;
   ajouterContactUrgence: (c: ContactUrgence) => void;
   modifierContactUrgence: (id: string, updates: Partial<ContactUrgence>) => void;
   supprimerContactUrgence: (id: string) => void;
@@ -2350,15 +2353,27 @@ export const useStore = create<DualiaStore>()(
     if (error) console.error('[Dualia] Échec sync mise à jour enfant (distant) :', error);
   },
 
-  supprimerEnfant: (id) => {
+  // Rend VRAI si la base a bien supprime. FAUX si le serveur a refuse : dans
+  // ce cas l'enfant est REMIS dans la liste, et l'ecran doit le dire.
+  //
+  // Cette fonction retirait l'enfant de l'affichage sans attendre la reponse
+  // et se contentait de journaliser l'echec. Or la suppression etait REFUSEE
+  // par Postgres des qu'un evenement ou un souvenir referencait l'enfant —
+  // c'est-a-dire toujours, en usage reel. L'enfant disparaissait de l'ecran,
+  // puis revenait au rechargement suivant ou sur l'appareil du co-parent.
+  // Les contraintes sont corrigees en base ; ce garde-fou reste, parce qu'un
+  // refus peut toujours venir d'ailleurs — droits, reseau, ligne verrouillee.
+  supprimerEnfant: async (id) => {
+    const avant = get().enfants;
     set((state) => ({ enfants: state.enfants.filter((e) => e.id !== id) }));
-    supabase
-      .from('enfants')
-      .delete()
-      .eq('id', id)
-      .then(({ error }) => {
-        if (error) console.error('[Dualia] Échec sync suppression enfant (distant) :', error);
-      });
+
+    const { error } = await supabase.from('enfants').delete().eq('id', id);
+    if (error) {
+      console.error('[Dualia] Suppression d’enfant refusée :', error);
+      set({ enfants: avant });
+      return false;
+    }
+    return true;
   },
 
   ajouterContactUrgence: (c) => {

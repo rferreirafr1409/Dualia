@@ -11,15 +11,17 @@
 // (app/enfant/[id].tsx), qui elle-même renvoie vers Documents/Agenda/
 // Journal filtrés plutôt que de recréer un second système de stockage.
 
+import { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { differenceInYears, parseISO } from 'date-fns';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../../store/useStore';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS, FONTS } from '../../constants/theme';
 import { TRADUCTIONS } from '../../constants/i18n';
 import type { ParentRole } from '../../types';
+import { ModaleEnfant } from '../../components/ModalesEnfant';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -42,6 +44,10 @@ const LIBELLES_COMPTE: Record<'fr' | 'pt' | 'es' | 'en', { titre: string; desc: 
 };
 
 export default function FamilleScreen() {
+  // `?ajouter=1` vient du « + » de l'accueil : le formulaire s'ouvre
+  // directement, au lieu de laisser chercher le bouton dans la page.
+  const { ajouter } = useLocalSearchParams<{ ajouter?: string }>();
+  const [modaleEnfant, setModaleEnfant] = useState(ajouter === '1');
   const router = useRouter();
   const langue = useStore((s) => s.langue);
   const enfants = useStore((s) => s.enfants);
@@ -94,11 +100,8 @@ export default function FamilleScreen() {
         {enfants.length === 0 ? (
           // Ce bouton renvoyait vers '/famille', c'est-à-dire l'écran
           // courant : on appuyait sur le seul bouton de la page, et rien ne
-          // se passait. Le formulaire d'ajout d'un enfant vit sur l'écran
-          // Enfants, désormais présent dans la barre latérale — c'était le
-          // seul endroit de l'application où l'on peut créer un enfant, et
-          // il n'était atteignable qu'en tapant /enfants dans l'URL.
-          <Pressable style={styles.videCard} onPress={() => router.push('/enfants' as any)}>
+          // se passait. Il ouvre maintenant le formulaire ici même.
+          <Pressable style={styles.videCard} onPress={() => setModaleEnfant(true)}>
             <Text style={styles.videTxt}>{t.aucunEnfant}</Text>
             <Text style={styles.videCta}>{t.ajouterEnfantCta}</Text>
           </Pressable>
@@ -129,6 +132,16 @@ export default function FamilleScreen() {
           })
         )}
 
+        {/* Ajouter un enfant : permanent, et non plus seulement quand la
+            liste est vide. Une fois le premier enfant créé, la carte vide
+            disparaissait — et avec elle le seul chemin vers le formulaire. */}
+        {enfants.length > 0 ? (
+          <Pressable style={styles.ajoutEnfantBtn} onPress={() => setModaleEnfant(true)}>
+            <Ionicons name="add" size={16} color={COLORS.terracotta} />
+            <Text style={styles.ajoutEnfantTxt}>{t.ajouterEnfantCta}</Text>
+          </Pressable>
+        ) : null}
+
         <Text style={styles.sectionLabel}>{t.notreFamille}</Text>
         {espaceFamilial.map((item) => (
           <Pressable key={item.route} style={styles.ligne} onPress={() => router.push(item.route as any)}>
@@ -143,11 +156,21 @@ export default function FamilleScreen() {
           </Pressable>
         ))}
       </ScrollView>
+      <ModaleEnfant visible={modaleEnfant} onFermer={() => setModaleEnfant(false)} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  ajoutEnfantBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs,
+    paddingVertical: SPACING.md, marginBottom: SPACING.lg,
+    borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.terracotta,
+    borderStyle: 'dashed',
+  },
+  ajoutEnfantTxt: {
+    fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.terracotta,
+  },
   conteneur: { flex: 1, backgroundColor: COLORS.ivoire },
   header: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.lg, paddingBottom: SPACING.lg },
   headerTitre: { fontFamily: FONTS.display, fontSize: 24, color: COLORS.vertProfond },

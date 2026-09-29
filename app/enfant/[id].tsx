@@ -7,41 +7,48 @@
 // Agenda, Journal) pour le détail plutôt que de le dupliquer — une
 // information, une seule source, plusieurs chemins pour y accéder.
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, View, Text, StyleSheet, ScrollView, Pressable, Image, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { differenceInYears, parseISO } from 'date-fns';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../../store/useStore';
-import { supabase } from '../../constants/supabase';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS, FONTS } from '../../constants/theme';
 import { TRADUCTIONS } from '../../constants/i18n';
 import { retour } from '../../lib/navigation';
-
-type ContactUrgence = { id: string; nom: string; relation: string | null; telephone: string };
+import { confirmer, alerter } from '../../lib/dialogue';
+import { ModaleEnfant, ModaleContactUrgence } from '../../components/ModalesEnfant';
 
 export default function FicheEnfantScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const langue = useStore((s) => s.langue);
   const t = TRADUCTIONS[langue].ficheEnfant;
-  const tFamille = TRADUCTIONS[langue].famille;
   const enfants = useStore((s) => s.enfants);
   const chargementInitial = useStore((s) => s.chargementInitial);
   const enfant = enfants.find((e) => e.id === id);
 
-  const [contacts, setContacts] = useState<ContactUrgence[]>([]);
+  const supprimerEnfant = useStore((s) => s.supprimerEnfant);
+  const supprimerContactUrgence = useStore((s) => s.supprimerContactUrgence);
+  const tEnfants = TRADUCTIONS[langue].enfants;
 
-  useEffect(() => {
-    if (!id) return;
-    supabase
-      .from('contacts_urgence')
-      .select('id, nom, relation, telephone')
-      .eq('enfant_id', id)
-      .order('priorite', { ascending: true })
-      .then(({ data }) => setContacts(data ?? []));
-  }, [id]);
+  const appeler = (numero: string) => {
+    Linking.openURL(`tel:${numero.replace(/\s+/g, '')}`).catch(() => {});
+  };
+
+  const [modaleEnfant, setModaleEnfant] = useState(false);
+  const [modaleContact, setModaleContact] = useState(false);
+
+  // Les contacts viennent du store, pas d'une requete a part.
+  //
+  // Cet ecran les relisait sur le reseau a chaque ouverture, et ne
+  // distinguait pas « aucun contact » d'une requete echouee : hors ligne,
+  // la fiche annoncait « aucun contact » alors que l'application les
+  // connaissait. Ils sont maintenant lus la ou ils sont deja chargés — ce
+  // qui les fait aussi apparaitre immediatement apres un ajout.
+  const contacts = enfant?.contactsUrgence ?? [];
+
 
   // Fiche introuvable : ouverture directe de l'URL avant que le store soit
   // chargé, chargement des enfants en échec, ou enfant supprimé depuis
@@ -93,7 +100,32 @@ export default function FicheEnfantScreen() {
         <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
-        <View style={{ width: 32 }} />
+        {/* Modifier et supprimer vivaient sur un autre ecran, qui affichait
+            trois fois moins d'informations que celui-ci. Ils sont a leur
+            place : sur la fiche de l'enfant concerne. */}
+        <View style={styles.actionsEntete}>
+          <Pressable onPress={() => setModaleEnfant(true)} style={styles.actionBtn}>
+            <Ionicons name="create-outline" size={20} color={COLORS.vert} />
+          </Pressable>
+          <Pressable
+            style={styles.actionBtn}
+            onPress={async () => {
+              const accepte = await confirmer(
+                tEnfants.supprimer, tEnfants.confirmerSuppressionEnfant,
+                tEnfants.supprimer, tEnfants.annuler, true
+              );
+              if (!accepte) return;
+              const supprime = await supprimerEnfant(enfant.id);
+              if (!supprime) {
+                alerter(tEnfants.supprimer, t.suppressionRefusee);
+                return;
+              }
+              retour(router, '/(tabs)/famille');
+            }}
+          >
+            <Ionicons name="trash-outline" size={20} color={COLORS.erreur} />
+          </Pressable>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
@@ -124,7 +156,7 @@ export default function FicheEnfantScreen() {
                 <Text style={styles.ligneValeur}>{enfant.medecinTraitant}</Text>
               </View>
               {enfant.medecinTelephone ? (
-                <Pressable onPress={() => Linking.openURL(`tel:${enfant.medecinTelephone}`)} style={styles.appelBtn}>
+                <Pressable onPress={() => appeler(enfant.medecinTelephone!)} style={styles.appelBtn}>
                   <Ionicons name="call-outline" size={14} color={COLORS.blanc} />
                   <Text style={styles.appelBtnTxt}>{t.appeler}</Text>
                 </Pressable>
@@ -172,6 +204,10 @@ export default function FicheEnfantScreen() {
           <View style={styles.carteHeader}>
             <Ionicons name="alert-circle-outline" size={18} color={COLORS.or} />
             <Text style={styles.carteTitre}>{t.contactsTitre}</Text>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={() => setModaleContact(true)} style={styles.actionBtn}>
+              <Ionicons name="add-circle-outline" size={20} color={COLORS.terracotta} />
+            </Pressable>
           </View>
           {contacts.length === 0 ? (
             <Text style={styles.videTxt}>{t.aucunContact}</Text>
@@ -180,11 +216,25 @@ export default function FicheEnfantScreen() {
               <View key={c.id} style={styles.ligneInfo}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.ligneValeur}>{c.nom}</Text>
-                  {c.relation ? <Text style={styles.ligneLabel}>{c.relation}</Text> : null}
+                  <Text style={styles.ligneLabel}>
+                    {c.relation ? `${c.relation} · ${c.telephone}` : c.telephone}
+                  </Text>
                 </View>
-                <Pressable onPress={() => Linking.openURL(`tel:${c.telephone}`)} style={styles.appelBtn}>
+                <Pressable onPress={() => appeler(c.telephone)} style={styles.appelBtn}>
                   <Ionicons name="call-outline" size={14} color={COLORS.blanc} />
                   <Text style={styles.appelBtnTxt}>{t.appeler}</Text>
+                </Pressable>
+                <Pressable
+                  style={styles.actionBtn}
+                  onPress={async () => {
+                    const accepte = await confirmer(
+                      tEnfants.supprimer, tEnfants.confirmerSuppressionContact,
+                      tEnfants.supprimer, tEnfants.annuler, true
+                    );
+                    if (accepte) supprimerContactUrgence(c.id);
+                  }}
+                >
+                  <Ionicons name="trash-outline" size={16} color={COLORS.ardoise} />
                 </Pressable>
               </View>
             ))
@@ -233,11 +283,23 @@ export default function FicheEnfantScreen() {
           <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
         </Pressable>
       </ScrollView>
+      <ModaleEnfant
+        visible={modaleEnfant}
+        enfant={enfant}
+        onFermer={() => setModaleEnfant(false)}
+      />
+      <ModaleContactUrgence
+        visible={modaleContact}
+        enfantId={enfant.id}
+        onFermer={() => setModaleContact(false)}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  actionsEntete: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+  actionBtn: { padding: SPACING.xs },
   introuvableBloc: {
     flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl,
   },

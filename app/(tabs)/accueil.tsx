@@ -645,7 +645,11 @@ export default function AccueilScreen() {
               {enfants.map((e) => {
                 const ans = ageEnfant(e.dateNaissance);
                 return (
-                  <Pressable key={e.id} style={styles.kidItem} onPress={() => router.push('/enfants' as any)}>
+                  <Pressable
+                    key={e.id}
+                    style={styles.kidItem}
+                    onPress={() => router.push(`/enfant/${e.id}` as any)}
+                  >
                     <View style={styles.kidFace}>
                       {e.photoUrl ? (
                         <Image source={{ uri: e.photoUrl }} style={styles.kidPhoto} />
@@ -658,7 +662,13 @@ export default function AccueilScreen() {
                   </Pressable>
                 );
               })}
-              <Pressable style={styles.kidItem} onPress={() => router.push('/enfants' as any)}>
+              {/* L'ajout d'un enfant vit desormais sur Famille. Le parametre
+                  ouvre le formulaire directement : sans lui, on atterrissait
+                  sur Famille avec un bouton a chercher plus bas dans la page. */}
+              <Pressable
+                style={styles.kidItem}
+                onPress={() => router.push({ pathname: '/famille', params: { ajouter: '1' } } as any)}
+              >
                 <View style={styles.kidFaceAjouter}><Ionicons name="add" size={18} color={COLORS.ardoise} /></View>
                 <Text style={styles.kidNom}>{t.accueil.ajouterCourt}</Text>
               </Pressable>
