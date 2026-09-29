@@ -14,6 +14,7 @@ import { useStore } from '../store/useStore';
 import { TRADUCTIONS } from '../constants/i18n';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { ITEMS_TRANSMISSION_DEFAUT } from '../constants/transmissionCatalog';
+import { retour } from '../lib/navigation';
 
 type LigneConfig = { item_key: string; label: string | null; ordre: number; actif: boolean; est_personnalise: boolean };
 
@@ -89,7 +90,7 @@ export default function PersonnaliserTransmissionScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={() => retour(router, '/(tabs)/accueil')} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <Text style={styles.titre}>{t.titrePage}</Text>

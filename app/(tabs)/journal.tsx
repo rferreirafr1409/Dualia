@@ -4,6 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert, Image, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { useStore } from '../../store/useStore';
+import { alerter } from '../../lib/dialogue';
 import { jourLocal, aujourdHuiLocal, depuisJourLocal } from '../../lib/dates';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { LockIcon, HeartIcon } from '../../components/icons';
@@ -136,11 +137,11 @@ export default function JournalScreen() {
 
   const submitEntry = async () => {
     if (!formTitre.trim()) {
-      Alert.alert(t.titreRequisTitre, t.titreRequisMsg);
+      alerter(t.titreRequisTitre, t.titreRequisMsg);
       return;
     }
     if (formCapsule && !formDateRevelation) {
-      Alert.alert(t.dateRequiseTitre, t.dateRequiseMsg);
+      alerter(t.dateRequiseTitre, t.dateRequiseMsg);
       return;
     }
     setEnvoi(true);
@@ -239,7 +240,7 @@ export default function JournalScreen() {
         ) : null}
 
         {filtered.map((entry) => {
-          const author = parents[entry.auteurId]?.nom.split(' ')[0] ?? entry.auteurId;
+          const author = parents[entry.auteurId]?.nom?.split(' ')[0] ?? entry.auteurId;
           const isLocked = !!entry.dateRevelation && depuisJourLocal(entry.dateRevelation) > maintenant;
 
           if (isLocked) {

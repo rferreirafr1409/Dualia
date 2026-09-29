@@ -36,6 +36,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { startOfWeek, endOfWeek, addDays, isToday, parseISO, format, differenceInYears } from 'date-fns';
 import { fr, pt, es, enGB } from 'date-fns/locale';
 import { useStore } from '../../store/useStore';
+import { calculerSolde, formatMontant } from '../../lib/comptes';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { TRADUCTIONS } from '../../constants/i18n';
 import { useHomeWidgets } from '../../hooks/useHomeWidgets';
@@ -145,7 +146,7 @@ export default function AccueilScreen() {
   const suggestionsMessages = useStore((s) => s.suggestionsMessages);
   const t = TRADUCTIONS[langue];
   const dateLocale = LOCALES[langue];
-  const prenom = parents[parentActif]?.nom.split(' ')[0] ?? '';
+  const prenom = parents[parentActif]?.nom?.split(' ')[0] ?? '';
 
   const { widgetsVisibles } = useHomeWidgets();
   const { echeances: echeancesAAnticiper } = useAnticiper();
@@ -162,8 +163,11 @@ export default function AccueilScreen() {
   const roleGardeAujourdhui = useMemo(() => parentDuJour(new Date(), evenements), [evenements]);
   const gardeAujourdhuiTexte = useMemo(() => {
     if (!roleGardeAujourdhui) return null;
-    const nom = parents[roleGardeAujourdhui]?.nom.split(' ')[0] ?? '';
-    const pluriel = enfants.length > 1;
+    const nom = parents[roleGardeAujourdhui]?.nom?.split(' ')[0] ?? '';
+    // Sans enfant declare, nomsEnfants vaut « Vos enfants » — un pluriel.
+    // Le singulier donnait alors « Vos enfants EST avec toi », en gros
+    // caracteres sur la premiere carte de l'accueil.
+    const pluriel = enfants.length !== 1;
     return roleGardeAujourdhui === parentActif
       ? `${nomsEnfants} ${t.accueil.avecToi(pluriel)}`
       : `${nomsEnfants} ${t.accueil.avecAutre(nom, pluriel)}`;
@@ -177,7 +181,7 @@ export default function AccueilScreen() {
       jour.setHours(0, 0, 0, 0);
       const role = parentDuJour(jour, evenements);
       if (role && role !== roleAujourdhui) {
-        return t.accueil.prochainEchangeTexte(i, parents[role]?.nom.split(' ')[0] ?? '');
+        return t.accueil.prochainEchangeTexte(i, parents[role]?.nom?.split(' ')[0] ?? '');
       }
     }
     return null;
@@ -187,7 +191,24 @@ export default function AccueilScreen() {
   const depensesNonReglees = depenses.filter((d) => !d.rembourse);
   const nbSuggestionsMessages = Object.keys(suggestionsMessages).length;
   const nbATraiter = decisionsEnAttente.length + nbSuggestionsMessages;
-  const derniereDepense = depenses.length > 0 ? depenses[0] : null;
+  // La carte Finances affichait la DERNIERE dépense saisie, en gros
+  // caractères sous le mot « Finances » : ni solde, ni total, ni reste à
+  // payer. On affiche ce que tout le monde vient y chercher — qui doit
+  // combien à qui — avec EXACTEMENT le calcul de l'écran Finances.
+  //
+  // Une somme improvisée ici (les montants non réglés, part du payeur
+  // comprise) aurait donné un troisième chiffre différent des deux de
+  // l'écran Finances, et ignoré les remboursements partiels. Devant un
+  // avocat, trois chiffres pour « l'argent » est pire que pas de chiffre.
+  const soldeFamille = useMemo(() => calculerSolde(depenses), [depenses]);
+  const libelleSoldeAccueil = useMemo(() => {
+    if (Math.abs(soldeFamille.solde) < 0.005) return t.accueil.organisationAJour;
+    const debiteur = soldeFamille.solde > 0 ? 'B' : 'A';
+    const crediteur = soldeFamille.solde > 0 ? 'A' : 'B';
+    // Même formulation que l'écran Finances (« X doit à Y »), construite
+    // depuis la clé partagée `doit`, traduite dans les quatre langues.
+    return `${parents[debiteur]?.nom ?? debiteur} ${t.finances.doit} ${parents[crediteur]?.nom ?? crediteur}`;
+  }, [soldeFamille.solde, parents, t]);
   const souvenir = trouverSouvenir(journalEntries);
   const dernierMoment = moments.length > 0 ? moments[0] : null;
 
@@ -232,7 +253,7 @@ export default function AccueilScreen() {
     }
     if (souvenir) {
       const e = souvenir.entry;
-      const auteur = parents[e.auteurId]?.nom.split(' ')[0] ?? '';
+      const auteur = parents[e.auteurId]?.nom?.split(' ')[0] ?? '';
       const dateTexte = format(parseISO(e.date), 'd MMMM yyyy', { locale: dateLocale });
       return {
         photoUrl: e.photoUrl as string | undefined,
@@ -334,7 +355,9 @@ export default function AccueilScreen() {
                 </View>
               ))
             ) : (
-              <Text style={styles.muted}>{t.accueil.cockpitAExaminer}</Text>
+              // « a examiner » est un SUFFIXE (« 3 a examiner ») : affiche
+              // seul comme etat vide, il ne voulait rien dire.
+              <Text style={styles.muted}>{t.accueil.cockpitRienATraiter}</Text>
             )}
             {nbSuggestionsMessages > 0 ? (
               <View style={styles.cardRow}>
@@ -355,10 +378,10 @@ export default function AccueilScreen() {
               <View style={styles.roundIcon}><Ionicons name="wallet-outline" size={14} color={COLORS.vert} /></View>
             </View>
             <Text style={styles.amount}>
-              {derniereDepense ? `${derniereDepense.montant.toFixed(2).replace('.', ',')} €` : '0,00 €'}
+              {formatMontant(Math.abs(soldeFamille.solde), langue)}
             </Text>
-            <Text style={styles.muted} numberOfLines={1}>
-              {derniereDepense ? (derniereDepense.description || derniereDepense.categorie) : t.accueil.organisationAJour}
+            <Text style={styles.muted} numberOfLines={2}>
+              {libelleSoldeAccueil}
             </Text>
           </Pressable>
         );
@@ -389,7 +412,7 @@ export default function AccueilScreen() {
               evenementsSemaine.slice(0, 3).map((ev) => {
                 const d = parseISO(ev.date);
                 const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
-                const qui = ev.enfant || parents[ev.parentId]?.nom.split(' ')[0] || '';
+                const qui = ev.enfant || parents[ev.parentId]?.nom?.split(' ')[0] || '';
                 // Le jour, en plus de l'heure. Cet encart couvre sept jours et
                 // n'affichait que l'heure : deux entraînements de football à
                 // deux dates différentes s'y lisaient comme un doublon, et un
@@ -532,16 +555,11 @@ export default function AccueilScreen() {
         {isMobile ? (
           <View style={{ flex: 1 }} />
         ) : (
-          <View style={styles.searchWrap}>
-            <Ionicons name="search-outline" size={16} color={COLORS.ardoise} />
-            <TextInput
-              style={styles.searchInput}
-              value={recherche}
-              onChangeText={setRecherche}
-              placeholder={t.accueil.rechercherPlaceholder}
-              placeholderTextColor={COLORS.ardoise}
-            />
-          </View>
+          // Le champ de recherche est retire : sa valeur n'etait lue nulle
+          // part. On tapait le prenom d'un enfant, rien ne se passait, et
+          // aucun message ne disait pourquoi. Mieux vaut pas de recherche
+          // qu'une recherche qui ne cherche pas.
+          <View style={{ flex: 1 }} />
         )}
         <View style={styles.rightRow}>
           <Pressable style={styles.langBtnSimple} onPress={() => setLangueMenuOuvert(true)}>
@@ -627,7 +645,7 @@ export default function AccueilScreen() {
               {enfants.map((e) => {
                 const ans = ageEnfant(e.dateNaissance);
                 return (
-                  <Pressable key={e.id} style={styles.kidItem} onPress={() => router.push('/famille' as any)}>
+                  <Pressable key={e.id} style={styles.kidItem} onPress={() => router.push('/enfants' as any)}>
                     <View style={styles.kidFace}>
                       {e.photoUrl ? (
                         <Image source={{ uri: e.photoUrl }} style={styles.kidPhoto} />
@@ -640,7 +658,7 @@ export default function AccueilScreen() {
                   </Pressable>
                 );
               })}
-              <Pressable style={styles.kidItem} onPress={() => router.push('/famille' as any)}>
+              <Pressable style={styles.kidItem} onPress={() => router.push('/enfants' as any)}>
                 <View style={styles.kidFaceAjouter}><Ionicons name="add" size={18} color={COLORS.ardoise} /></View>
                 <Text style={styles.kidNom}>{t.accueil.ajouterCourt}</Text>
               </Pressable>

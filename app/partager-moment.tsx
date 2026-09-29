@@ -9,8 +9,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
+import { alerter } from '../lib/dialogue';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
+import { retour } from '../lib/navigation';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 try {
@@ -55,7 +57,7 @@ export default function PartagerMomentScreen() {
 
   const partager = async () => {
     if (!photoUri && !texte.trim()) {
-      Alert.alert('', t.champRequis);
+      alerter('', t.champRequis);
       return;
     }
     setEnvoi(true);
@@ -65,9 +67,10 @@ export default function PartagerMomentScreen() {
         enfantId: enfantChoisi ?? undefined,
         photoUri: photoUri ?? undefined,
       });
-      router.back();
-    } catch {
-      Alert.alert('', t.champRequis);
+      retour(router, '/(tabs)/fil-de-vie');
+    } catch (e) {
+      console.error('[Dualia] Échec du partage de moment :', e);
+      alerter('', t.erreurEnregistrement);
     } finally {
       setEnvoi(false);
     }
@@ -77,7 +80,7 @@ export default function PartagerMomentScreen() {
     <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} hitSlop={8}>
+          <Pressable onPress={() => retour(router, '/(tabs)/fil-de-vie')} hitSlop={8}>
             <Ionicons name="close" size={22} color={COLORS.ardoise} />
           </Pressable>
           <View style={{ flex: 1, marginLeft: SPACING.md }}>

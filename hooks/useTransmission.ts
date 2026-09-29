@@ -159,7 +159,7 @@ export function useTransmission(): UseTransmissionResult {
     [familleId, datePassageIso, checksCoches]
   );
 
-  const nomProchainParent = prochainPassage ? parents[prochainPassage.role]?.nom.split(' ')[0] ?? '' : '';
+  const nomProchainParent = prochainPassage ? parents[prochainPassage.role]?.nom?.split(' ')[0] ?? '' : '';
   const toutCoche = items.length > 0 && items.every((i) => i.coche);
 
   return { prochainPassage, nomProchainParent, items, toutCoche, toggleCoche, chargement };

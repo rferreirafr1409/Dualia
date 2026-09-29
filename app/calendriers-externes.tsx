@@ -17,6 +17,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { useCalendriersExternes } from '../hooks/useCalendriersExternes';
 import { choisirFichierICS } from '../lib/pickerFichierICS';
+import { alerter, confirmer } from '../lib/dialogue';
+import { retour } from '../lib/navigation';
 
 const LIGNE_CARTE = 'rgba(23,63,50,0.12)';
 const COULEURS_DISPONIBLES = ['#6B7F7A', '#2D6A4F', '#B5927C', '#C9A84C', '#8899AA', '#A66B8F'];
@@ -127,15 +129,17 @@ export default function CalendriersExternesScreen() {
     event.target.value = ''; // permet de resélectionner le même fichier plus tard
   };
 
-  const confirmerSuppression = (id: string, nomCalendrier: string) => {
-    Alert.alert(
+  // Alert.alert est une fonction vide sur le web : la corbeille d'un
+  // calendrier ne produisait rien — ni confirmation, ni suppression.
+  const confirmerSuppression = async (id: string, nomCalendrier: string) => {
+    const accepte = await confirmer(
       'Supprimer ce calendrier ?',
       `"${nomCalendrier}" et tous ses événements seront retirés de ta Home.`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Supprimer', style: 'destructive', onPress: () => supprimer(id) },
-      ]
+      'Supprimer',
+      'Annuler',
+      true
     );
+    if (accepte) supprimer(id);
   };
 
   const relancerSync = async (id: string) => {
@@ -143,7 +147,7 @@ export default function CalendriersExternesScreen() {
     const resultat = await resynchroniser(id);
     setResyncEnCours(null);
     if (!resultat.ok) {
-      Alert.alert('Synchronisation impossible', resultat.erreur ?? 'Une erreur est survenue.');
+      alerter('Synchronisation impossible', resultat.erreur ?? 'Une erreur est survenue.');
     }
   };
 
@@ -163,7 +167,7 @@ export default function CalendriersExternesScreen() {
       ) : null}
 
       <View style={styles.topbar}>
-        <Pressable style={styles.retourBtn} onPress={() => router.back()}>
+        <Pressable style={styles.retourBtn} onPress={() => retour(router, '/(tabs)/calendrier')}>
           <Ionicons name="chevron-back" size={20} color={COLORS.vertProfond} />
         </Pressable>
         <Text style={styles.titre}>Calendriers externes</Text>

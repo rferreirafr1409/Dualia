@@ -13,6 +13,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import type { Foyer, ParentRole } from '../types';
+import { retour } from '../lib/navigation';
 
 export default function ParentsFoyersScreen() {
   const router = useRouter();
@@ -122,7 +123,7 @@ export default function ParentsFoyersScreen() {
   return (
     <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.retourBtn} hitSlop={8}>
+        <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.retourBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -139,7 +140,7 @@ export default function ParentsFoyersScreen() {
           return (
             <View key={role} style={styles.parentCard}>
               <View style={[styles.avatar, { backgroundColor: p.couleur }]}>
-                <Text style={styles.avatarTxt}>{p.nom.charAt(0).toUpperCase()}</Text>
+                <Text style={styles.avatarTxt}>{(p.nom ?? '?').charAt(0).toUpperCase()}</Text>
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.parentNom}>{p.nom}</Text>

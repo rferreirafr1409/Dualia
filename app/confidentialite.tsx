@@ -13,6 +13,7 @@ import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { retour } from '../lib/navigation';
 
 type Section = { titre: string; paragraphes: string[] };
 
@@ -109,7 +110,7 @@ export default function ConfidentialiteScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.topbar}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
+        <Pressable onPress={() => retour(router, '/(tabs)/famille')} hitSlop={10}>
           <Ionicons name="close" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <Text style={styles.topbarTitre}>Confidentialité</Text>

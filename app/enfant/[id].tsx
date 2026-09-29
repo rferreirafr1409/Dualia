@@ -8,7 +8,7 @@
 // information, une seule source, plusieurs chemins pour y accéder.
 
 import { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Image, Linking } from 'react-native';
+import { ActivityIndicator, View, Text, StyleSheet, ScrollView, Pressable, Image, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { differenceInYears, parseISO } from 'date-fns';
@@ -17,6 +17,7 @@ import { useStore } from '../../store/useStore';
 import { supabase } from '../../constants/supabase';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS, FONTS } from '../../constants/theme';
 import { TRADUCTIONS } from '../../constants/i18n';
+import { retour } from '../../lib/navigation';
 
 type ContactUrgence = { id: string; nom: string; relation: string | null; telephone: string };
 
@@ -27,6 +28,7 @@ export default function FicheEnfantScreen() {
   const t = TRADUCTIONS[langue].ficheEnfant;
   const tFamille = TRADUCTIONS[langue].famille;
   const enfants = useStore((s) => s.enfants);
+  const chargementInitial = useStore((s) => s.chargementInitial);
   const enfant = enfants.find((e) => e.id === id);
 
   const [contacts, setContacts] = useState<ContactUrgence[]>([]);
@@ -41,12 +43,44 @@ export default function FicheEnfantScreen() {
       .then(({ data }) => setContacts(data ?? []));
   }, [id]);
 
+  // Fiche introuvable : ouverture directe de l'URL avant que le store soit
+  // chargé, chargement des enfants en échec, ou enfant supprimé depuis
+  // l'appareil de l'autre parent. L'écran n'affichait alors RIEN — un fond
+  // ivoire et un chevron, sans un mot. Et sur une ouverture directe, ce
+  // chevron ne faisait rien non plus, faute d'historique.
+  // Tant que l'espace familial charge, « introuvable » est faux : c'est
+  // « pas encore ». Sans ce test, ouvrir la fiche directement affichait
+  // « Cette fiche n'est pas disponible » puis basculait sur la vraie
+  // fiche — un clignotement qui dit l'inverse de ce qu'on veut dire.
+  if (!enfant && chargementInitial) {
+    return (
+      <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+        <View style={styles.introuvableBloc}>
+          <ActivityIndicator size="large" color={COLORS.vert} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (!enfant) {
     return (
       <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
+        <View style={styles.introuvableBloc}>
+          <Text style={styles.introuvableTitre}>Cette fiche n'est pas disponible</Text>
+          <Text style={styles.introuvableTexte}>
+            L'enfant a peut-être été retiré de votre espace, ou la page a été ouverte avant le
+            chargement de vos données.
+          </Text>
+          <Pressable
+            style={styles.introuvableBouton}
+            onPress={() => router.replace('/(tabs)/famille' as any)}
+          >
+            <Text style={styles.introuvableBoutonTexte}>Retour à Famille</Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
@@ -56,7 +90,7 @@ export default function FicheEnfantScreen() {
   return (
     <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <View style={{ width: 32 }} />
@@ -204,6 +238,24 @@ export default function FicheEnfantScreen() {
 }
 
 const styles = StyleSheet.create({
+  introuvableBloc: {
+    flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl,
+  },
+  introuvableTitre: {
+    fontFamily: FONTS.display, fontSize: 19, color: COLORS.vertProfond,
+    marginBottom: SPACING.sm, textAlign: 'center',
+  },
+  introuvableTexte: {
+    fontFamily: FONTS.body, fontSize: 13.5, lineHeight: 20,
+    color: COLORS.ardoise, textAlign: 'center',
+  },
+  introuvableBouton: {
+    backgroundColor: COLORS.vert, borderRadius: RADIUS.md,
+    paddingVertical: 13, paddingHorizontal: SPACING.xl, marginTop: SPACING.xl,
+  },
+  introuvableBoutonTexte: {
+    fontFamily: FONTS.bodySemibold, fontSize: 15, color: COLORS.blanc,
+  },
   conteneur: { flex: 1, backgroundColor: COLORS.ivoire },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

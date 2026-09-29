@@ -17,9 +17,11 @@ import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import { alerter } from '../lib/dialogue';
 import { formatJourLocal } from '../lib/dates';
 import { TRADUCTIONS } from '../constants/i18n';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { retour } from '../lib/navigation';
 
 const LIGNE = 'rgba(23,63,50,0.12)';
 
@@ -98,7 +100,7 @@ export default function EcheancesScreen() {
 
   async function enregistrerDemarche() {
     if (!titre.trim() || !dateValide(date) || !familleId) {
-      Alert.alert(t.champsIncompletsTitre, t.champsIncompletsMsg);
+      alerter(t.champsIncompletsTitre, t.champsIncompletsMsg);
       return;
     }
     const { error } = await supabase.from('echeances_administratives').insert({
@@ -110,7 +112,13 @@ export default function EcheancesScreen() {
       enfant_id: enfantId,
       recurrence,
     });
-    if (error) { Alert.alert(t.erreurTitre, error.message); return; }
+    if (error) {
+      // Le message du serveur est technique et en anglais. On le garde
+      // pour la console et on dit à la personne quelque chose d'utile.
+      console.error('[Dualia] Échec enregistrement démarche :', error);
+      alerter(t.erreurTitre, t.erreurEnregistrement);
+      return;
+    }
     setModalDemarcheOuvert(false);
     charger();
   }
@@ -133,7 +141,7 @@ export default function EcheancesScreen() {
   async function enregistrerExpirationDocument() {
     if (!documentEnEdition) return;
     if (dateExpirationSaisie && !dateValide(dateExpirationSaisie)) {
-      Alert.alert(t.dateInvalideTitre, t.dateInvalideMsg);
+      alerter(t.dateInvalideTitre, t.dateInvalideMsg);
       return;
     }
     const nouvelleValeur = dateExpirationSaisie || null;
@@ -145,7 +153,7 @@ export default function EcheancesScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={() => retour(router, '/(tabs)/accueil')} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <Text style={styles.titrePage}>{t.titrePage}</Text>

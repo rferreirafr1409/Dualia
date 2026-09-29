@@ -24,6 +24,7 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 import { useHomeWidgets, type WidgetConfigLigne } from '../hooks/useHomeWidgets';
 import { WIDGETS_CATALOGUE } from '../constants/widgetsCatalog';
+import { retour } from '../lib/navigation';
 
 const LIGNE_CARTE = 'rgba(23,63,50,0.12)';
 
@@ -55,7 +56,7 @@ export default function PersonnaliserHomeScreen() {
       <Stack.Screen options={{ headerShown: false }} />
 
       <View style={styles.topbar}>
-        <Pressable style={styles.retourBtn} onPress={() => router.back()}>
+        <Pressable style={styles.retourBtn} onPress={() => retour(router, '/(tabs)/accueil')}>
           <Ionicons name="chevron-back" size={20} color={COLORS.vertProfond} />
         </Pressable>
         <Text style={styles.titre}>{textesEcran?.titre ?? 'Personnaliser ma Home'}</Text>

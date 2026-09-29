@@ -25,7 +25,7 @@ export default function SouvenirModal({ visible, onClose, entry, ilYaUnAn }: Pro
   const dateEntry = depuisJourLocal(entry.date).toLocaleDateString(langue === 'pt' ? 'pt-PT' : 'fr-FR', {
     day: 'numeric', month: 'long', year: 'numeric',
   });
-  const auteurNom = parents[entry.auteurId]?.nom.split(' ')[0] ?? '';
+  const auteurNom = parents[entry.auteurId]?.nom?.split(' ')[0] ?? '';
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>

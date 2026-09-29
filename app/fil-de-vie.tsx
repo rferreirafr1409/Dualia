@@ -17,8 +17,10 @@ import { isToday, isYesterday, parseISO, format } from 'date-fns';
 import { fr, pt, es, enGB } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
+import { estInstantValide } from '../lib/dates';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
+import { retour } from '../lib/navigation';
 
 const LOCALES = { fr, pt, es, en: enGB };
 
@@ -47,6 +49,10 @@ export default function FilDeVieScreen() {
   }, [moments, filtreEnfantId]);
 
   const labelJour = (iso: string) => {
+    // Une date de moment illisible — ou nulle — faisait lever parseISO ou
+    // format, PENDANT le rendu : écran blanc définitif. Et les moments sont
+    // persistés en local, donc le rechargement reproduisait l'écran blanc.
+    if (!estInstantValide(iso)) return '';
     const d = parseISO(iso);
     if (isToday(d)) return t.aujourdhui;
     if (isYesterday(d)) return t.hier;
@@ -60,7 +66,7 @@ export default function FilDeVieScreen() {
   return (
     <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.retourBtn} hitSlop={8}>
+        <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.retourBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -100,7 +106,9 @@ export default function FilDeVieScreen() {
           <Text style={styles.vide}>{t.aucunMoment}</Text>
         ) : (
           filtered.map((m) => {
-            const auteur = parents[m.auteurId]?.nom.split(' ')[0] ?? '';
+            // `?.` protège l'objet, pas le champ : un parent sans nom faisait
+            // lever .split().
+            const auteur = parents[m.auteurId]?.nom?.split(' ')[0] ?? '';
             const jaime = m.aimePar.includes(parentActif);
             const prenomEnfant = m.enfantId ? enfants.find((e) => e.id === m.enfantId)?.prenom : undefined;
             return (

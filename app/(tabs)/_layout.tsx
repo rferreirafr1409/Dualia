@@ -11,6 +11,7 @@ import { useStore } from '../../store/useStore';
 import AjoutRapideModal from '../../components/AjoutRapideModal';
 import RetourBetaBouton from '../../components/RetourBetaBouton';
 import { BrandMark } from '../../components/icons';
+import ErrorBoundary from '../../components/ErrorBoundary';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -31,16 +32,38 @@ const TAB_LABELS: Record<string, { fr: string; pt: string; es: string; en: strin
   famille: { fr: 'Famille', pt: 'Família', es: 'Familia', en: 'Family' },
 };
 
-const ONGLETS_VISIBLES = ['accueil', 'calendrier', 'messagerie', 'famille'];
+// Sur telephone, la barre du bas est la SEULE navigation : sans 'enfants',
+// on ajoutait son premier enfant depuis la carte vide de Famille, puis
+// cette carte disparaissait — et il n'existait plus aucun chemin vers le
+// formulaire pour en ajouter un second.
+const ONGLETS_VISIBLES = ['accueil', 'calendrier', 'enfants', 'messagerie', 'famille'];
 
 const SIDEBAR_ITEMS: { route: string; iconOn: IoniconName; iconOff: IoniconName }[] = [
   { route: 'accueil', iconOn: 'home', iconOff: 'home-outline' },
   { route: 'calendrier', iconOn: 'calendar', iconOff: 'calendar-outline' },
+  // Sans cette entrée, l'écran des enfants n'était atteignable qu'en tapant
+  // /enfants dans la barre d'adresse — et c'est le SEUL endroit de
+  // l'application où l'on peut ajouter un enfant. Un espace neuf n'avait
+  // donc aucun chemin vers son premier enfant : le bouton « + Ajouter un
+  // enfant » de Famille renvoyait sur Famille elle-même.
+  { route: 'enfants', iconOn: 'happy', iconOff: 'happy-outline' },
   { route: 'decisions', iconOn: 'checkmark-circle', iconOff: 'checkmark-circle-outline' },
   { route: 'finances', iconOn: 'wallet', iconOff: 'wallet-outline' },
   { route: 'documents', iconOn: 'folder', iconOff: 'folder-outline' },
   { route: 'journal', iconOn: 'book', iconOff: 'book-outline' },
-  { route: 'caf', iconOn: 'business', iconOff: 'business-outline' },
+  // « CAF / Droits & démarches » est retiré de la navigation.
+  //
+  // L'écran affiche aujourd'hui des chiffres d'exemple codés en dur — un
+  // « crédit d'impôt estimé » de 1 840 €, des droits « ~132 €/mois » — et
+  // deux documents fictifs portant un badge vert « ✓ Certifié ». Son
+  // simulateur ignore le revenu qu'il demande et plafonne le crédit à
+  // 3 500 € là où l'article 200 quater B du CGI plafonne les DÉPENSES à
+  // 3 500 €, donc le crédit à 1 750 €.
+  //
+  // Devant un avocat en droit de la famille, ces chiffres coûtent la
+  // crédibilité de tout le reste. L'écran reste dans le code, prêt à
+  // revenir le jour où ses données sont réelles ; il n'est simplement plus
+  // atteignable.
   { route: 'messagerie', iconOn: 'chatbubbles', iconOff: 'chatbubbles-outline' },
   { route: 'famille', iconOn: 'people', iconOff: 'people-outline' },
 ];
@@ -250,6 +273,12 @@ function TabsInterieur({ isDesktop }: { isDesktop: boolean }) {
   return (
     <View style={{ flex: 1, flexDirection: isDesktop ? 'row' : 'column' }}>
       {isDesktop ? <SidebarDesktop /> : null}
+      {/* Seconde frontiere, DANS la coque.
+          Celle du layout racine entoure tout : une erreur dans un seul ecran
+          emportait donc aussi la barre laterale et les onglets, et la
+          demonstration s'arretait sur un bouton unique. Ici, la navigation
+          survit — on change d'ecran et on continue. */}
+      <ErrorBoundary>
       <View style={{ flex: 1 }}>
         <Tabs
           tabBar={(props) => (isDesktop ? <View style={{ height: 0 }} /> : <ScrollableTabBar {...props} />)}
@@ -292,6 +321,16 @@ function TabsInterieur({ isDesktop }: { isDesktop: boolean }) {
             }}
           />
           <Tabs.Screen
+            name="enfants"
+            options={{
+              title: titre('enfants'),
+              headerShown: false,
+              tabBarIcon: ({ focused, color }) => (
+                <Ionicons name={focused ? 'happy' : ('happy-outline' as IoniconName)} size={22} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
             name="messagerie"
             options={{
               title: titre('messagerie'),
@@ -312,15 +351,16 @@ function TabsInterieur({ isDesktop }: { isDesktop: boolean }) {
             }}
           />
 
-          <Tabs.Screen name="decisions" options={{ title: titre('decisions'), href: null }} />
+          <Tabs.Screen name="decisions" options={{ title: titre('decisions'), headerShown: false, href: null }} />
           <Tabs.Screen name="echanges" options={{ title: titre('echanges'), headerShown: false, href: null }} />
           <Tabs.Screen name="journal" options={{ title: titre('journal'), headerShown: false, href: null }} />
           <Tabs.Screen name="finances" options={{ title: titre('finances'), headerShown: false, href: null }} />
           <Tabs.Screen name="documents" options={{ title: titre('documents'), headerShown: false, href: null }} />
-          <Tabs.Screen name="enfants" options={{ title: titre('enfants'), headerShown: false, href: null }} />
+          
           <Tabs.Screen name="caf" options={{ title: titre('caf'), headerShown: false, href: null }} />
         </Tabs>
       </View>
+      </ErrorBoundary>
       <RetourBetaBouton />
     </View>
   );

@@ -14,6 +14,7 @@ import { TRADUCTIONS } from '../constants/i18n';
 import { LockIcon, HeartIcon } from '../components/icons';
 import JournalMemoryImage from '../components/JournalMemoryImage';
 import MemoryAccordionRow from '../components/MemoryAccordionRow';
+import { retour } from '../lib/navigation';
 
 const LOCALES = { fr, pt, es, en: enGB };
 
@@ -81,7 +82,7 @@ export default function EnfantHistoireScreen() {
   return (
     <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.retourBtn} hitSlop={8}>
+        <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.retourBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <View style={{ flex: 1 }}>
@@ -119,7 +120,7 @@ export default function EnfantHistoireScreen() {
               <Text style={styles.moisTitre}>{mois}</Text>
               {entriesDuMois.map((entry) => {
                 const isLocked = !!entry.dateRevelation && depuisJourLocal(entry.dateRevelation) > maintenant;
-                const author = parents[entry.auteurId]?.nom.split(' ')[0] ?? entry.auteurId;
+                const author = parents[entry.auteurId]?.nom?.split(' ')[0] ?? entry.auteurId;
 
                 if (isLocked) {
                   return (

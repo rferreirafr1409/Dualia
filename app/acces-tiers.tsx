@@ -29,6 +29,7 @@ import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 import type { RoleTiers, Tiers } from '../types';
+import { retour } from '../lib/navigation';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -320,7 +321,7 @@ export default function AccesTiersScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.topbar}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
+        <Pressable onPress={() => retour(router, '/(tabs)/famille')} hitSlop={10}>
           <Ionicons name="close" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <Text style={styles.topbarTitre}>{t.titre}</Text>

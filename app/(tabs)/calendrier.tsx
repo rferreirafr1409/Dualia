@@ -269,13 +269,21 @@ export default function CalendrierScreen() {
     // Accepte "18:30" comme "18H30" ou "18h30" — évite qu'une heure tapée
     // dans un format légèrement différent du placeholder soit silencieusement
     // ignorée et l'événement enregistré sans heure.
-    const heureNormalisee = formHeure.trim().toLowerCase().replace('h', ':');
-    const heureValide = /^([01]?\d|2[0-3]):([0-5]\d)$/.test(heureNormalisee);
-    if (heureValide) {
-      const [h, m] = heureNormalisee.split(':').map(Number);
-      dateComplete.setHours(h, m, 0, 0);
-    } else {
+    // On accepte aussi « 16h », « 16 », « 8h5 » : le motif precedent les
+    // refusait et l'heure etait alors ramenee a 00:00 SANS LE DIRE. Le parent
+    // avait tape une heure, l'evenement se creait, et l'heure avait disparu —
+    // affichee « — » dans la carte du jour.
+    const saisieHeure = formHeure.trim().toLowerCase().replace(/[h.]/g, ':').replace(/:$/, '');
+    const heureValide = saisieHeure === '' || /^([01]?\d|2[0-3])(:([0-5]\d))?$/.test(saisieHeure);
+    if (!heureValide) {
+      setErreurAjout(t.heureIllisible);
+      return;
+    }
+    if (saisieHeure === '') {
       dateComplete.setHours(0, 0, 0, 0);
+    } else {
+      const [h, m] = saisieHeure.split(':');
+      dateComplete.setHours(Number(h), Number(m ?? 0), 0, 0);
     }
 
     const enfantChoisi = formEnfantId ? enfants.find((e) => e.id === formEnfantId) : undefined;
@@ -323,9 +331,9 @@ export default function CalendrierScreen() {
               {(['A', 'B'] as ParentRole[]).map((role) => (
                 <View key={role} style={styles.legendeItem}>
                   <View
-                    style={[styles.legendePuce, { backgroundColor: parents[role].couleur }]}
+                    style={[styles.legendePuce, { backgroundColor: parents[role]?.couleur ?? COLORS.ardoise }]}
                   />
-                  <Text style={styles.legendeTxt} numberOfLines={1}>{parents[role].nom}</Text>
+                  <Text style={styles.legendeTxt} numberOfLines={1}>{parents[role]?.nom ?? ''}</Text>
                 </View>
               ))}
             </View>
@@ -375,13 +383,13 @@ export default function CalendrierScreen() {
         </View>
 
         <View style={[styles.recapMois, isMobile && styles.blocMobile]}>
-          <Text style={[styles.recapNom, { color: parents.A.couleur }]}>
-            {parents.A.nom.split(' ')[0]}
+          <Text style={[styles.recapNom, { color: parents.A?.couleur ?? COLORS.ardoise }]}>
+            {parents.A?.nom?.split(' ')[0]}
           </Text>
           <Text style={[styles.recapNb, { color: COLORS.texte }]}>{recapMois.A ?? 0}{t.jourAbrev}</Text>
           <View style={styles.recapPuceOr} />
-          <Text style={[styles.recapNom, { color: parents.B.couleur }]}>
-            {parents.B.nom.split(' ')[0]}
+          <Text style={[styles.recapNom, { color: parents.B?.couleur ?? COLORS.ardoise }]}>
+            {parents.B?.nom?.split(' ')[0]}
           </Text>
           <Text style={[styles.recapNb, { color: COLORS.texte }]}>{recapMois.B ?? 0}{t.jourAbrev}</Text>
         </View>
@@ -408,8 +416,8 @@ export default function CalendrierScreen() {
                   const evGardeJour = enfantFiltre ? null : evenementDuJour(jour, evsMois);
                   const tiersJour = evGardeJour?.tiersId ? tiers.find((tr) => tr.id === evGardeJour.tiersId) : undefined;
                   const parentId = evGardeJour?.parentId ?? null;
-                  const couleur = tiersJour ? COLORS.or : parentId ? parents[parentId].couleur : null;
-                  const prenomParent = tiersJour ? tiersJour.nom.split(' ')[0] : parentId ? parents[parentId].nom.split(' ')[0] : null;
+                  const couleur = tiersJour ? COLORS.or : parentId ? parents[parentId]?.couleur ?? COLORS.ardoise : null;
+                  const prenomParent = tiersJour ? tiersJour.nom?.split(' ')[0] : parentId ? parents[parentId]?.nom?.split(' ')[0] : null;
                   const estAujourdhui = isToday(jour);
                   const estPassage = enfantFiltre ? false : estJourDePassage(jour, evenements);
                   const evsJourCellule = evenementsCalendrierFiltres.filter((ev) =>
@@ -631,12 +639,12 @@ export default function CalendrierScreen() {
                     key={role}
                     style={[
                       styles.parentChoix,
-                      formParent === role && { backgroundColor: parents[role].couleur, borderColor: parents[role].couleur },
+                      formParent === role && { backgroundColor: parents[role]?.couleur ?? COLORS.ardoise, borderColor: parents[role]?.couleur ?? COLORS.ardoise },
                     ]}
                     onPress={() => setFormParent(role)}
                   >
                     <Text style={[styles.parentChoixTxt, formParent === role && { color: COLORS.blanc }]}>
-                      {parents[role].nom.split(' ')[0]}
+                      {parents[role]?.nom?.split(' ')[0]}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -740,12 +748,12 @@ export default function CalendrierScreen() {
                         key={role}
                         style={[
                           styles.parentChoix,
-                          modeleParent === role && { backgroundColor: parents[role].couleur, borderColor: parents[role].couleur },
+                          modeleParent === role && { backgroundColor: parents[role]?.couleur ?? COLORS.ardoise, borderColor: parents[role]?.couleur ?? COLORS.ardoise },
                         ]}
                         onPress={() => setModeleParent(role)}
                       >
                         <Text style={[styles.parentChoixTxt, modeleParent === role && { color: COLORS.blanc }]}>
-                          {parents[role].nom}
+                          {parents[role]?.nom ?? ''}
                         </Text>
                       </TouchableOpacity>
                     ))}

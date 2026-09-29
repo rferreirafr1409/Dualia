@@ -156,10 +156,29 @@ function compresserImageWeb(dataUrl: string): Promise<{ base64: string; contentT
   });
 }
 
-const fetchAvecRetry = async (url: string, options: RequestInit, tentatives = 2): Promise<Response> => {
+// Delai maximum par tentative.
+//
+// Sans lui, le champ de saisie pouvait se figer indefiniment : la moderation
+// est attendue avant l'envoi, et un fetch sans signal d'abandon n'a AUCUN
+// delai maximum. Une coupure franche etait bien geree — le fetch rejette et le
+// message part quand meme. Le cas mortel est la connexion qui PEND : portail
+// captif, wifi de salle de reunion, fonction serveur qui demarre a froid. Le
+// bouton restait sur « … », le champ non modifiable, et le message n'etait
+// jamais envoye.
+const DELAI_MAX_APPEL_MS = 6000;
+
+// Une seule tentative par defaut : la moderation est attendue AVANT
+// l'envoi, et deux tentatives donnaient 6 + 1,5 + 6 = 13,5 s de bouton
+// fige au pire. Son echec n'empeche de toute facon pas le message de
+// partir.
+const fetchAvecRetry = async (url: string, options: RequestInit, tentatives = 1): Promise<Response> => {
   for (let i = 0; i < tentatives; i++) {
     try {
-      const response = await fetch(url, options);
+      const signal =
+        typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function'
+          ? AbortSignal.timeout(DELAI_MAX_APPEL_MS)
+          : undefined;
+      const response = await fetch(url, signal ? { ...options, signal } : options);
       if (response.ok || i === tentatives - 1) return response;
       if ([502, 503, 504].includes(response.status)) {
         await new Promise((r) => setTimeout(r, 1500));
@@ -531,6 +550,13 @@ export default function MessagerieScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Sur un espace neuf, cet écran affichait une grande zone vide sous
+            son en-tête, sans un mot — alors que c'est le premier écran
+            montré. Les trois autres écrans de contenu ont leur état vide ;
+            celui-ci ne l'avait pas. */}
+        {messages.length === 0 ? (
+          <Text style={styles.videMessagerie}>{t.aucunMessage}</Text>
+        ) : null}
         {messages.map((msg) => {
           const day = formatDay(msg.dateEnvoi, langue);
           const showDaySeparator = day !== lastDay;
@@ -760,6 +786,11 @@ export default function MessagerieScreen() {
 }
 
 const styles = StyleSheet.create({
+  videMessagerie: {
+    fontFamily: FONTS.body, fontSize: 13.5, lineHeight: 20,
+    color: COLORS.ardoise, textAlign: 'center',
+    marginTop: SPACING.xxl, paddingHorizontal: SPACING.xl,
+  },
   screen: { flex: 1, backgroundColor: COLORS.ivoire },
   topbar: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.xl, paddingBottom: SPACING.md },
   title: { fontFamily: FONTS.display, fontSize: 24, color: COLORS.vertProfond },

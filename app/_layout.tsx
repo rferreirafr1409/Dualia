@@ -7,6 +7,18 @@ import { COLORS } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { supabase } from '../constants/supabase';
 import GardeInactivite from '../components/GardeInactivite';
+import ErrorBoundary from '../components/ErrorBoundary';
+import { useFonts } from 'expo-font';
+import {
+  Fraunces_500Medium,
+  Fraunces_600SemiBold,
+} from '@expo-google-fonts/fraunces';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
 
 // Écrans depuis lesquels on ne redirige jamais : parcours d'authentification
 // et d'inscription, où l'absence de configuration de foyers est normale.
@@ -64,6 +76,27 @@ export default function RootLayout() {
   const rattachement = useStore((s) => s.rattachement);
   const router = useRouter();
   const segments = useSegments();
+
+  // Les polices n'etaient JAMAIS chargees.
+  //
+  // constants/theme.ts declare Fraunces et Inter, les deux paquets sont
+  // installes, expo-font est dans les plugins — mais aucun appel a
+  // useFonts nulle part. Chaque `fontFamily` pointait donc vers une
+  // famille inconnue du navigateur, qui retombait sur sa police par
+  // defaut. Toute la direction visuelle du produit, sur les trente
+  // ecrans, ne s'affichait pas.
+  //
+  // `erreurPolices` : si le telechargement echoue, on affiche quand meme
+  // plutot que de laisser l'application bloquee sur un rond.
+  const [policesChargees, erreurPolices] = useFonts({
+    Fraunces_500Medium,
+    Fraunces_600SemiBold,
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold,
+  });
+  const policesPretes = policesChargees || !!erreurPolices;
 
   useEffect(() => {
     // Un rejet non rattrape laisserait sessionVerifiee a false : l'application
@@ -198,7 +231,7 @@ export default function RootLayout() {
   // n'attend QUE cette reponse : une fois la session confirmee, l'espace
   // familial peut s'afficher depuis le stockage local pendant que les donnees
   // fraiches arrivent, comme avant.
-  if (!sessionVerifiee) {
+  if (!sessionVerifiee || !policesPretes) {
     return (
       <SafeAreaProvider>
         <StatusBar style="light" backgroundColor={COLORS.vertProfond} />
@@ -216,6 +249,11 @@ export default function RootLayout() {
           repartir de zero a chaque changement d'ecran. Ne rend rien tant
           qu'aucune session n'est ouverte. */}
       <GardeInactivite />
+      {/* Dernier filet. Une exception levee pendant le rendu de N'IMPORTE
+          quel ecran demontait tout l'arbre React : page blanche definitive,
+          sans message et sans bouton. Cette frontiere n'existait que sur
+          Finances. Elle couvre desormais toute l'application. */}
+      <ErrorBoundary>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="(tabs)" />
@@ -245,6 +283,7 @@ export default function RootLayout() {
         <Stack.Screen name="semaine-activites" />
         <Stack.Screen name="enfant/[id]" />
       </Stack>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

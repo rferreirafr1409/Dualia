@@ -50,7 +50,7 @@ export default function FamilleScreen() {
   const t = TRADUCTIONS[langue].famille;
 
   const roleAujourdhui = parentDuJour(new Date(), evenements);
-  const nomChezQui = roleAujourdhui ? parents[roleAujourdhui]?.nom.split(' ')[0] : null;
+  const nomChezQui = roleAujourdhui ? parents[roleAujourdhui]?.nom?.split(' ')[0] : null;
 
   const age = (dateNaissance?: string) => {
     if (!dateNaissance) return null;
@@ -92,12 +92,13 @@ export default function FamilleScreen() {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {enfants.length === 0 ? (
-          // Redirige vers /famille lui-même (pas /enfants, écran retiré de
-          // la navigation) : évite un lien mort. L'ajout d'un enfant se
-          // fait aujourd'hui depuis ailleurs dans l'app — voir avec
-          // Ricardo si un formulaire d'ajout doit être intégré ici
-          // directement, en modal.
-          <Pressable style={styles.videCard} onPress={() => router.push('/famille' as any)}>
+          // Ce bouton renvoyait vers '/famille', c'est-à-dire l'écran
+          // courant : on appuyait sur le seul bouton de la page, et rien ne
+          // se passait. Le formulaire d'ajout d'un enfant vit sur l'écran
+          // Enfants, désormais présent dans la barre latérale — c'était le
+          // seul endroit de l'application où l'on peut créer un enfant, et
+          // il n'était atteignable qu'en tapant /enfants dans l'URL.
+          <Pressable style={styles.videCard} onPress={() => router.push('/enfants' as any)}>
             <Text style={styles.videTxt}>{t.aucunEnfant}</Text>
             <Text style={styles.videCta}>{t.ajouterEnfantCta}</Text>
           </Pressable>

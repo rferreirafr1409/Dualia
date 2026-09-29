@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useStore } from '../../store/useStore';
+import { alerter } from '../../lib/dialogue';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../constants/theme';
 import { ShieldIcon, ExportIcon } from '../../components/icons';
 import { StatutDecision } from '../../types';
@@ -103,7 +104,7 @@ export default function DecisionsScreen() {
 
   const submitDecision = () => {
     if (!formTitre.trim()) {
-      Alert.alert(t.titreRequisTitre, t.titreRequisMsg);
+      alerter(t.titreRequisTitre, t.titreRequisMsg);
       return;
     }
     ajouterDecision({
@@ -210,11 +211,22 @@ export default function DecisionsScreen() {
                 </View>
               ) : null}
 
+              {/* Bouclier NEUTRE, et libellé qui dit qui date.
+                  Un bouclier doré accolé à un horodatage, sur une décision
+                  « Acceptée », se lit « scellé » — et un magistrat le lira
+                  ainsi. Or cette date est produite par l'horloge du
+                  navigateur du parent (voir horodaterDecision dans le
+                  store) : aucune valeur probatoire tant qu'aucun contrat
+                  avec un prestataire qualifié n'est effectif.
+                  À repasser en doré le jour du jeton qualifié, et pas
+                  avant. */}
               <View style={styles.cardFoot}>
                 <View style={styles.sealRow}>
-                  <ShieldIcon size={12} color={decision.horodatageEIDAS ? COLORS.or : COLORS.ardoise} strokeWidth={2} />
-                  <Text style={[styles.sealText, { color: decision.horodatageEIDAS ? COLORS.or : COLORS.ardoise }]}>
-                    {decision.horodatageEIDAS ? formatDateTime(decision.horodatageEIDAS, langue) : `${t.creeLe} ${formatDate(decision.dateCreation, langue)}`}
+                  <ShieldIcon size={12} color={COLORS.ardoise} strokeWidth={2} />
+                  <Text style={[styles.sealText, { color: COLORS.ardoise }]}>
+                    {decision.horodatageEIDAS
+                      ? `${t.enregistreLe} ${formatDateTime(decision.horodatageEIDAS, langue)}`
+                      : `${t.creeLe} ${formatDate(decision.dateCreation, langue)}`}
                   </Text>
                 </View>
                 <Text style={styles.authorText}>{author}</Text>
@@ -223,7 +235,7 @@ export default function DecisionsScreen() {
               {canExport ? (
                 <Pressable
                   style={styles.exportBtn}
-                  onPress={() => Alert.alert(t.exportTitre, t.exportMsg)}
+                  onPress={() => alerter(t.exportTitre, t.exportMsg)}
                 >
                   <ExportIcon size={13} color={COLORS.vert} strokeWidth={2} />
                   <Text style={styles.exportBtnText}>{t.exporterPdf}</Text>

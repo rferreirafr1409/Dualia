@@ -3052,7 +3052,12 @@ export const useStore = create<DualiaStore>()(
       const role = p.role as ParentRole;
       parentsMap[role] = {
         id: role,
-        nom: p.nom,
+        // Un nom vide venu de la base se propageait tel quel, et une
+        // quinzaine d'ecrans font `.nom.split(' ')[0]` pour afficher le
+        // prenom : `.split` sur null leve pendant le rendu, donc ecran
+        // blanc. La valeur de repli existait deja dans PARENTS, elle
+        // n'etait simplement pas utilisee ici.
+        nom: p.nom || PARENTS[role].nom,
         email: '',
         couleur: p.couleur ?? PARENTS[role].couleur,
         uuid: p.id,
@@ -3091,7 +3096,11 @@ export const useStore = create<DualiaStore>()(
       .order('prenom', { ascending: true });
     if (erreurEnfants) {
       console.error('[Dualia] Échec chargement enfants :', erreurEnfants);
-      set({ enfants: [] });
+      // « Je ne trouve rien » n'est pas « il n'y a rien » : une lecture en
+      // échec effaçait les enfants déjà affichés et déjà conservés en
+      // local. Famille basculait alors sur « Aucun enfant enregistré ».
+      // Tout le reste de cette fonction est prudent dans ce cas ; cette
+      // branche ne l'était pas.
     } else {
       const { data: contactsDB, error: erreurContacts } = await supabase
         .from('contacts_urgence')
@@ -3552,6 +3561,16 @@ export const useStore = create<DualiaStore>()(
         depenses: state.depenses.map(({ photoUri, ...rest }) => rest),
         documents: state.documents,
         parentActif: state.parentActif,
+        // Les prénoms des parents n'étaient PAS conservés, alors que les
+        // enfants, les messages et les dépenses le sont. À chaque
+        // rechargement, l'application affichait donc les vraies données
+        // sous de faux noms — « Bonjour Parent », légende « Parent 1 » /
+        // « Parent 2 » — jusqu'au retour du réseau. Sur un mauvais wifi,
+        // c'est définitif. Rien ne signalait l'erreur : seuls les noms
+        // étaient faux. La déconnexion les efface (purgerDonneesFamiliales
+        // les remet à leur valeur par défaut), donc rien ne fuit d'une
+        // personne à l'autre sur un ordinateur partagé.
+        parents: state.parents,
         langue: state.langue,
         evenements: state.evenements,
         evenementsCalendrier: state.evenementsCalendrier,

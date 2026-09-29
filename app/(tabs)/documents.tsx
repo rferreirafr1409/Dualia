@@ -47,7 +47,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../../store/useStore';
-import { aujourdHuiLocal } from '../../lib/dates';
+import { aujourdHuiLocal, estInstantValide } from '../../lib/dates';
 import { DocumentItem, CategorieDocument, DocumentPortee } from '../../types';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { TRADUCTIONS } from '../../constants/i18n';
@@ -61,6 +61,7 @@ import {
 } from '../../lib/typesFichier';
 import { ouvrirFichierStocke } from '../../lib/ouvrirFichierStocke';
 import JugementUpload from '../../components/JugementUpload';
+import { retour } from '../../lib/navigation';
 
 // Même garde que dans finances.tsx et journal.tsx : le module natif n'existe
 // pas sur le web, où l'on passe par un <input type="file">.
@@ -286,7 +287,14 @@ export default function DocumentsScreen() {
       ecole: [],
       juridique: [],
     };
-    documentsFiltres.forEach((doc) => grouped[doc.categorie].push(doc));
+    // Une catégorie inconnue — valeur héritée, ligne insérée à la main,
+    // colonne nulle — faisait `undefined.push()` pendant le rendu : écran
+    // blanc définitif, et qui revient à chaque rechargement puisque la
+    // valeur vient de la base. On la range dans « administratif » plutôt
+    // que de perdre l'écran.
+    documentsFiltres.forEach((doc) => {
+      (grouped[doc.categorie] ?? grouped.administratif).push(doc);
+    });
     return grouped;
   }, [documentsFiltres]);
 
@@ -610,8 +618,10 @@ export default function DocumentsScreen() {
           <Text style={styles.docNom} numberOfLines={1}>{doc.nom}</Text>
           <Text style={styles.docSousTitre} numberOfLines={1}>{sousTitreDocument(doc)}</Text>
           <Text style={styles.docMetaTxt} numberOfLines={1}>
-            {t.ajoutePar(auteur?.nom.split(' ')[0] ?? '')} ·{' '}
-            {format(parseISO(doc.date), 'd MMMM yyyy', { locale: localeDateFns })}
+            {t.ajoutePar(auteur?.nom?.split(' ')[0] ?? '')} ·{' '}
+            {estInstantValide(doc.date)
+              ? format(parseISO(doc.date), 'd MMMM yyyy', { locale: localeDateFns })
+              : ''}
           </Text>
         </View>
 
@@ -638,7 +648,7 @@ export default function DocumentsScreen() {
       {/* En-tête : titre à gauche, action principale à droite. */}
       <View style={styles.header}>
         {modeContextuel ? (
-          <TouchableOpacity onPress={() => router.back()} hitSlop={10} style={styles.retourBtn}>
+          <TouchableOpacity onPress={() => retour(router, '/(tabs)/documents')} hitSlop={10} style={styles.retourBtn}>
             <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
           </TouchableOpacity>
         ) : null}

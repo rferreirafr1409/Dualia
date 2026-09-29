@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { retour } from '../lib/navigation';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -106,7 +107,7 @@ export default function MotDePasseOublieScreen() {
           )}
         </Pressable>
 
-        <Pressable onPress={() => router.back()}>
+        <Pressable onPress={() => retour(router, '/connexion')}>
           <Text style={styles.lienTexteSecondaire}>Retour</Text>
         </Pressable>
       </View>

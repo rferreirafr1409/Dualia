@@ -20,6 +20,7 @@ import { formatMontant } from '../lib/comptes';
 import { TRADUCTIONS } from '../constants/i18n';
 import DatePickerField from '../components/DatePickerField';
 import type { CategorieRegle, NiveauConfiance, ReglePartage, ParentRole } from '../types';
+import { retour } from '../lib/navigation';
 
 export default function ValidationCadreScreen() {
   const router = useRouter();
@@ -85,7 +86,7 @@ export default function ValidationCadreScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.topbar}>
-          <Pressable onPress={() => router.back()} hitSlop={10}>
+          <Pressable onPress={() => retour(router, '/(tabs)/documents')} hitSlop={10}>
             <Ionicons name="close" size={22} color={COLORS.vertProfond} />
           </Pressable>
           <Text style={styles.topbarTitre}>{t.titre}</Text>
@@ -159,7 +160,7 @@ export default function ValidationCadreScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.topbar}>
-        <Pressable onPress={() => router.back()} hitSlop={10}>
+        <Pressable onPress={() => retour(router, '/(tabs)/documents')} hitSlop={10}>
           <Ionicons name="close" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <Text style={styles.topbarTitre}>{t.titre}</Text>
@@ -201,7 +202,7 @@ export default function ValidationCadreScreen() {
               <View key={i} style={styles.dateLigne}>
                 <Text style={styles.dateOccasion}>{d.occasion}</Text>
                 <Text style={styles.dateParent}>
-                  {d.parent === 'A' ? parents.A.nom : d.parent === 'B' ? parents.B.nom : '—'}
+                  {d.parent === 'A' ? parents.A?.nom : d.parent === 'B' ? parents.B?.nom : '—'}
                 </Text>
               </View>
             ))}
@@ -233,15 +234,15 @@ export default function ValidationCadreScreen() {
               <>
                 {parentResidentAuto ? (
                   <Text style={styles.gardeAutoDetecte}>
-                    {t.gardeAutoDetecte(parents[parentResidentAuto].nom)}
+                    {t.gardeAutoDetecte(parents[parentResidentAuto]?.nom ?? '')}
                   </Text>
                 ) : (
                   genresManquants && (
                     <View style={styles.genreSetup}>
-                      <Text style={styles.genreSetupTexte}>{t.genreSetupTexte(parents.A.nom)}</Text>
+                      <Text style={styles.genreSetupTexte}>{t.genreSetupTexte(parents.A?.nom ?? '')}</Text>
                       {(['A', 'B'] as ParentRole[]).map((id) => (
                         <View key={id} style={styles.genreSetupLigne}>
-                          <Text style={styles.genreSetupNom}>{parents[id].nom}</Text>
+                          <Text style={styles.genreSetupNom}>{parents[id]?.nom ?? ''}</Text>
                           <View style={{ flexDirection: 'row', gap: 6 }}>
                             {(['mere', 'pere'] as const).map((g) => (
                               <Pressable
@@ -369,7 +370,7 @@ export default function ValidationCadreScreen() {
           disabled={nbTotal > 0 && !toutEstVerifie}
           onPress={() => {
             finaliserCadreFamilial();
-            router.back();
+            retour(router, '/(tabs)/documents');
           }}
         >
           <Text style={styles.btnFinaliserTexte}>{t.btnFinaliser}</Text>

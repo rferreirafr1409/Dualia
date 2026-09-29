@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { differenceInYears, parseISO } from 'date-fns';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../../store/useStore';
+import { confirmer } from '../../lib/dialogue';
 import { Enfant, ContactUrgence } from '../../types';
 import { jourLocal } from '../../lib/dates';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
@@ -142,11 +143,13 @@ export default function EnfantsScreen() {
     }
   };
 
-  const demanderSuppressionEnfant = (e: Enfant) => {
-    Alert.alert(t.supprimer, t.confirmerSuppressionEnfant, [
-      { text: t.annuler, style: 'cancel' },
-      { text: t.supprimer, style: 'destructive', onPress: () => supprimerEnfant(e.id) },
-    ]);
+  // Alert.alert est une fonction VIDE sur le web : la corbeille d'une fiche
+  // enfant ne produisait rien, jamais — ni confirmation, ni suppression.
+  const demanderSuppressionEnfant = async (e: Enfant) => {
+    const accepte = await confirmer(
+      t.supprimer, t.confirmerSuppressionEnfant, t.supprimer, t.annuler, true
+    );
+    if (accepte) supprimerEnfant(e.id);
   };
 
   // ---------- Modal contact d'urgence ----------
@@ -179,11 +182,11 @@ export default function EnfantsScreen() {
     setModalContactVisible(false);
   };
 
-  const demanderSuppressionContact = (c: ContactUrgence) => {
-    Alert.alert(t.supprimer, t.confirmerSuppressionContact, [
-      { text: t.annuler, style: 'cancel' },
-      { text: t.supprimer, style: 'destructive', onPress: () => supprimerContactUrgence(c.id) },
-    ]);
+  const demanderSuppressionContact = async (c: ContactUrgence) => {
+    const accepte = await confirmer(
+      t.supprimer, t.confirmerSuppressionContact, t.supprimer, t.annuler, true
+    );
+    if (accepte) supprimerContactUrgence(c.id);
   };
 
   const appeler = (telephone: string) => {
