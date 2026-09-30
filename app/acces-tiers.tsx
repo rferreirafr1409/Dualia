@@ -321,7 +321,7 @@ export default function AccesTiersScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.topbar}>
-        <Pressable onPress={() => retour(router, '/(tabs)/famille')} hitSlop={10}>
+        <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.zoneTactileRetour}>
           <Ionicons name="close" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <Text style={styles.topbarTitre}>{t.titre}</Text>
@@ -567,6 +567,9 @@ export default function AccesTiersScreen() {
 }
 
 const styles = StyleSheet.create({
+  // react-native-web ignore hitSlop : la zone cliquable doit etre une
+  // vraie marge interieure, sinon la croix fait 22 pixels de cote.
+  zoneTactileRetour: { padding: 10, margin: -10 },
   screen: { flex: 1, backgroundColor: COLORS.ivoire },
   topbar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',

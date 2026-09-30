@@ -220,6 +220,60 @@ export interface ReglePartage {
   };
 }
 
+// Résultat d'une tentative de génération du calendrier de garde à partir du
+// jugement. Le motif compte autant que le statut : « non généré » sans
+// raison affichée redevient un silence, et c'est ce silence qui faisait
+// annoncer « calendrier généré » alors que rien n'avait été créé.
+export interface VerdictGarde {
+  statut: 'genere' | 'non_genere';
+  motif?:
+    | 'aucune_garde'         // le document ne dit rien de la garde
+    | 'regime_non_confirme'  // le parent n'a pas encore confirmé le régime lu dans le jugement
+    | 'echec_enregistrement' // le planning a été calculé mais n'a pas pu être enregistré
+    | 'non_tente'            // aucune trace de tentative (cadre validé ailleurs, ou hors ligne)
+    | 'calendrier_absent';   // un calendrier avait été généré, il n'est plus là
+  modele?: 'alternee' | 'weekend';
+  parentId?: ParentRole;
+  // Le calendrier annoncé existe-t-il encore réellement ? Renseigné par
+  // l'écran, qui compte les événements générés présents. Un verdict
+  // « généré » peut survivre à la suppression des événements — échec
+  // d'écriture du verdict, ou suppression à la main dans l'Agenda — et
+  // l'écran affirmerait alors un planning absent.
+  evenementsPresents?: number;
+}
+
+/** Le régime de garde tel que le PARENT l'a confirmé, après lecture des
+ *  clauses affichées. Ce n'est pas une déduction de Dualia : voir
+ *  l'en-tête de lib/gardeJugement.ts. C'est la seule base à partir de
+ *  laquelle un calendrier est généré. */
+export interface RegimeGardeConfirme {
+  /** Chez quel parent la résidence est fixée, ou résidence alternée. */
+  residence: ParentRole | 'alternee';
+  /** En résidence alternée, qui a les enfants la semaine du démarrage.
+   *  Optionnel exprès : l'absence de réponse doit être représentable, sinon
+   *  le code est obligé d'en inventer une. */
+  parentQuiCommence?: ParentRole;
+  /** En résidence principale, la parité des week-ends du parent non
+   *  résident. Absente tant que le parent ne l'a pas indiquée. */
+  parite?: 'paires' | 'impaires';
+  confirmeLe: string;
+}
+
+export interface VerdictDatesSpeciales {
+  genere: number;
+  // Occasions dont la date n'est pas calculable (fête mobile inconnue).
+  ignorees: string[];
+  // Occasions dont le parent n'a pas pu être déterminé : rien n'est créé,
+  // plutôt que de placer Noël chez le mauvais parent.
+  sansParent: string[];
+}
+
+export interface VerdictFinalisation {
+  garde: VerdictGarde;
+  datesSpeciales: VerdictDatesSpeciales;
+  vacances: { genere: number };
+}
+
 export interface CadreFamilial {
   id?: string;
   regles: ReglePartage[];
@@ -241,15 +295,32 @@ export interface CadreFamilial {
     residencePrincipale?: string;
     droitVisiteHebergementDescription?: string;
     transportAChargeDe?: string;
+    clausesVoyage?: string;
     confiance?: NiveauConfiance;
     weekendParite?: 'paires' | 'impaires';
     weekendJourDebut?: string;
     weekendJourFin?: string;
+    /** Le régime confirmé par le parent, et la date de sa confirmation.
+     *  Enregistré dans la colonne JSONB `garde`, donc conservé au
+     *  rechargement : on ne redemande pas deux fois la même chose. */
+    regimeConfirme?: RegimeGardeConfirme;
     vacancesScolaires?: string;
+    // Citation verbatim du passage relatif à la garde.
+    texteSource?: string;
+    // Ce que Dualia a réellement fait de ce mode de garde, et pourquoi.
+    // Enregistré dans la colonne JSONB `garde`, donc conservé au
+    // rechargement : l'écran de validation doit pouvoir dire la vérité
+    // après coup, et non la redeviner à partir du texte.
+    generation?: VerdictGarde & { le?: string };
   };
   datesSpeciales?: {
     occasion: string;
     parent?: ParentRole;
+    // Le jugement désigne un parent par son genre (« Noël chez le père »).
+    // La correspondance avec A/B dépend de genreParental, connu du store et
+    // non de l'extraction : on conserve donc le genre lu, et la résolution
+    // se fait au moment de la génération.
+    parentGenre?: 'mere' | 'pere';
     texteSource?: string;
   }[];
   documentSource?: {

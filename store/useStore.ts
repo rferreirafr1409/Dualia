@@ -9,12 +9,26 @@ import {
   CadreFamilial, ReglePartage, PropositionRepartition,
   Enfant, ContactUrgence, Moment, Tiers, AgendaScolaireItem,
   Foyer, ConfigFoyers, DocumentPortee, AccesTiersActif,
+  VerdictGarde, VerdictDatesSpeciales, VerdictFinalisation, RegimeGardeConfirme,
 } from '../types';
 import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
 import { supabase, effacerSessionLocale } from '../constants/supabase';
 import { jourPourBase, depuisJourLocal, instantDepuisHeureLocale, estInstantValide } from '../lib/dates';
 import { oublierDerniereActivite } from '../lib/inactivite';
+// Décision de génération du calendrier de garde : une seule
+// implémentation, pure et éprouvée par test-garde.ts, partagée avec
+// l'écran de validation du cadre. Elle était écrite deux fois, ici et
+// là-bas, avec deux détections différentes : l'écran pouvait annoncer un
+// régime que le store ne générait pas.
+import {
+  planifierGarde,
+  lundiDeLaSemaine,
+  construireSemainesAlternees,
+  construireSemainesWeekend,
+  NOTES_MODELE,
+  NOTE_JUGEMENT_WEEKEND,
+} from '../lib/gardeJugement';
 
 const dernierDimancheDeMai = (annee: number): Date => {
   const d = new Date(annee, 4, 31);
@@ -185,6 +199,47 @@ const regleDepuisDB = (r: any): ReglePartage => ({
   validation: { statut: r.validation_statut, valideLe: r.valide_le ?? undefined, validePar: r.valide_par ?? undefined },
 });
 
+const ROLES: string[] = ['A', 'B'];
+
+const MOTIFS_VERDICT = [
+  'aucune_garde', 'regime_non_confirme', 'echec_enregistrement', 'non_tente',
+] as const;
+
+// La colonne `garde` est du JSONB : ce qui en revient n'a aucune garantie de
+// forme. Un statut ou un motif inconnu — colonne écrite par une version plus
+// récente de l'application, ou modifiée à la main — faisait afficher
+// « Calendrier non généré » suivi d'une explication vide. On ne garde que ce
+// qu'on sait interpréter.
+const gardeDepuisDB = (brut: any): CadreFamilial['garde'] => {
+  if (!brut || typeof brut !== 'object') return undefined;
+  const g = { ...brut } as NonNullable<CadreFamilial['garde']>;
+  const gen: any = brut.generation;
+  if (!gen || (gen.statut !== 'genere' && gen.statut !== 'non_genere')) {
+    delete g.generation;
+    return g;
+  }
+  if (gen.statut === 'non_genere' && !MOTIFS_VERDICT.includes(gen.motif)) {
+    g.generation = { statut: 'non_genere', motif: 'non_tente', le: gen.le };
+  }
+  // Le modèle et le parent décident ce que l'écran affiche, et le régime
+  // confirmé décide ce qui serait régénéré : les valider aussi. Un rôle
+  // inconnu produisait 24 événements attribués à un parent qui n'existe
+  // pas — jours sans nom ni couleur dans l'Agenda — et un modèle absent
+  // faisait afficher « en semaine chez , week-ends des — chez . ».
+  if (gen.statut === 'genere' && (gen.modele !== 'alternee' && gen.modele !== 'weekend')) {
+    g.generation = { statut: 'non_genere', motif: 'non_tente', le: gen.le };
+  }
+  if (g.generation?.statut === 'genere' && !ROLES.includes(g.generation.parentId as any)) {
+    g.generation = { statut: 'non_genere', motif: 'non_tente', le: gen.le };
+  }
+  const r: any = g.regimeConfirme;
+  const residenceValide = r && (ROLES.includes(r.residence) || r.residence === 'alternee');
+  const debutValide = r?.parentQuiCommence === undefined || ROLES.includes(r.parentQuiCommence);
+  const pariteValide = r?.parite === undefined || r.parite === 'paires' || r.parite === 'impaires';
+  if (r && !(residenceValide && debutValide && pariteValide)) delete g.regimeConfirme;
+  return g;
+};
+
 const cadreDepuisDB = (c: any, regles: any[]): CadreFamilial => ({
   id: c.id,
   statut: c.statut,
@@ -199,7 +254,7 @@ const cadreDepuisDB = (c: any, regles: any[]): CadreFamilial => ({
           indexation: c.pension_extra?.indexation ?? undefined,
         }
       : undefined,
-  garde: c.garde ?? undefined,
+  garde: gardeDepuisDB(c.garde),
   datesSpeciales: c.dates_speciales ?? undefined,
   documentSource: c.document_source_type
     ? { id: c.id, type: c.document_source_type, date: c.document_source_date ?? undefined }
@@ -275,9 +330,6 @@ const evenementCalendrierVersDB = (ev: EvenementCalendrier, familleId: string, p
 //
 // Les journées confiées à un tiers portent une autre note : elles survivent
 // donc à la purge, comme tout événement saisi à la main.
-const NOTE_MODELE_ALTERNEE = 'Généré depuis le cadre familial (jugement importé)';
-const NOTE_MODELE_WEEKEND = 'Généré depuis le modèle de garde';
-const NOTES_MODELE = [NOTE_MODELE_ALTERNEE, NOTE_MODELE_WEEKEND];
 
 const evenementGardeVersDB = (ev: EvenementGarde, familleId: string, parentUuid?: string) => ({
   famille_id: familleId,
@@ -681,19 +733,45 @@ interface DualiaStore {
 
   setParentActif: (id: ParentRole) => void;
   ajouterEvenement: (ev: EvenementGarde) => void;
-  ajouterEvenementsEnLot: (evs: EvenementGarde[]) => Promise<void>;
+  /** Rend les identifiants effectivement enregistrés en base, ou null en
+   *  cas d'échec. La réponse est indispensable à deux titres : le verdict
+   *  de génération affiché au parent ne doit jamais reposer sur un simple
+   *  appel effectué, et la purge de l'ancien planning doit savoir ce
+   *  qu'elle ne doit pas effacer. */
+  ajouterEvenementsEnLot: (evs: EvenementGarde[]) => Promise<string[] | null>;
   supprimerEvenementGarde: (id: string) => void;
   confierGardeATiers: (dateIso: string, tiersId: string) => void;
-  purgerPlanningsGeneres: () => Promise<void>;
-  genererCalendrierAlterne: (dateDebutIso: string, parentQuiCommence: ParentRole, nombreSemaines: number) => Promise<void>;
-  genererCalendrierGardeWeekend: (dateDebutIso: string, parentResident: ParentRole, nombreSemaines: number) => Promise<void>;
+  /** `depuisIso` borne la purge : seuls les plannings générés qui
+   *  commencent à cette date ou après sont effacés. Sans borne, tout
+   *  l'historique généré part, et la régénération ne reconstruit que
+   *  l'avenir. */
+  purgerPlanningsGeneres: (depuisIso?: string, epargner?: string[]) => Promise<void>;
+  /** Rend VRAI si le planning est bien enregistré en base. */
+  genererCalendrierAlterne: (
+    dateDebutIso: string,
+    parentQuiCommence: ParentRole,
+    nombreSemaines: number
+  ) => Promise<boolean>;
+  /** `parite` vient du jugement (« week-ends des semaines paires ») et se lit
+   *  sur le vrai numéro de semaine ISO. Sans elle, l'alternance repart de la
+   *  date de départ, ce qui convient au modèle choisi à la main depuis
+   *  l'Agenda mais jamais à un planning issu d'un jugement. */
+  genererCalendrierGardeWeekend: (
+    dateDebutIso: string,
+    parentResident: ParentRole,
+    nombreSemaines: number,
+    parite?: 'paires' | 'impaires',
+    /** Note portée par les événements créés : elle distingue le planning
+     *  issu du jugement de celui que le parent compose depuis l'Agenda. */
+    note?: string
+  ) => Promise<boolean>;
   setGenreParental: (id: ParentRole, genre: 'mere' | 'pere' | 'autre') => void;
   verrouillerIndiceInitial: (valeur: number) => Promise<void>;
   genererDatesSpeciales: (
-    dates: { occasion: string; parent?: ParentRole }[],
+    dates: { occasion: string; parent?: ParentRole; parentGenre?: 'mere' | 'pere' }[],
     anneeDebut: number,
     nombreAnnees: number
-  ) => { genere: number; ignorees: string[] };
+  ) => VerdictDatesSpeciales;
   genererVacancesScolaires: () => { genere: number };
   evenementsCalendrier: EvenementCalendrier[];
   // Rend VRAI si l'evenement a ete retenu, FAUX si sa date etait illisible et
@@ -787,7 +865,20 @@ interface DualiaStore {
   rejeterRegle: (regleId: string) => void;
   ajouterRegleManuelle: (regle: ReglePartage) => void;
   modifierRegle: (regleId: string, updates: { partA: number; partB: number }) => void;
-  finaliserCadreFamilial: () => void;
+  /** Rend le compte rendu de ce qui a été généré, et de ce qui ne l'a pas
+   *  été. L'écran de validation l'affiche : il annonçait « calendrier
+   *  généré » à la seule vue du statut « validé », y compris quand rien
+   *  n'avait pu être créé faute de savoir lequel des deux parents le
+   *  jugement désignait. */
+  finaliserCadreFamilial: () => Promise<VerdictFinalisation>;
+  /** Interne : exécute le plan de garde et enregistre son verdict. Exposé sur
+   *  le store pour que la validation et la reprise partagent exactement le
+   *  même chemin, verdict compris. */
+  appliquerPlanGarde: (regime?: RegimeGardeConfirme) => Promise<VerdictGarde>;
+  /** Le parent confirme le régime lu dans le jugement — chez qui la
+   *  résidence est fixée, et la parité des week-ends — et le calendrier est
+   *  généré à partir de sa réponse, jamais d'une lecture du texte. */
+  confirmerRegimeGarde: (regime: RegimeGardeConfirme) => Promise<VerdictGarde>;
 
   propositionsRepartition: PropositionRepartition[];
   creerProposition: (proposition: PropositionRepartition) => void;
@@ -959,11 +1050,23 @@ export const useStore = create<DualiaStore>()(
     };
     set({ cadreFamilial: cadreMisAJour });
 
-    try {
-      await assurerCadreFamilialDistant(familleId, cadreMisAJour);
-    } catch (err) {
-      console.error("[Dualia] Échec enregistrement de l'indice INSEE initial :", err);
-    }
+    // Écriture de la seule colonne concernée, et non de la ligne entière.
+    // assurerCadreFamilialDistant fait un upsert de tout le cadre, garde
+    // comprise : verrouiller l'indice INSEE depuis une session dont le
+    // cadre en mémoire précédait la génération du calendrier écrasait le
+    // bloc garde de l'autre parent, verdict inclus.
+    const { error } = await supabase
+      .from('cadre_familial')
+      .update({
+        pension_extra: {
+          montantParEnfant: cadreMisAJour.pension?.montantParEnfant,
+          nombreEnfantsConcernes: cadreMisAJour.pension?.nombreEnfantsConcernes,
+          indexation: cadreMisAJour.pension?.indexation,
+        },
+      })
+      .eq('famille_id', familleId);
+
+    if (error) console.error("[Dualia] Échec enregistrement de l'indice INSEE initial :", error);
   },
 
   ajouterEvenement: (ev) => {
@@ -999,14 +1102,25 @@ export const useStore = create<DualiaStore>()(
   // la moitié du planning en base, l'autre non, sans que rien ne le signale.
   // Une seule requête réussit ou échoue d'un bloc.
   ajouterEvenementsEnLot: async (evs) => {
-    if (evs.length === 0) return;
+    if (evs.length === 0) return [];
 
     set((state) => ({ evenements: [...state.evenements, ...evs] }));
+
+    // Retire de l'état ce qui vient d'y être ajouté. Sans ce retour en
+    // arrière, un échec laissait douze semaines de planning visibles dans
+    // l'Agenda alors que la base n'en contenait aucune — et l'écran de
+    // validation annonçait, à raison, que rien n'avait été conservé. Les
+    // deux écrans se contredisaient dans la même session.
+    const annuler = () =>
+      set((state) => ({
+        evenements: state.evenements.filter((e) => !evs.some((ajoute) => ajoute.id === e.id)),
+      }));
 
     const { familleId, parents } = get();
     if (!familleId) {
       console.error('[Dualia] Planning non synchronisé : aucune famille active.');
-      return;
+      annuler();
+      return null;
     }
 
     const { data, error } = await supabase
@@ -1016,7 +1130,12 @@ export const useStore = create<DualiaStore>()(
 
     if (error || !data) {
       console.error('[Dualia] Échec synchronisation du planning :', error);
-      return;
+      // La réponse remonte jusqu'au verdict affiché : un planning qui
+      // n'existe qu'en mémoire ne doit pas être annoncé comme généré. Il
+      // disparaîtrait au rechargement suivant, après que l'écran a affirmé
+      // le contraire.
+      annuler();
+      return null;
     }
 
     // Réconciliation des identifiants par date de début plutôt que par
@@ -1028,15 +1147,19 @@ export const useStore = create<DualiaStore>()(
     }
 
     const locaux = new Map(evs.map((ev) => [ev.id, ev.dateDebut]));
+    const idsPoses: string[] = [];
 
     set((state) => ({
       evenements: state.evenements.map((e) => {
         const debut = locaux.get(e.id);
         if (!debut) return e;
         const idDistant = idParDebut.get(new Date(debut).getTime().toString());
+        idsPoses.push(idDistant ?? e.id);
         return idDistant ? { ...e, id: idDistant } : e;
       }),
     }));
+
+    return idsPoses;
   },
 
   supprimerEvenementGarde: (id) => {
@@ -1086,111 +1209,111 @@ export const useStore = create<DualiaStore>()(
   // L'attente de la réponse Supabase n'est pas facultative : les générateurs
   // insèrent aussitôt après, et une suppression encore en vol emporterait les
   // événements fraîchement créés.
-  purgerPlanningsGeneres: async () => {
+  purgerPlanningsGeneres: async (depuisIso, epargner) => {
     const { familleId } = get();
+    const epargnes = new Set(epargner ?? []);
 
-    set((state) => ({
-      evenements: state.evenements.filter((e) => !NOTES_MODELE.includes(e.notes ?? '')),
-    }));
+    // Borne dans le temps. La purge effaçait TOUS les plannings générés
+    // depuis l'origine, y compris des mois de passé consignant où les
+    // enfants s'étaient effectivement trouvés. Régénérer ne reconstruit
+    // que l'avenir : l'historique partait définitivement. Devant un
+    // magistrat, cet historique est précisément ce qui a de la valeur.
+    const borne = depuisIso ? new Date(depuisIso).getTime() : null;
+    // Chevauchement, et non date de début : un bloc commencé avant la borne
+    // mais qui se termine après elle survivait à la purge, restait devant le
+    // nouveau planning dans la liste, et le calendrier rendait ce jour-là au
+    // parent de l'ancien plan.
+    const aEffacer = (e: { id: string; notes?: string; dateFin: string }) =>
+      !epargnes.has(e.id) &&
+      NOTES_MODELE.includes(e.notes ?? '') &&
+      (borne === null || new Date(e.dateFin).getTime() >= borne);
+
+    set((state) => ({ evenements: state.evenements.filter((e) => !aEffacer(e)) }));
 
     if (!familleId) return;
 
-    const { error } = await supabase
+    let requete = supabase
       .from('evenements_garde')
       .delete()
       .eq('famille_id', familleId)
       .in('notes', NOTES_MODELE);
+    if (depuisIso) requete = requete.gte('date_fin', depuisIso);
+    // Les identifiants qui viennent d'être posés : les effacer reviendrait
+    // à supprimer le planning que l'on est en train d'installer.
+    const aEpargner = (epargner ?? []).filter((id) => EST_UUID.test(id));
+    if (aEpargner.length > 0) requete = requete.not('id', 'in', `(${aEpargner.join(',')})`);
+
+    const { error } = await requete;
 
     if (error) console.error('[Dualia] Échec purge des plannings générés :', error);
   },
 
+  // Poser le nouveau planning D'ABORD, effacer l'ancien ENSUITE.
+  //
+  // L'ordre inverse détruisait le planning existant avant de savoir si le
+  // nouveau pouvait être écrit : hors ligne ou sur un refus de droits, le
+  // parent lisait « le planning n'a pas pu être enregistré, rien n'a été
+  // conservé » et trouvait son Agenda vidé à partir de cette semaine, sans
+  // recours. Les deux plannings coexistent maintenant le temps d'un aller-
+  // retour réseau, ce qui est sans conséquence, et c'est l'ancien qui
+  // disparaît en dernier.
   genererCalendrierAlterne: async (dateDebutIso, parentQuiCommence, nombreSemaines) => {
     const { ajouterEvenementsEnLot, purgerPlanningsGeneres } = get();
-    await purgerPlanningsGeneres();
-
-    const debutBase = new Date(dateDebutIso);
-    debutBase.setHours(0, 0, 0, 0);
-    const autreParent: ParentRole = parentQuiCommence === 'A' ? 'B' : 'A';
-    const horodatage = Date.now();
-
-    const evenements: EvenementGarde[] = [];
-    for (let semaine = 0; semaine < nombreSemaines; semaine++) {
-      const debut = new Date(debutBase);
-      debut.setDate(debut.getDate() + semaine * 7);
-      const fin = new Date(debut);
-      fin.setDate(fin.getDate() + 6);
-      fin.setHours(23, 59, 59, 0);
-
-      evenements.push({
-        id: `garde-cadre-${horodatage}-${semaine}`,
-        dateDebut: debut.toISOString(),
-        dateFin: fin.toISOString(),
-        parentId: semaine % 2 === 0 ? parentQuiCommence : autreParent,
-        type: 'résidence_alternée',
-        notes: NOTE_MODELE_ALTERNEE,
-      });
-    }
-
-    await ajouterEvenementsEnLot(evenements);
+    const evenements = construireSemainesAlternees(dateDebutIso, parentQuiCommence, nombreSemaines);
+    const poses = await ajouterEvenementsEnLot(evenements);
+    if (!poses) return false;
+    await purgerPlanningsGeneres(evenements[0]?.dateDebut, poses);
+    return true;
   },
 
-  genererCalendrierGardeWeekend: async (dateDebutIso, parentResident, nombreSemaines) => {
+  genererCalendrierGardeWeekend: async (dateDebutIso, parentResident, nombreSemaines, parite, note) => {
     const { ajouterEvenementsEnLot, purgerPlanningsGeneres } = get();
-    await purgerPlanningsGeneres();
-
-    const autreParent: ParentRole = parentResident === 'A' ? 'B' : 'A';
-    const horodatage = Date.now();
-
-    const debutBase = new Date(dateDebutIso);
-    const jourSemaineISO = debutBase.getDay();
-    const decalageVersLundi = jourSemaineISO === 0 ? -6 : 1 - jourSemaineISO;
-    debutBase.setDate(debutBase.getDate() + decalageVersLundi);
-    debutBase.setHours(0, 0, 0, 0);
-
-    const evenements: EvenementGarde[] = [];
-    for (let semaine = 0; semaine < nombreSemaines; semaine++) {
-      const lundi = new Date(debutBase);
-      lundi.setDate(lundi.getDate() + semaine * 7);
-      const vendredi = new Date(lundi);
-      vendredi.setDate(vendredi.getDate() + 4);
-      vendredi.setHours(23, 59, 59, 0);
-      const samedi = new Date(lundi);
-      samedi.setDate(samedi.getDate() + 5);
-      const dimanche = new Date(lundi);
-      dimanche.setDate(dimanche.getDate() + 6);
-      dimanche.setHours(23, 59, 59, 0);
-
-      evenements.push({
-        id: `garde-sem-${horodatage}-${semaine}`,
-        dateDebut: lundi.toISOString(),
-        dateFin: vendredi.toISOString(),
-        parentId: parentResident,
-        type: 'résidence_principale',
-        notes: NOTE_MODELE_WEEKEND,
-      });
-
-      const weekendChezAutre = semaine % 2 === 1;
-      evenements.push({
-        id: `garde-we-${horodatage}-${semaine}`,
-        dateDebut: samedi.toISOString(),
-        dateFin: dimanche.toISOString(),
-        parentId: weekendChezAutre ? autreParent : parentResident,
-        type: weekendChezAutre ? 'droit_de_visite' : 'résidence_principale',
-        notes: NOTE_MODELE_WEEKEND,
-      });
-    }
-
-    await ajouterEvenementsEnLot(evenements);
+    const evenements = construireSemainesWeekend(
+      dateDebutIso,
+      parentResident,
+      nombreSemaines,
+      parite,
+      undefined,
+      note
+    );
+    const poses = await ajouterEvenementsEnLot(evenements);
+    if (!poses) return false;
+    await purgerPlanningsGeneres(evenements[0]?.dateDebut, poses);
+    return true;
   },
 
   genererDatesSpeciales: (dates, anneeDebut, nombreAnnees) => {
-    const { ajouterEvenementCalendrier } = get();
+    const { ajouterEvenementCalendrier, parents } = get();
     let genere = 0;
     const ignoreesSet = new Set<string>();
+    const sansParentSet = new Set<string>();
+
+    // Le jugement écrit « Noël chez le père ». La correspondance avec l'un
+    // des deux comptes passe par genreParental, et quand elle échoue il n'y
+    // a pas de repli possible : l'ancien `d.parent || 'A'` plaçait Noël chez
+    // le parent A par défaut, donc chez la mère une fois sur deux, dans un
+    // calendrier présenté comme issu du jugement. On ne crée rien et on le
+    // dit — c'est la même règle que pour le calendrier de garde.
+    const roleDe = (d: { parent?: ParentRole; parentGenre?: 'mere' | 'pere' }): ParentRole | null => {
+      if (d.parent === 'A' || d.parent === 'B') return d.parent;
+      if (d.parentGenre) {
+        return (
+          (['A', 'B'] as ParentRole[]).find((id) => parents[id].genreParental === d.parentGenre) ??
+          null
+        );
+      }
+      return null;
+    };
 
     for (const d of dates) {
       const occasion = d.occasion.toLowerCase();
       let uneDateCalculee = false;
+
+      const role = roleDe(d);
+      if (!role) {
+        sansParentSet.add(d.occasion);
+        continue;
+      }
 
       const cleFete = Object.keys(FETES_JUIVES).find((cle) => occasion.includes(cle));
       if (cleFete) {
@@ -1210,7 +1333,7 @@ export const useStore = create<DualiaStore>()(
               id: `date-speciale-${Date.now()}-${annee}-${j}-${cleFete.replace(/\s/g, '')}`,
               titre: jours > 1 ? `${d.occasion} (jour ${j + 1}/${jours})` : d.occasion,
               date: dateJour.toISOString(),
-              parentId: d.parent || 'A',
+              parentId: role,
             })) genere++;
           }
           uneDateCalculee = true;
@@ -1238,7 +1361,7 @@ export const useStore = create<DualiaStore>()(
             id: `date-speciale-${Date.now()}-${a}-${occasion.replace(/\s/g, '')}`,
             titre: d.occasion,
             date: date.toISOString(),
-            parentId: d.parent || 'A',
+            parentId: role,
           })) genere++;
         }
       }
@@ -1246,7 +1369,7 @@ export const useStore = create<DualiaStore>()(
       if (!uneDateCalculee) ignoreesSet.add(d.occasion);
     }
 
-    return { genere, ignorees: Array.from(ignoreesSet) };
+    return { genere, ignorees: Array.from(ignoreesSet), sansParent: Array.from(sansParentSet) };
   },
 
   genererVacancesScolaires: () => {
@@ -2652,7 +2775,83 @@ export const useStore = create<DualiaStore>()(
       });
   },
 
-  finaliserCadreFamilial: () => {
+  // Exécute le plan de garde et enregistre le verdict dans le cadre. Un seul
+  // chemin, partagé par la validation et par une reprise ultérieure : le
+  // verdict affiché à l'écran est donc forcément celui de ce qui a été fait.
+  appliquerPlanGarde: async (regime) => {
+    const { cadreFamilial, genererCalendrierAlterne, genererCalendrierGardeWeekend } = get();
+    const garde = cadreFamilial?.garde;
+    const regimeRetenu = regime ?? garde?.regimeConfirme;
+    const plan = planifierGarde(garde, regimeRetenu);
+
+    const debut = lundiDeLaSemaine(new Date()).toISOString();
+    let verdict: VerdictGarde;
+
+    // « Généré » veut dire enregistré en base, pas « la fonction de
+    // génération a été appelée ». Les deux générateurs rendent désormais la
+    // réponse du serveur : sans elle, une coupure réseau ou un refus RLS
+    // laissait douze semaines de planning en mémoire seule, le verdict
+    // annonçait une réussite, et le rechargement suivant révélait un
+    // calendrier vide sous une phrase affirmant le contraire.
+    if (plan.action === 'alternee') {
+      const ok = await genererCalendrierAlterne(debut, plan.parentId, 12);
+      verdict = ok
+        ? { statut: 'genere', modele: 'alternee', parentId: plan.parentId }
+        : { statut: 'non_genere', motif: 'echec_enregistrement' };
+    } else if (plan.action === 'weekend') {
+      const ok = await genererCalendrierGardeWeekend(
+        debut,
+        plan.parentId,
+        12,
+        plan.parite,
+        NOTE_JUGEMENT_WEEKEND
+      );
+      verdict = ok
+        ? { statut: 'genere', modele: 'weekend', parentId: plan.parentId }
+        : { statut: 'non_genere', motif: 'echec_enregistrement' };
+    } else {
+      verdict = { statut: 'non_genere', motif: plan.motif };
+      console.warn('[Dualia] Calendrier de garde non généré :', plan.motif);
+    }
+
+    // Le verdict et le régime confirmé vivent dans la colonne JSONB
+    // `garde`, donc ils survivent au rechargement. Sans le verdict, l'écran
+    // de validation ne pouvait que relire le texte du jugement et supposer
+    // que la génération avait réussi — c'est ainsi qu'il annonçait
+    // « calendrier généré » devant un calendrier vide.
+    let gardeEnregistree: CadreFamilial['garde'];
+    set((state) => {
+      if (!state.cadreFamilial?.garde) return state;
+      gardeEnregistree = {
+        ...state.cadreFamilial.garde,
+        // Un régime incomplet n'est pas enregistré : conservé, il devenait
+        // la réponse de repli d'une session suivante, et le parent qui
+        // changeait d'avis voyait régénérer son ancienne réponse pendant
+        // que l'écran affichait la nouvelle.
+        regimeConfirme:
+          plan.action === 'rien'
+            ? state.cadreFamilial.garde.regimeConfirme
+            : regimeRetenu ?? state.cadreFamilial.garde.regimeConfirme,
+        generation: { ...verdict, le: new Date().toISOString() },
+      };
+      return { cadreFamilial: { ...state.cadreFamilial, garde: gardeEnregistree } };
+    });
+
+    const id = get().cadreFamilial?.id;
+    if (id && gardeEnregistree) {
+      const { error } = await supabase
+        .from('cadre_familial')
+        .update({ garde: gardeEnregistree })
+        .eq('id', id);
+      if (error) console.error('[Dualia] Échec enregistrement du verdict de garde :', error);
+    }
+
+    return verdict;
+  },
+
+  confirmerRegimeGarde: async (regime) => get().appliquerPlanGarde(regime),
+
+  finaliserCadreFamilial: async () => {
     const cadre = get().cadreFamilial;
     const dejaValide = cadre?.statut === 'valide';
     const valideLe = new Date().toISOString();
@@ -2668,67 +2867,45 @@ export const useStore = create<DualiaStore>()(
       };
     });
     if (cadreFamilialId) {
-      supabase
+      const { error } = await supabase
         .from('cadre_familial')
         .update({ statut: 'valide', valide_le: valideLe })
-        .eq('id', cadreFamilialId)
-        .then(({ error }) => {
-          if (error) console.error('[Dualia] Échec finalisation cadre familial (distant) :', error);
-        });
+        .eq('id', cadreFamilialId);
+      if (error) console.error('[Dualia] Échec finalisation cadre familial (distant) :', error);
     } else {
       console.error('[Dualia] Finalisation locale seulement : cadre familial jamais synchronisé.');
     }
 
-    if (!dejaValide && cadre) {
-      const { parents, genererCalendrierAlterne, genererCalendrierGardeWeekend, genererDatesSpeciales, genererVacancesScolaires } = get();
-
-      if (cadre.garde) {
-        const texteGarde = `${cadre.garde.residencePrincipale || ''} ${cadre.garde.droitVisiteHebergementDescription || ''}`.toLowerCase();
-        const alternee = texteGarde.includes('altern');
-        const genre: 'mere' | 'pere' | null = texteGarde.includes('mère') || texteGarde.includes('mere')
-          ? 'mere'
-          : texteGarde.includes('père') || texteGarde.includes('pere')
-          ? 'pere'
-          : null;
-        // Le jugement designe un parent par son genre (« residence principale
-        // chez la mere »). Si on ne sait pas lequel des deux est la mere, on
-        // NE GENERE RIEN.
-        //
-        // L'ancien code retombait sur le parent A. Quand la mere etait le
-        // parent B, Dualia produisait douze mois de calendrier de garde avec
-        // les enfants chez le mauvais parent — en silence, et avec l'autorite
-        // d'un planning issu du jugement. Mieux vaut pas de calendrier du tout
-        // qu'un calendrier faux : le parent renseigne qui est la mere et qui
-        // est le pere dans l'ecran de validation du cadre, et relance.
-        const parentDesigne = genre
-          ? (['A', 'B'] as ParentRole[]).find((id) => parents[id].genreParental === genre)
-          : undefined;
-
-        // Aucune generation automatique tant que le parent de residence n'est
-        // pas etabli : ni quand le jugement ne designe personne, ni quand il
-        // designe un genre qu'aucun parent ne porte. L'ecran de validation du
-        // cadre propose une generation manuelle, ou le parent choisit
-        // lui-meme — c'est la le bon endroit pour une decision que Dualia ne
-        // peut pas prendre.
-        if (!parentDesigne) {
-          console.warn(
-            '[Dualia] Parent de residence indetermine' +
-              (genre ? ' (le jugement designe « ' + genre + ' », aucun parent ne porte ce genre)' : '') +
-              ' : calendrier de garde non genere.'
-          );
-        } else if (alternee) {
-          genererCalendrierAlterne(new Date().toISOString(), parentDesigne, 12);
-        } else if (cadre.garde.weekendParite) {
-          genererCalendrierGardeWeekend(new Date().toISOString(), parentDesigne, 12);
-        }
-      }
-
-      if (cadre.datesSpeciales && cadre.datesSpeciales.length > 0) {
-        genererDatesSpeciales(cadre.datesSpeciales, new Date().getFullYear(), 3);
-      }
-
-      genererVacancesScolaires();
+    // Un cadre déjà validé ne régénère rien de lui-même : la purge des
+    // plannings générés effacerait les ajustements que les parents ont
+    // faits depuis dans l'Agenda.
+    if (dejaValide || !cadre) {
+      // Un cadre sans garde n'a effectivement rien à générer ; un cadre
+      // avec une clause de garde mais sans trace de tentative — validé
+      // depuis l'appareil de l'autre parent, ou hors ligne — est un cas
+      // distinct. Les confondre faisait afficher « ce document ne décrit
+      // pas de mode de garde » juste sous la clause de garde affichée.
+      return {
+        garde:
+          cadre?.garde?.generation ??
+          { statut: 'non_genere', motif: cadre?.garde ? 'non_tente' : 'aucune_garde' },
+        datesSpeciales: { genere: 0, ignorees: [], sansParent: [] },
+        vacances: { genere: 0 },
+      };
     }
+
+    const { genererDatesSpeciales, genererVacancesScolaires, appliquerPlanGarde } = get();
+
+    const garde = await appliquerPlanGarde();
+
+    const datesSpeciales =
+      cadre.datesSpeciales && cadre.datesSpeciales.length > 0
+        ? genererDatesSpeciales(cadre.datesSpeciales, new Date().getFullYear(), 3)
+        : { genere: 0, ignorees: [], sansParent: [] };
+
+    const vacances = genererVacancesScolaires();
+
+    return { garde, datesSpeciales, vacances };
   },
 
   propositionsRepartition: [],

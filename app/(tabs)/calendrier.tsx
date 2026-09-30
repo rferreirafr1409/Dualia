@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ActivityIndicator,
   useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,6 +38,7 @@ import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { EvenementGarde, ParentRole } from '../../types';
 import { TRADUCTIONS } from '../../constants/i18n';
 import DatePickerField from '../../components/DatePickerField';
+import { alerter } from '../../lib/dialogue';
 
 const LOCALES = { fr, pt, es, en: enGB };
 
@@ -123,18 +125,27 @@ export default function CalendrierScreen() {
     setModeleParent(parentActif);
   };
 
-  const confirmerModele = () => {
+  const [modeleEnCours, setModeleEnCours] = useState(false);
+
+  const confirmerModele = async () => {
     if (!modeleChoisi || !modeleDateDebut) return;
-    if (modeleChoisi === 'alternee') {
-      genererCalendrierAlterne(modeleDateDebut.toISOString(), modeleParent, 12);
-    } else {
-      genererCalendrierGardeWeekend(modeleDateDebut.toISOString(), modeleParent, 12);
+    setModeleEnCours(true);
+    // On attend la réponse du serveur avant d'annoncer quoi que ce soit.
+    // L'appel partait sans await et le message « Calendrier généré »
+    // s'affichait aussitôt : hors ligne ou sur un refus de droits, le
+    // parent lisait une réussite devant un Agenda vide.
+    let ok = false;
+    try {
+      ok =
+        modeleChoisi === 'alternee'
+          ? await genererCalendrierAlterne(modeleDateDebut.toISOString(), modeleParent, 12)
+          : await genererCalendrierGardeWeekend(modeleDateDebut.toISOString(), modeleParent, 12);
+    } finally {
+      setModeleEnCours(false);
     }
     setModeleModalVisible(false);
     reinitialiserModeleModal();
-    const message = t.modeleGardeGenere;
-    if (Platform.OS === 'web') window.alert(message);
-    else Alert.alert(message);
+    alerter(ok ? t.modeleGardeGenere : t.modeleGardeEchec);
   };
 
   const jours = useMemo(
@@ -776,9 +787,13 @@ export default function CalendrierScreen() {
                 <TouchableOpacity
                   style={[styles.btnValider, !(modeleChoisi && modeleDateDebut) && styles.btnDisabled]}
                   onPress={confirmerModele}
-                  disabled={!(modeleChoisi && modeleDateDebut)}
+                  disabled={!(modeleChoisi && modeleDateDebut) || modeleEnCours}
                 >
-                  <Text style={styles.btnValiderTxt}>{t.modeleGardeConfirmer}</Text>
+                  {modeleEnCours ? (
+                    <ActivityIndicator color={COLORS.blanc} />
+                  ) : (
+                    <Text style={styles.btnValiderTxt}>{t.modeleGardeConfirmer}</Text>
+                  )}
                 </TouchableOpacity>
               </View>
             </ScrollView>

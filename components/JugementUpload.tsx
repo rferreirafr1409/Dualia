@@ -37,6 +37,7 @@ import { useStore } from '../store/useStore';
 import { entetesBackend } from '../lib/appelBackend';
 import { TRADUCTIONS } from '../constants/i18n';
 import { choisirFichierPDF } from '../lib/pickerFichierPDF';
+import { gardeDepuisExtraction, datesSpecialesDepuisExtraction } from '../lib/gardeJugement';
 import type { CadreFamilial, ReglePartage } from '../types';
 
 const BACKEND_URL = 'https://dualia-backend.vercel.app';
@@ -102,6 +103,14 @@ function BandeauVerification({ items, texteLabel }: { items: string[]; texteLabe
 // et uniquement avec confiance "basse" quand le pourcentage n'est pas
 // explicitement écrit dans le document : Dualia ne doit jamais présenter
 // un chiffre inventé comme s'il venait de la convention.
+//
+// Le mode de garde et les dates spéciales passaient jusqu'ici par cette
+// fonction sans y entrer : la capsule ci-dessous les affichait à l'écran,
+// puis le cadre familial partait sans eux vers la base. Conséquence en
+// bout de chaîne, `if (cadre.garde)` était toujours faux dans le store,
+// donc aucun calendrier de garde n'était jamais généré depuis un
+// jugement, et l'écran de validation n'avait rien à montrer. Le mapping
+// vit dans lib/gardeJugement.ts, avec ses tests.
 function construireCadreFamilial(resultat: any): CadreFamilial {
   const fraisExtra = resultat?.frais_extrascolaires;
   const pension = resultat?.pension_alimentaire;
@@ -159,6 +168,8 @@ function construireCadreFamilial(resultat: any): CadreFamilial {
             clauseSource: pension.texte_source ? { extrait: pension.texte_source } : undefined,
           }
         : undefined,
+    garde: gardeDepuisExtraction(resultat?.garde),
+    datesSpeciales: datesSpecialesDepuisExtraction(resultat),
     documentSource: {
       id: `doc-${Date.now()}`,
       type: 'convention',
@@ -284,6 +295,12 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
   };
 
   const garde = resultat?.garde;
+  // Ce que Dualia a réellement retenu du bloc garde — pas le brut affiché
+  // au-dessus. La parité des week-ends en particulier est une lecture, et
+  // elle doit être montrée avec la phrase qui l'a permise : c'est elle qui
+  // décidera chez qui l'enfant dort douze semaines de suite.
+  const gardeRetenue = React.useMemo(() => gardeDepuisExtraction(resultat?.garde), [resultat]);
+  const datesSpeciales = React.useMemo(() => datesSpecialesDepuisExtraction(resultat), [resultat]);
   const pension = resultat?.pension_alimentaire;
   const indexation = pension?.indexation;
   const fraisExtra = resultat?.frais_extrascolaires;
@@ -356,7 +373,34 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
                 valeur={garde.droit_visite_hebergement?.transport_a_charge_de}
               />
               <LigneChamp label={t.clausesVoyage} valeur={garde.clauses_voyage} />
+              <LigneChamp label={t.vacancesScolaires} valeur={gardeRetenue?.vacancesScolaires} />
               <LigneChamp label={t.confianceExtraction} valeur={garde.confiance} />
+              {/* Le rythme de garde n'est pas déduit ici : il est confirmé
+                  par le parent à l'écran suivant, en regard de la clause.
+                  Voir l'en-tête de lib/gardeJugement.ts. */}
+              <Text style={styles.citationSource}>{t.rythmeAConfirmer}</Text>
+            </Capsule>
+          )}
+
+          {/* CAPSULE 1 bis — Dates spéciales. Le parent est conservé tel que
+              le jugement le désigne (« chez le père ») : le rattachement à
+              l'un des deux comptes se fait plus tard, à la validation, où
+              Dualia sait qui est le père. */}
+          {datesSpeciales && datesSpeciales.length > 0 && (
+            <Capsule titre={t.datesSpeciales} couleur={COLORS.terracotta}>
+              {datesSpeciales.map((d, i) => (
+                <LigneChamp
+                  key={i}
+                  label={d.occasion}
+                  valeur={
+                    d.parentGenre === 'pere'
+                      ? t.chezLePere
+                      : d.parentGenre === 'mere'
+                      ? t.chezLaMere
+                      : d.texteSource ?? '—'
+                  }
+                />
+              ))}
             </Capsule>
           )}
 
@@ -558,6 +602,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.vertProfond,
     lineHeight: 19,
+  },
+  citationSource: {
+    fontSize: 12,
+    color: COLORS.ardoise,
+    fontStyle: 'italic',
+    lineHeight: 17,
+    marginTop: -2,
+    marginBottom: 8,
   },
   noteCapsule: {
     fontSize: 12,
