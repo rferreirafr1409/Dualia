@@ -8,18 +8,45 @@
 // Règle métier stricte : tant que CadreFamilial.statut !== 'valide', aucune
 // règle ici présente ne doit être utilisée ailleurs (Finances, Calendrier,
 // Décisions) pour calculer quoi que ce soit automatiquement.
+//
+// Ce qui a changé sur le volet garde, et pourquoi :
+//
+// — Le mode de garde n'apparaissait plus du tout ici. L'écran d'extraction
+//   l'affichait en entier, puis le cadre familial partait sans lui : cet
+//   écran ne pouvait donc afficher qu'un bandeau générique, et plus rien
+//   après un rechargement. C'est pourtant la première question que pose un
+//   avocat — « qu'est-ce que votre outil a lu de mon jugement ? ». Les
+//   clauses lues sont désormais affichées, avec leur citation.
+//
+// — L'écran annonçait « Calendrier généré » dès que le cadre était validé,
+//   sans jamais savoir si quelque chose avait été généré. Quand le parent
+//   de résidence n'était pas déterminé, le store ne créait rien — à raison —
+//   et l'écran affirmait le contraire. Il lit maintenant le verdict
+//   enregistré, et propose de réparer.
+//
+// — La détection du régime de garde était réécrite ici, différemment du
+//   store. Les deux pouvaient donc se contredire. Elle vit dans une seule
+//   fonction, planifierGarde, partagée.
 
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, Alert, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Modal, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
+import { planifierGarde, NOTES_JUGEMENT } from '../lib/gardeJugement';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { libellesConditions, listerConditions, aDesConditions } from '../lib/conditionsCadre';
 import { formatMontant } from '../lib/comptes';
 import { TRADUCTIONS } from '../constants/i18n';
-import DatePickerField from '../components/DatePickerField';
-import type { CategorieRegle, NiveauConfiance, ReglePartage, ParentRole } from '../types';
+import type {
+  CategorieRegle,
+  NiveauConfiance,
+  ReglePartage,
+  ParentRole,
+  RegimeGardeConfirme,
+  VerdictFinalisation,
+  VerdictGarde,
+} from '../types';
 import { retour } from '../lib/navigation';
 
 export default function ValidationCadreScreen() {
@@ -51,33 +78,25 @@ export default function ValidationCadreScreen() {
   const rejeterRegle = useStore((s) => s.rejeterRegle);
   const modifierRegle = useStore((s) => s.modifierRegle);
   const finaliserCadreFamilial = useStore((s) => s.finaliserCadreFamilial);
+  const confirmerRegimeGarde = useStore((s) => s.confirmerRegimeGarde);
+  // Sert à vérifier qu'un calendrier annoncé existe encore vraiment.
+  const evenementsGarde = useStore((s) => s.evenements);
   const parents = useStore((s) => s.parents);
-  const genererCalendrierAlterne = useStore((s) => s.genererCalendrierAlterne);
-  const genererCalendrierGardeWeekend = useStore((s) => s.genererCalendrierGardeWeekend);
-  const genererDatesSpeciales = useStore((s) => s.genererDatesSpeciales);
-  const genererVacancesScolaires = useStore((s) => s.genererVacancesScolaires);
-  const setGenreParental = useStore((s) => s.setGenreParental);
 
-  const [dateDebutGarde, setDateDebutGarde] = useState<Date | null>(null);
-  const [parentQuiCommence, setParentQuiCommence] = useState<ParentRole>('A');
-  const [calendrierGenere, setCalendrierGenere] = useState(false);
-  const [datesGenereesMessage, setDatesGenereesMessage] = useState<string | null>(null);
-  const [vacancesGenereesMessage, setVacancesGenereesMessage] = useState<string | null>(null);
-
-  const confirmerGenerationVacances = () => {
-    const { genere } = genererVacancesScolaires();
-    setVacancesGenereesMessage(`${genere} repères ajoutés au calendrier (zone C, Créteil).`);
-  };
-
-  const confirmerGenerationDatesSpeciales = () => {
-    if (!cadreFamilial?.datesSpeciales) return;
-    const anneeCourante = new Date().getFullYear();
-    const { genere, ignorees } = genererDatesSpeciales(cadreFamilial.datesSpeciales, anneeCourante, 3);
-    const messageIgnorees = ignorees.length > 0
-      ? ` ${ignorees.join(', ')} : date mobile, à ajouter toi-même une fois connue.`
-      : '';
-    setDatesGenereesMessage(`${genere} date${genere > 1 ? 's' : ''} ajoutée${genere > 1 ? 's' : ''} au calendrier (3 prochaines années).${messageIgnorees}`);
-  };
+  // Les deux réponses que Dualia ne déduit pas du texte du jugement, et
+  // qu'il demande au parent à côté de la clause citée : chez qui la
+  // résidence est fixée (ou résidence alternée), et la parité des
+  // week-ends. Voir l'en-tête de lib/gardeJugement.ts pour la raison —
+  // huit façons réalistes d'inverser un planning sur douze semaines.
+  const [residence, setResidence] = useState<ParentRole | 'alternee' | null>(null);
+  const [parite, setParite] = useState<'paires' | 'impaires' | null>(null);
+  // Pas de valeur par défaut : « le parent A » coché d'avance en vert
+  // serait pris pour une réponse, et douze semaines partiraient de ce
+  // côté-là sans que personne ne l'ait dit.
+  const [parentQuiCommence, setParentQuiCommence] = useState<ParentRole | null>(null);
+  const [verdict, setVerdict] = useState<VerdictFinalisation | null>(null);
+  const [verdictGarde, setVerdictGarde] = useState<VerdictGarde | null>(null);
+  const [travailEnCours, setTravailEnCours] = useState(false);
 
   const [modifModalRegle, setModifModalRegle] = useState<ReglePartage | null>(null);
   const [partAInput, setPartAInput] = useState('');
@@ -86,7 +105,7 @@ export default function ValidationCadreScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.topbar}>
-          <Pressable onPress={() => retour(router, '/(tabs)/documents')} hitSlop={10}>
+          <Pressable onPress={() => retour(router, '/(tabs)/documents')} style={styles.zoneTactile}>
             <Ionicons name="close" size={22} color={COLORS.vertProfond} />
           </Pressable>
           <Text style={styles.topbarTitre}>{t.titre}</Text>
@@ -105,43 +124,98 @@ export default function ValidationCadreScreen() {
   const toutEstVerifie = nbTotal > 0 && nbVerifiees === nbTotal;
   const dejaValide = cadreFamilial.statut === 'valide';
 
-  // Détection volontairement simple : on ne propose la génération
-  // automatique du calendrier QUE quand le texte du jugement mentionne
-  // explicitement une résidence alternée, OU une garde exclusive avec un
-  // rythme de week-end régulier détecté — dans tous les autres cas, le
-  // motif n'est pas assez régulier pour être généré fiablement à partir du
-  // seul texte libre extrait.
-  const texteGarde = `${cadreFamilial.garde?.residencePrincipale || ''} ${cadreFamilial.garde?.droitVisiteHebergementDescription || ''}`.toLowerCase();
-  const resideceAlterneeDetectee = texteGarde.includes('altern');
-  const gardeWeekendDetectee = !resideceAlterneeDetectee && !!cadreFamilial.garde?.weekendParite;
+  const garde = cadreFamilial.garde;
 
-  // Tentative de rattachement automatique du parent résident, à partir du
-  // genre déclaré sur chaque parent (voir setGenreParental). Sans ces
-  // infos, impossible de savoir de façon fiable si "au domicile de la
-  // mère" désigne le parent A ou B — on redemande alors manuellement.
-  const genreDetecteDansTexte: 'mere' | 'pere' | null = texteGarde.includes('mère') || texteGarde.includes('mere')
-    ? 'mere'
-    : texteGarde.includes('père') || texteGarde.includes('pere')
-    ? 'pere'
-    : null;
-  const parentResidentAuto = genreDetecteDansTexte
-    ? ((['A', 'B'] as ParentRole[]).find((id) => parents[id].genreParental === genreDetecteDansTexte) ?? null)
-    : null;
+  const nomParent = (id?: ParentRole) => (id ? parents[id]?.nom ?? '' : '');
+  const autreParent = (id: ParentRole): ParentRole => (id === 'A' ? 'B' : 'A');
+  const libelleParite = (p?: 'paires' | 'impaires') =>
+    p === 'impaires' ? t.gardeWeekendsImpaires : p === 'paires' ? t.gardeWeekendsPaires : '—';
 
-  const genresManquants = !parents.A.genreParental || !parents.B.genreParental;
+  const MOTIFS: Record<NonNullable<VerdictGarde['motif']>, string> = {
+    aucune_garde: t.motifAucuneGarde,
+    regime_non_confirme: t.motifRegimeNonConfirme,
+    echec_enregistrement: t.motifEchecEnregistrement,
+    non_tente: t.motifNonTente,
+    calendrier_absent: t.motifCalendrierAbsent,
+  };
 
-  const confirmerGenerationCalendrier = () => {
-    if (!dateDebutGarde) return;
-    const parentAUtiliser = parentResidentAuto || parentQuiCommence;
-    if (resideceAlterneeDetectee) {
-      genererCalendrierAlterne(dateDebutGarde.toISOString(), parentAUtiliser, 12);
-    } else {
-      genererCalendrierGardeWeekend(dateDebutGarde.toISOString(), parentAUtiliser, 12);
+  // Le régime déjà confirmé lors d'une session précédente, ou celui que le
+  // parent est en train de composer sur cet écran.
+  const regimeEnregistre = garde?.regimeConfirme;
+  const regimeEnCours: RegimeGardeConfirme | null =
+    residence === null
+      ? null
+      : residence === 'alternee'
+      ? parentQuiCommence === null
+        ? null
+        : { residence: 'alternee', parentQuiCommence, confirmeLe: new Date().toISOString() }
+      : parite === null
+      ? null
+      : { residence, parentQuiCommence: residence, parite, confirmeLe: new Date().toISOString() };
+
+  // Dès que le parent touche aux questions, c'est SA réponse en cours qui
+  // compte, et rien d'autre. Retomber sur le régime enregistré dès que la
+  // réponse en cours était incomplète produisait le pire des cas : le
+  // parent changeait de résidence, la question de parité se réinitialisait,
+  // le bouton restait actif, et Dualia régénérait l'ancienne réponse
+  // pendant que l'écran affichait la nouvelle en vert.
+  const aCommenceARepondre = residence !== null;
+  const regimeRetenu = aCommenceARepondre ? regimeEnCours : regimeEnregistre;
+
+  // Ce qui serait généré à partir de là. Même fonction que celle qu'utilise
+  // le store : ce qui est annoncé ici est ce qui sera fait.
+  const plan = planifierGarde(garde, regimeRetenu ?? undefined);
+
+  // Combien d'événements générés existent réellement. Un verdict
+  // « généré » peut survivre à leur disparition — échec d'écriture du
+  // verdict, ou suppression à la main dans l'Agenda — et l'écran
+  // affirmerait alors un planning absent. On compte plutôt que de croire.
+  // Seules les notes du jugement comptent. Le modèle composé à la main
+  // depuis l'Agenda porte sa propre note : le confondre avec celui du
+  // jugement faisait affirmer « 12 semaines générées : en semaine chez B,
+  // week-ends des semaines paires chez A » à propos d'un planning manuel
+  // qui avait remplacé celui du jugement.
+  const evenementsGeneres = evenementsGarde.filter((e) => NOTES_JUGEMENT.includes(e.notes ?? '')).length;
+
+  // Verdict de la session en cours s'il y en a un, sinon celui enregistré
+  // lors d'une validation précédente. Un cadre déjà validé sans trace de
+  // génération — validé depuis l'appareil de l'autre parent, ou hors ligne
+  // — ne doit pas afficher le plan au futur : c'est déjà validé.
+  const verdictBrut: VerdictGarde | null =
+    verdictGarde ??
+    garde?.generation ??
+    (dejaValide && garde ? { statut: 'non_genere', motif: 'non_tente' } : null);
+
+  const verdictAffiche: VerdictGarde | null =
+    verdictBrut && verdictBrut.statut === 'genere' && evenementsGeneres === 0
+      ? { statut: 'non_genere', motif: 'calendrier_absent' }
+      : verdictBrut;
+
+  const peutGenerer = plan.action !== 'rien';
+
+  const finaliser = async () => {
+    setTravailEnCours(true);
+    try {
+      const resultat = await finaliserCadreFamilial();
+      let gardeFaite = resultat.garde;
+      // La finalisation applique le régime déjà enregistré ; si le parent
+      // vient d'en confirmer un sur cet écran, on l'applique ensuite.
+      if (regimeEnCours) gardeFaite = await confirmerRegimeGarde(regimeEnCours);
+      setVerdict({ ...resultat, garde: gardeFaite });
+      setVerdictGarde(gardeFaite);
+    } finally {
+      setTravailEnCours(false);
     }
-    setCalendrierGenere(true);
-    const message = t.calendrierGenereMsg;
-    if (Platform.OS === 'web') window.alert(message);
-    else Alert.alert(t.calendrierGenereTitre, message);
+  };
+
+  const genererMaintenant = async () => {
+    if (!regimeRetenu) return;
+    setTravailEnCours(true);
+    try {
+      setVerdictGarde(await confirmerRegimeGarde(regimeRetenu));
+    } finally {
+      setTravailEnCours(false);
+    }
   };
 
   const ouvrirModif = (regle: ReglePartage) => {
@@ -157,10 +231,86 @@ export default function ValidationCadreScreen() {
     setModifModalRegle(null);
   };
 
+  /** Une question, ses réponses possibles, et rien de pré-sélectionné. Une
+   *  réponse cochée d'avance par Dualia serait un piège : le parent
+   *  validerait la suggestion sans la vérifier, et c'est précisément la
+   *  déduction dont on ne veut plus. */
+  const Question = ({
+    titre,
+    options,
+    valeur,
+    surChoix,
+  }: {
+    titre: string;
+    options: { cle: string; libelle: string }[];
+    valeur: string | null;
+    surChoix: (cle: string) => void;
+  }) => (
+    <View style={styles.choixBloc}>
+      <Text style={styles.choixTitre}>{titre}</Text>
+      <View style={styles.choixLigne}>
+        {options.map((o) => (
+          <Pressable
+            key={o.cle}
+            style={[styles.choixChip, valeur === o.cle && styles.choixChipActif]}
+            onPress={() => surChoix(o.cle)}
+          >
+            <Text style={[styles.choixChipTexte, valeur === o.cle && styles.choixChipTexteActif]}>
+              {o.libelle}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+
+  /** Les questions que Dualia pose plutôt que d'y répondre lui-même. */
+  const QuestionsRegime = () => (
+    <>
+      <Question
+        titre={t.questionResidence}
+        valeur={residence}
+        options={[
+          { cle: 'A', libelle: nomParent('A') },
+          { cle: 'B', libelle: nomParent('B') },
+          { cle: 'alternee', libelle: t.residenceAlternee },
+        ]}
+        surChoix={(cle) => {
+          setResidence(cle as ParentRole | 'alternee');
+          setParite(null);
+        }}
+      />
+
+      {residence === 'alternee' && (
+        <Question
+          titre={t.questionQuiCetteSemaine}
+          valeur={parentQuiCommence}
+          options={[
+            { cle: 'A', libelle: nomParent('A') },
+            { cle: 'B', libelle: nomParent('B') },
+          ]}
+          surChoix={(cle) => setParentQuiCommence(cle as ParentRole)}
+        />
+      )}
+
+      {(residence === 'A' || residence === 'B') && (
+        <Question
+          titre={t.questionParite(nomParent(autreParent(residence)))}
+          valeur={parite}
+          options={[
+            { cle: 'paires', libelle: t.gardeWeekendsPaires },
+            { cle: 'impaires', libelle: t.gardeWeekendsImpaires },
+          ]}
+          surChoix={(cle) => setParite(cle as 'paires' | 'impaires')}
+        />
+      )}
+    </>
+  );
+
   return (
     <View style={styles.screen}>
       <View style={styles.topbar}>
-        <Pressable onPress={() => retour(router, '/(tabs)/documents')} hitSlop={10}>
+        <Pressable onPress={() => retour(router, '/(tabs)/documents')} style={styles.zoneTactile}>
           <Ionicons name="close" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <Text style={styles.topbarTitre}>{t.titre}</Text>
@@ -195,6 +345,131 @@ export default function ValidationCadreScreen() {
           </View>
         )}
 
+        {/* ---------- Mode de garde lu dans le jugement ---------- */}
+        {garde && (
+          <View style={styles.gardeCard}>
+            <Text style={styles.gardeEyebrow}>{t.gardeEyebrow}</Text>
+
+            <Champ label={t.gardeAutoriteParentale} valeur={garde.autoriteParentale} />
+            <Champ label={t.gardeResidencePrincipale} valeur={garde.residencePrincipale} />
+            <Champ label={t.gardeDroitVisite} valeur={garde.droitVisiteHebergementDescription} />
+            <Champ label={t.gardeTransport} valeur={garde.transportAChargeDe} />
+            <Champ label={t.gardeVacances} valeur={garde.vacancesScolaires} />
+            <Champ label={t.gardeClausesVoyage} valeur={garde.clausesVoyage} />
+
+            {garde.texteSource ? (
+              <Text style={styles.citation}>« {garde.texteSource} »</Text>
+            ) : null}
+
+            {garde.confiance && LABELS_CONFIANCE[garde.confiance] ? (
+              <View style={styles.confianceRow}>
+                <View
+                  style={[styles.confiancePuce, { backgroundColor: LABELS_CONFIANCE[garde.confiance].couleur }]}
+                />
+                <Text style={styles.confianceTexte}>{LABELS_CONFIANCE[garde.confiance].label}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.separateur} />
+
+            {/* ---------- Calendrier de garde ----------
+                Dualia ne déduit pas le régime du texte : il affiche les
+                clauses ci-dessus et demande de le confirmer. Voir
+                lib/gardeJugement.ts pour les huit inversions qui ont mené
+                à cette décision. */}
+            <Text style={styles.gardeEyebrow}>{t.calendrierEyebrow}</Text>
+
+            {verdictAffiche && verdictAffiche.statut === 'genere' ? (
+              <>
+                <View style={styles.resultatOk}>
+                  <Ionicons name="checkmark-circle" size={18} color={COLORS.vert} />
+                  <Text style={styles.resultatOkTexte}>
+                    {verdictAffiche.modele === 'alternee'
+                      ? t.calendrierGenereAlternee(nomParent(verdictAffiche.parentId))
+                      : t.calendrierGenereWeekend(
+                          nomParent(verdictAffiche.parentId),
+                          nomParent(verdictAffiche.parentId ? autreParent(verdictAffiche.parentId) : undefined),
+                          libelleParite(regimeEnregistre?.parite).toLowerCase()
+                        )}
+                  </Text>
+                </View>
+                {/* Le planning suit le rythme ordinaire d'un bout à
+                    l'autre : il ne retire ni les vacances scolaires ni les
+                    dates spéciales, que le jugement partage autrement, et
+                    il pose des journées entières. Le dire ici, plutôt que
+                    de laisser un magistrat le découvrir sur un calendrier
+                    de Noël. */}
+                <Text style={styles.gardeNote}>{t.calendrierReserveVacances}</Text>
+                {/* Cette réserve décrit un planning semaine + week-end :
+                    elle n'a pas de sens pour une résidence alternée, dont
+                    les blocs sont des semaines entières. */}
+                {verdictAffiche.modele === 'weekend' ? (
+                  <Text style={styles.gardeNote}>{t.calendrierReserveHoraires}</Text>
+                ) : null}
+                <Pressable style={styles.btnLien} onPress={() => router.push('/(tabs)/calendrier' as any)}>
+                  <Text style={styles.btnLienTexte}>{t.voirAgenda}</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                {verdictAffiche ? (
+                  <>
+                    <View style={styles.resultatNon}>
+                      <Ionicons name="alert-circle-outline" size={18} color={COLORS.terracotta} />
+                      <Text style={styles.resultatNonTexte}>{t.calendrierNonGenereTitre}</Text>
+                    </View>
+                    <Text style={styles.gardeTexte}>
+                      {verdictAffiche.motif ? MOTIFS[verdictAffiche.motif] : ''}
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.gardeTexte}>{t.calendrierAConfirmer}</Text>
+                )}
+
+                {verdictAffiche?.motif === 'aucune_garde' ? null : (
+                  <>
+                    <QuestionsRegime />
+
+                    {plan.action !== 'rien' ? (
+                      <Text style={styles.gardeNote}>
+                        {plan.action === 'alternee'
+                          ? t.calendrierPlanAlternee(nomParent(plan.parentId))
+                          : t.calendrierPlanWeekend(
+                              nomParent(plan.parentId),
+                              nomParent(autreParent(plan.parentId)),
+                              libelleParite(plan.parite).toLowerCase()
+                            )}
+                      </Text>
+                    ) : null}
+
+                    {/* Avant validation, la génération part du bouton du
+                        bas. Après, c'est ici qu'on la déclenche. */}
+                    {dejaValide || verdict ? (
+                      <Pressable
+                        style={[
+                          styles.btnGenerer,
+                          (!peutGenerer || travailEnCours) && styles.btnDesactive,
+                        ]}
+                        disabled={!peutGenerer || travailEnCours}
+                        onPress={genererMaintenant}
+                      >
+                        {travailEnCours ? (
+                          <ActivityIndicator color={COLORS.blanc} />
+                        ) : (
+                          <Text style={styles.btnGenererTexte}>{t.btnGenerer}</Text>
+                        )}
+                      </Pressable>
+                    ) : (
+                      <Text style={styles.gardeNote}>{t.calendrierApresValidation}</Text>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </View>
+        )}
+
+        {/* ---------- Dates spéciales ---------- */}
         {cadreFamilial.datesSpeciales && cadreFamilial.datesSpeciales.length > 0 && (
           <View style={styles.datesCard}>
             <Text style={styles.datesEyebrow}>{t.datesEyebrow}</Text>
@@ -202,73 +477,45 @@ export default function ValidationCadreScreen() {
               <View key={i} style={styles.dateLigne}>
                 <Text style={styles.dateOccasion}>{d.occasion}</Text>
                 <Text style={styles.dateParent}>
-                  {d.parent === 'A' ? parents.A?.nom : d.parent === 'B' ? parents.B?.nom : '—'}
+                  {d.parent
+                    ? nomParent(d.parent)
+                    : d.parentGenre === 'mere'
+                    ? t.dateChezLaMere
+                    : d.parentGenre === 'pere'
+                    ? t.dateChezLePere
+                    : '—'}
                 </Text>
               </View>
             ))}
-            <Text style={styles.datesResultat}>
-              {dejaValide ? t.datesResultatValide : t.datesResultatEnAttente}
-            </Text>
-          </View>
-        )}
-
-        {(resideceAlterneeDetectee || gardeWeekendDetectee) && (
-          <View style={styles.gardeCard}>
-            <Text style={styles.gardeEyebrow}>
-              {resideceAlterneeDetectee ? t.gardeEyebrowAlternee : t.gardeEyebrowRythme}
-            </Text>
-            <Text style={styles.gardeTexte}>
-              {resideceAlterneeDetectee
-                ? t.gardeTexteAlternee
-                : t.gardeTexteRythme(cadreFamilial.garde?.weekendParite || '')}
-              {' '}
-              {dejaValide ? t.gardeSuiteValide : t.gardeSuiteEnAttente}
-            </Text>
-
-            {dejaValide ? (
-              <View style={styles.gardeConfirmation}>
-                <Ionicons name="checkmark-circle" size={18} color={COLORS.vert} />
-                <Text style={styles.gardeConfirmationTexte}>{t.gardeConfirmationTexte}</Text>
-              </View>
-            ) : (
+            {verdict ? (
               <>
-                {parentResidentAuto ? (
-                  <Text style={styles.gardeAutoDetecte}>
-                    {t.gardeAutoDetecte(parents[parentResidentAuto]?.nom ?? '')}
+                <Text style={styles.datesResultat}>{t.verdictDatesSpeciales(verdict.datesSpeciales.genere)}</Text>
+                {verdict.datesSpeciales.sansParent.length > 0 && (
+                  <Text style={styles.datesAvertissement}>
+                    {t.verdictDatesSansParent(verdict.datesSpeciales.sansParent.join(', '))}
                   </Text>
-                ) : (
-                  genresManquants && (
-                    <View style={styles.genreSetup}>
-                      <Text style={styles.genreSetupTexte}>{t.genreSetupTexte(parents.A?.nom ?? '')}</Text>
-                      {(['A', 'B'] as ParentRole[]).map((id) => (
-                        <View key={id} style={styles.genreSetupLigne}>
-                          <Text style={styles.genreSetupNom}>{parents[id]?.nom ?? ''}</Text>
-                          <View style={{ flexDirection: 'row', gap: 6 }}>
-                            {(['mere', 'pere'] as const).map((g) => (
-                              <Pressable
-                                key={g}
-                                style={[styles.genreChip, parents[id].genreParental === g && styles.genreChipActif]}
-                                onPress={() => setGenreParental(id, g)}
-                              >
-                                <Text style={[styles.genreChipTexte, parents[id].genreParental === g && styles.genreChipTexteActif]}>
-                                  {g === 'mere' ? t.genreMere : t.genrePere}
-                                </Text>
-                              </Pressable>
-                            ))}
-                          </View>
-                        </View>
-                      ))}
-                    </View>
-                  )
+                )}
+                {verdict.datesSpeciales.ignorees.length > 0 && (
+                  <Text style={styles.datesAvertissement}>
+                    {t.verdictDatesIgnorees(verdict.datesSpeciales.ignorees.join(', '))}
+                  </Text>
                 )}
               </>
+            ) : (
+              // Aucune affirmation hors session. Le verdict des dates
+              // spéciales n'est pas enregistré, donc au rechargement l'écran
+              // ne sait pas ce qui a été ajouté : il affirmait pourtant
+              // « ajoutées automatiquement au calendrier partagé », y compris
+              // quand aucune n'avait pu l'être faute de savoir chez quel
+              // parent. Il renvoie désormais au calendrier, qui, lui, sait.
+              <Text style={styles.datesResultat}>
+                {dejaValide ? t.datesResultatAVerifier : t.datesResultatEnAttente}
+              </Text>
             )}
           </View>
         )}
 
-        {regles.length === 0 && (
-          <Text style={styles.videTexte}>{t.reglesVideTexte}</Text>
-        )}
+        {regles.length === 0 && <Text style={styles.videTexte}>{t.reglesVideTexte}</Text>}
 
         {regles.map((regle) => {
           const confiance = LABELS_CONFIANCE[regle.detection.confiance];
@@ -354,7 +601,14 @@ export default function ValidationCadreScreen() {
           );
         })}
 
-        {dejaValide && (
+        {verdict && (
+          <View style={styles.verdictCard}>
+            <Text style={styles.verdictTitre}>{t.verdictTitre}</Text>
+            <Text style={styles.verdictLigne}>{t.verdictVacances(verdict.vacances.genere)}</Text>
+          </View>
+        )}
+
+        {dejaValide && !verdict && (
           <View style={styles.dejaValideBox}>
             <Ionicons name="shield-checkmark" size={16} color={COLORS.vert} />
             <Text style={styles.dejaValideTexte}>
@@ -364,16 +618,24 @@ export default function ValidationCadreScreen() {
         )}
       </ScrollView>
 
-      {!dejaValide && (
+      {dejaValide || verdict ? (
+        <Pressable style={styles.btnFinaliser} onPress={() => retour(router, '/(tabs)/documents')}>
+          <Text style={styles.btnFinaliserTexte}>{t.btnTermine}</Text>
+        </Pressable>
+      ) : (
         <Pressable
-          style={[styles.btnFinaliser, !toutEstVerifie && nbTotal > 0 && styles.btnFinaliserDesactive]}
-          disabled={nbTotal > 0 && !toutEstVerifie}
-          onPress={() => {
-            finaliserCadreFamilial();
-            retour(router, '/(tabs)/documents');
-          }}
+          style={[
+            styles.btnFinaliser,
+            ((nbTotal > 0 && !toutEstVerifie) || travailEnCours) && styles.btnFinaliserDesactive,
+          ]}
+          disabled={(nbTotal > 0 && !toutEstVerifie) || travailEnCours}
+          onPress={finaliser}
         >
-          <Text style={styles.btnFinaliserTexte}>{t.btnFinaliser}</Text>
+          {travailEnCours ? (
+            <ActivityIndicator color={COLORS.blanc} />
+          ) : (
+            <Text style={styles.btnFinaliserTexte}>{t.btnFinaliser}</Text>
+          )}
         </Pressable>
       )}
 
@@ -408,12 +670,28 @@ export default function ValidationCadreScreen() {
   );
 }
 
+/** Une clause lue dans le jugement. Rien ne s'affiche si le document est
+ *  muet : un libellé suivi d'un blanc laisserait croire à une information
+ *  perdue. */
+function Champ({ label, valeur }: { label: string; valeur?: string }) {
+  if (!valeur) return null;
+  return (
+    <View style={styles.champ}>
+      <Text style={styles.champLabel}>{label}</Text>
+      <Text style={styles.champValeur}>{valeur}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.ivoire },
   topbar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg, paddingTop: SPACING.xl, paddingBottom: SPACING.md,
   },
+  // react-native-web ignore hitSlop : la zone cliquable doit être une vraie
+  // marge intérieure, sinon la croix de fermeture fait 22 pixels de côté.
+  zoneTactile: { padding: 10, margin: -10 },
   topbarTitre: { fontFamily: FONTS.display, fontSize: 18, color: COLORS.vertProfond },
   videWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl },
   videTexte: { fontFamily: FONTS.body, fontSize: 14, color: COLORS.ardoise, textAlign: 'center', lineHeight: 20 },
@@ -441,37 +719,53 @@ const styles = StyleSheet.create({
   dateOccasion: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.vertProfond },
   dateParent: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.ardoise },
   datesResultat: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vert, marginTop: SPACING.sm, lineHeight: 18 },
-  datesGenererBtn: { backgroundColor: COLORS.terracotta, borderRadius: RADIUS.md, paddingVertical: 12, alignItems: 'center', marginTop: SPACING.md },
-  datesGenererBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.blanc },
-  datesGenererBtnSecondaire: { borderWidth: 1, borderColor: COLORS.terracotta, borderRadius: RADIUS.md, paddingVertical: 12, alignItems: 'center', marginTop: SPACING.sm },
-  datesGenererBtnSecondaireTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.terracotta },
-  gardeAutoDetecte: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.vert, marginTop: SPACING.sm, marginBottom: SPACING.sm },
-  genreSetup: { backgroundColor: COLORS.ivoire, borderRadius: RADIUS.md, padding: SPACING.sm, marginTop: SPACING.sm, marginBottom: SPACING.sm },
-  genreSetupTexte: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise, marginBottom: 8, lineHeight: 16 },
-  genreSetupLigne: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
-  genreSetupNom: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond },
-  genreChip: { paddingVertical: 5, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: COLORS.bordure },
-  genreChipActif: { backgroundColor: COLORS.vert, borderColor: COLORS.vert },
-  genreChipTexte: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.ardoise },
-  genreChipTexteActif: { color: COLORS.blanc },
+  datesAvertissement: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.terracotta, marginTop: 6, lineHeight: 18 },
 
   gardeCard: {
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.vert, borderRadius: RADIUS.lg,
     padding: SPACING.lg, marginBottom: SPACING.lg,
   },
-  gardeEyebrow: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.vert, letterSpacing: 0.6, marginBottom: 6 },
-  gardeTexte: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.vertProfond, lineHeight: 19, marginBottom: SPACING.md },
-  gardeLabel: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise, marginBottom: 6, marginTop: SPACING.sm },
-  gardeParentRow: { flexDirection: 'row', gap: 8, marginBottom: SPACING.md },
-  gardeParentChip: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.bordure },
-  gardeParentChipActif: { backgroundColor: COLORS.vert, borderColor: COLORS.vert },
-  gardeParentChipTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.ardoise },
-  gardeParentChipTexteActif: { color: COLORS.blanc },
-  gardeGenererBtn: { backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 13, alignItems: 'center' },
-  gardeGenererBtnDesactive: { opacity: 0.4 },
-  gardeGenererBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.blanc },
-  gardeConfirmation: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  gardeConfirmationTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.vert },
+  gardeEyebrow: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.vert, letterSpacing: 0.6, marginBottom: SPACING.sm },
+  gardeTexte: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.vertProfond, lineHeight: 19 },
+  gardeNote: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, lineHeight: 17, marginTop: 6 },
+  separateur: { height: 1, backgroundColor: COLORS.bordure, marginVertical: SPACING.md },
+
+  champ: { marginBottom: SPACING.sm },
+  champLabel: { fontFamily: FONTS.bodySemibold, fontSize: 11, color: COLORS.ardoise, letterSpacing: 0.3, marginBottom: 2 },
+  champValeur: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.vertProfond, lineHeight: 19 },
+  citation: {
+    fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vertProfond, fontStyle: 'italic',
+    lineHeight: 18, backgroundColor: '#F3F1EC', borderRadius: 8, padding: 10, marginTop: 2, marginBottom: SPACING.sm,
+  },
+
+  resultatOk: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  resultatOkTexte: { flex: 1, fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vert, lineHeight: 19 },
+  resultatNon: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
+  resultatNonTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.terracotta },
+
+  choixBloc: { backgroundColor: COLORS.ivoire, borderRadius: RADIUS.md, padding: SPACING.sm, marginTop: SPACING.md },
+  choixTitre: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, marginBottom: 8, lineHeight: 17 },
+  choixLigne: { flexDirection: 'row', gap: 8 },
+  choixChip: {
+    flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.bordure, backgroundColor: COLORS.blanc,
+  },
+  choixChipActif: { backgroundColor: COLORS.vert, borderColor: COLORS.vert },
+  choixChipTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.ardoise },
+  choixChipTexteActif: { color: COLORS.blanc },
+
+  genreSetupLigne: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
+  genreSetupNom: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond },
+  genreChip: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: COLORS.bordure, backgroundColor: COLORS.blanc },
+  genreChipActif: { backgroundColor: COLORS.vert, borderColor: COLORS.vert },
+  genreChipTexte: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.ardoise },
+  genreChipTexteActif: { color: COLORS.blanc },
+
+  btnGenerer: { backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 13, alignItems: 'center', marginTop: SPACING.md },
+  btnGenererTexte: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.blanc },
+  btnDesactive: { opacity: 0.4 },
+  btnLien: { paddingVertical: 12, alignItems: 'center', marginTop: SPACING.sm },
+  btnLienTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.vert },
 
   regleCard: {
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
@@ -516,6 +810,12 @@ const styles = StyleSheet.create({
   btnSecondaireTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.ardoise },
   statutFinalRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   statutFinalTexte: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vertProfond },
+
+  verdictCard: {
+    backgroundColor: 'rgba(45,106,79,0.08)', borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.sm,
+  },
+  verdictTitre: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.vertProfond, marginBottom: 4 },
+  verdictLigne: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vert, lineHeight: 18 },
 
   dejaValideBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(45,106,79,0.08)',
