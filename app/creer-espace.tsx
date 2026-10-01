@@ -152,7 +152,7 @@ function oublierJetonsEmail() {
   try { window.sessionStorage.removeItem(CLE_JETONS); } catch {}
 }
 
-type Etat = 'inscription' | 'confirmation' | 'reprise' | 'deja_installe';
+type Etat = 'inscription' | 'confirmation' | 'deja_inscrit' | 'reprise' | 'deja_installe';
 
 export default function CreerEspaceScreen() {
   const router = useRouter();
@@ -401,6 +401,22 @@ export default function CreerEspaceScreen() {
 
       if (authError) throw authError;
 
+      // Adresse deja inscrite. Supabase ne le dit pas en clair — ce serait
+      // reveler qui possede un compte — mais il rend un utilisateur dont la
+      // liste d'identites est VIDE, et n'envoie aucun e-mail.
+      //
+      // Sans ce test, l'ecran « Confirmez votre adresse » s'affichait quand
+      // meme : la personne attendait un message qui ne partirait jamais, et
+      // le bouton « Renvoyer l'e-mail » ne renvoyait rien non plus. Elle
+      // n'avait aucun moyen de comprendre, ni aucun chemin vers la
+      // connexion depuis cette page.
+      const identites = (authData.user as { identities?: unknown[] } | null)?.identities;
+      if (authData.user && Array.isArray(identites) && identites.length === 0) {
+        setEtat('deja_inscrit');
+        setChargement(false);
+        return;
+      }
+
       if (authData.user?.id) memoriserPrenom(authData.user.id, prenom.trim());
 
       if (!authData.session) {
@@ -414,7 +430,16 @@ export default function CreerEspaceScreen() {
 
       await fabriquerEspace(prenom.trim());
     } catch (err: any) {
-      echouer(err);
+      // On reste sur le formulaire. `echouer` bascule vers l'écran de
+      // reprise, qui suppose un compte confirmé et une session ouverte :
+      // c'est le bon écran quand la création d'espace échoue APRÈS
+      // l'inscription, et un piège quand c'est l'inscription elle-même qui a
+      // échoué. Une adresse mal tapée — « marie » au lieu de
+      // « marie@… » — faisait disparaître le formulaire au profit de
+      // « Terminons votre espace familial », sans aucun compte derrière et
+      // sans aucun chemin de retour : le bouton y relançait la même erreur
+      // indéfiniment.
+      alertCompat('Erreur', traduireErreurAuth(err?.message));
     } finally {
       fabricationEnCours.current = false;
       setChargement(false);
@@ -507,6 +532,42 @@ export default function CreerEspaceScreen() {
 
           <Pressable onPress={() => setEtat('inscription')}>
             <Text style={styles.lienTexteSecondaire}>Corriger mon adresse</Text>
+          </Pressable>
+
+          {/* La sortie. Elle manquait, et cette page n'en avait aucune
+              autre : qui arrivait ici par erreur ne pouvait que patienter
+              devant un e-mail ou refaire son adresse. */}
+          <Pressable onPress={() => router.replace('/connexion' as any)}>
+            <Text style={styles.lienTexteSecondaire}>J'ai déjà un compte — me connecter</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  if (etat === 'deja_inscrit') {
+    return (
+      <View style={styles.screen}>
+        <View style={styles.contentCentre}>
+          <Text style={styles.titre}>Cette adresse a déjà un compte</Text>
+          <Text style={styles.sousTitre}>
+            {email.trim()} est déjà inscrite sur Dualia. Aucun e-mail n'a été envoyé : il n'y a
+            rien à confirmer, il suffit de vous connecter.
+          </Text>
+
+          <Pressable
+            style={styles.boutonPrincipal}
+            onPress={() => router.replace('/connexion' as any)}
+          >
+            <Text style={styles.boutonPrincipalTexte}>Me connecter</Text>
+          </Pressable>
+
+          <Pressable onPress={() => router.replace('/mot-de-passe-oublie' as any)}>
+            <Text style={styles.lienTexteSecondaire}>J'ai oublié mon mot de passe</Text>
+          </Pressable>
+
+          <Pressable onPress={() => setEtat('inscription')}>
+            <Text style={styles.lienTexteSecondaire}>Utiliser une autre adresse</Text>
           </Pressable>
         </View>
       </View>

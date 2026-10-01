@@ -30,7 +30,7 @@
 // /personnaliser-home.
 
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Image, TextInput, useWindowDimensions, Modal } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Image, TextInput, useWindowDimensions, Modal, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { startOfWeek, endOfWeek, addDays, isToday, parseISO, format, differenceInYears } from 'date-fns';
@@ -146,6 +146,7 @@ export default function AccueilScreen() {
   const suggestionsMessages = useStore((s) => s.suggestionsMessages);
   const t = TRADUCTIONS[langue];
   const dateLocale = LOCALES[langue];
+  const chargementEnCours = useStore((s) => s.chargementInitial);
   const prenom = parents[parentActif]?.nom?.split(' ')[0] ?? '';
 
   const { widgetsVisibles } = useHomeWidgets();
@@ -546,6 +547,22 @@ export default function AccueilScreen() {
 
   const rangeesWidgets = grouper(widgetsAffiches, isMobile ? 1 : 2);
 
+  // Tant que l'espace n'est pas chargé, on n'affiche PAS l'accueil.
+  //
+  // Il se rendait entièrement, avec les valeurs de repli : « Bonjour
+  // Parent » — 'Parent 1' amputé de son chiffre —, une pastille « P », zéro
+  // euro, aucun enfant, aucune activité. Un écran complet, plausible, et
+  // faux. On a regardé le sien plusieurs minutes en le prenant pour un autre
+  // espace familial. Devant un avocat, c'est pire : rien ne signale que ce
+  // vide est un chargement et non la réalité de la famille.
+  if (chargementEnCours) {
+    return (
+      <View style={[styles.screen, styles.chargementWrap]}>
+        <ActivityIndicator size="large" color={COLORS.vert} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.screen}>
       <View style={[styles.topbar, isMobile && styles.topbarMobile]}>
@@ -696,6 +713,7 @@ export default function AccueilScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.ivoire },
+  chargementWrap: { alignItems: 'center', justifyContent: 'center' },
 
   topbar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
