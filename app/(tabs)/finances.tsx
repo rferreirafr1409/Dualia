@@ -41,6 +41,28 @@ import { formatMontant as formatMontantBrut } from '../../lib/comptes';
 
 const BACKEND_URL = 'https://dualia-backend.vercel.app/api/scan-ticket';
 
+// Libellés de la carte « Pension », définis ici plutôt que dans le gros objet
+// de traductions de ce fichier : la carte est une addition, et la garder
+// autonome évite d'avoir à toucher quatre blocs de langue pour deux phrases.
+const LIBELLES_PENSION = {
+  fr: {
+    titre: 'Pension et revalorisation',
+    sousTitre: (m: string) => `${m} — calculer l’indexation`,
+  },
+  es: {
+    titre: 'Pensión y actualización',
+    sousTitre: (m: string) => `${m} — calcular la actualización`,
+  },
+  pt: {
+    titre: 'Pensão e atualização',
+    sousTitre: (m: string) => `${m} — calcular a atualização`,
+  },
+  en: {
+    titre: 'Child support and indexation',
+    sousTitre: (m: string) => `${m} — work out the indexation`,
+  },
+} as const;
+
 // Taille max (en pixels, côté le plus long) et qualité JPEG appliquées avant
 // l'envoi d'une photo au serveur. Sans ça, une photo Android haute résolution
 // (souvent plusieurs Mo une fois en base64) peut dépasser la limite de taille
@@ -1004,6 +1026,34 @@ function FinancesScreenInner() {
             <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
           </Pressable>
         )}
+
+        {/* La pension et sa revalorisation.
+            L'écran existait, complet, mais il était déclaré avec href: null
+            dans (tabs)/_layout.tsx et AUCUN écran ne pointait vers lui : il
+            n'était atteignable que par son adresse. Le calcul de
+            revalorisation — celui qui lit l'indice du jugement et refuse de
+            calculer quand les bases INSEE diffèrent — n'a donc jamais été vu
+            par personne.
+            Sa place est ici : c'est l'écran de l'argent, et la pension est le
+            plus gros montant de la vie d'un parent séparé. Plutôt qu'un
+            onglet de plus, une carte sous celle du cadre familial, affichée
+            seulement quand il y a une pension à montrer. */}
+        {cadreFamilial?.statut === 'valide' && cadreFamilial.pension?.montant ? (
+          <Pressable style={styles.cadreCard} onPress={() => router.push('/caf' as any)}>
+            <View style={styles.cadreCardGauche}>
+              <Ionicons name="trending-up-outline" size={20} color={COLORS.terracotta} />
+              <View>
+                <Text style={styles.cadreCardTitre}>{LIBELLES_PENSION[langue].titre}</Text>
+                <Text style={styles.cadreCardSousTitre}>
+                  {LIBELLES_PENSION[langue].sousTitre(
+                    formatMontantBrut(cadreFamilial.pension.montant, langue)
+                  )}
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
+          </Pressable>
+        ) : null}
 
         <Text style={styles.sectionTitre}>{t.depensesRecentes}</Text>
 
