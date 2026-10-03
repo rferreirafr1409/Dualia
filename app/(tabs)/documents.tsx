@@ -742,8 +742,21 @@ export default function DocumentsScreen() {
 
             {/* Cadre familial : une action parmi d'autres, pas le sujet de la
                 page. Carte claire à accent vert — un pavé sombre intitulé
-                "jugement de divorce" réduirait Dualia aux seuls divorcés. */}
-            <TouchableOpacity style={styles.cadreCard} onPress={() => setJugementModalVisible(true)}>
+                "jugement de divorce" réduirait Dualia aux seuls divorcés.
+
+                Cette carte RENVOIE désormais vers Décisions, elle n'ouvre plus
+                l'import elle-même. Un jugement est une décision de justice :
+                c'est le mot que cherche un avocat, et c'est là que l'import
+                vit. Documents garde la PIÈCE — le PDF y est déposé
+                automatiquement à l'import, catégorie « Juridique ».
+
+                La modal `jugementModalVisible` plus bas n'est donc plus
+                ouverte par rien dans ce fichier. Elle est laissée en place
+                sciemment, le temps du déplacement ; à retirer avec son état et
+                son import. Neuf styles orphelins de ce genre, laissés sans
+                commentaire dans decisions.tsx, nous ont coûté une semaine de
+                malentendu sur l'emplacement réel de l'import. */}
+            <TouchableOpacity style={styles.cadreCard} onPress={() => router.push('/decisions' as any)}>
               <View style={styles.cadreAccent} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.cadreTitre}>{t.cadreFamilialTitre}</Text>

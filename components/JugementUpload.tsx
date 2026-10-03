@@ -111,6 +111,42 @@ function BandeauVerification({ items, texteLabel }: { items: string[]; texteLabe
 // donc aucun calendrier de garde n'était jamais généré depuis un
 // jugement, et l'écran de validation n'avait rien à montrer. Le mapping
 // vit dans lib/gardeJugement.ts, avec ses tests.
+/** Nature de la pièce, déduite du SEUL mot par lequel le document se nomme.
+ *  « Jugement », « ordonnance », « arrêt » désignent une décision rendue par
+ *  une juridiction ; tout le reste — y compris une convention homologuée,
+ *  dont l'homologation ne change pas la nature de l'acte — reste une
+ *  convention. En cas de doute on ne monte pas en autorité. */
+function natureDocument(typeDocument: unknown): 'jugement' | 'convention' {
+  const texte = String(typeDocument ?? '').toLowerCase();
+  return /jugement|ordonnance|arr[êe]t|sentencia|senten[çc]a|judgment|judgement/.test(texte)
+    ? 'jugement'
+    : 'convention';
+}
+
+/** Nom donné à la pièce dans le coffre-fort. Le libellé verbatim du document
+ *  quand il en porte un — un avocat reconnaît « Jugement du juge aux affaires
+ *  familiales » et pas « document_scan_0012.pdf ». Le sélecteur de fichier de
+ *  Dualia ne rend que l'URI, jamais le nom d'origine : ce libellé est donc la
+ *  seule désignation utile dont on dispose. Tronqué, parce que la colonne
+ *  n'est pas faite pour une phrase. */
+function nomPieceJugement(resultat: any, dateDuJour: string): string {
+  const brut = String(resultat?.type_document ?? '').trim();
+  const base = brut.length > 0 && brut.length <= 90 ? brut : 'Décision de justice';
+  const date = String(resultat?.date_jugement ?? '').slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? `${base} — ${date}` : `${base} — ${dateDuJour}`;
+}
+
+/** Note attachée à la pièce : la juridiction, verbatim, et rien d'inventé.
+ *  `tribunal` est relevé par le backend mais n'est persisté par aucune colonne
+ *  de `cadre_familial` ; la note du document est le seul endroit où cette
+ *  information survit à un rechargement. */
+function notePieceJugement(resultat: any): string | undefined {
+  const tribunal = String(resultat?.tribunal ?? '').trim();
+  const type = String(resultat?.type_document ?? '').trim();
+  const morceaux = [type, tribunal].filter((m) => m.length > 0 && m.length <= 160);
+  return morceaux.length > 0 ? morceaux.join(' — ') : undefined;
+}
+
 function construireCadreFamilial(resultat: any): CadreFamilial {
   const fraisExtra = resultat?.frais_extrascolaires;
   const pension = resultat?.pension_alimentaire;
@@ -172,7 +208,18 @@ function construireCadreFamilial(resultat: any): CadreFamilial {
     datesSpeciales: datesSpecialesDepuisExtraction(resultat),
     documentSource: {
       id: `doc-${Date.now()}`,
-      type: 'convention',
+      // La nature était codée en dur à 'convention' : un jugement du juge aux
+      // affaires familiales était donc enregistré comme une convention entre
+      // parents. Devant un magistrat la différence n'est pas de vocabulaire —
+      // une convention se négocie, un jugement s'impose.
+      //
+      // Le backend relève déjà `type_document` VERBATIM, tel que le document
+      // se nomme lui-même (« Jugement du juge aux affaires familiales »,
+      // « Ordonnance de non-conciliation », « Convention de divorce par
+      // consentement mutuel »). On s'appuie sur ce mot, et sur rien d'autre :
+      // en l'absence de mot reconnu on retombe sur 'convention', qui ne
+      // prétend à aucune autorité judiciaire.
+      type: natureDocument(resultat?.type_document),
       date: resultat?.date_jugement || undefined,
     },
     statut: 'a_verifier',
@@ -190,6 +237,8 @@ type JugementUploadProps = {
 export default function JugementUpload({ onTermine }: JugementUploadProps) {
   const router = useRouter();
   const synchroniserCadreFamilial = useStore((s) => s.synchroniserCadreFamilial);
+  const ajouterDocument = useStore((s) => s.ajouterDocument);
+  const parentActif = useStore((s) => s.parentActif);
   const langue = useStore((s) => s.langue);
   const t = TRADUCTIONS[langue].decisions;
 
@@ -199,11 +248,24 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
   const [resultat, setResultat] = useState<any>(null);
   const [synchronisationEnCours, setSynchronisationEnCours] = useState(false);
 
+  // Le PDF lui-même, gardé le temps de la session d'import.
+  //
+  // Il était lu, envoyé au backend pour extraction, puis JETÉ : la pièce
+  // source n'existait nulle part. Ni dans le coffre-fort, ni dans les
+  // décisions. Seules les clauses survivaient, dans `cadre_familial`. « Et le
+  // jugement, il est où ? » est la première question d'un avocat, et la
+  // réponse était : il n'y est plus.
+  //
+  // Variable d'état de composant, donc jamais écrite dans le stockage local —
+  // un PDF de plusieurs méga-octets n'a rien à faire dans `persist`.
+  const [pdfConserve, setPdfConserve] = useState<string | null>(null);
+
   const reinitialiser = () => {
     setStatut('idle');
     setErreur(null);
     setAvertissement(null);
     setResultat(null);
+    setPdfConserve(null);
   };
 
   const lirePdfEnBase64 = async (asset: { uri: string }): Promise<string> => {
@@ -233,6 +295,7 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
 
     try {
       const pdfBase64 = await lirePdfEnBase64(pick);
+      setPdfConserve(pdfBase64);
 
       // Étape 1 : PDF -> texte
       setStatut('extraction_texte');
@@ -273,11 +336,76 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
     }
   };
 
+  /** Dépose le PDF dans le coffre-fort familial.
+   *
+   *  Rend le motif de l'échec, ou null si la pièce est bien archivée — on ne
+   *  rend pas un booléen parce que « pas de PDF à archiver » et « le serveur
+   *  a refusé » ne méritent pas le même message.
+   *
+   *  Appelé APRÈS la synchronisation du cadre, et son échec ne bloque donc
+   *  pas la vérification : les clauses sont déjà enregistrées. Mais il est
+   *  dit, parce qu'un cadre sans sa pièce est un cadre qu'aucun tiers ne
+   *  pourra vérifier. */
+  const archiverPiece = async (): Promise<string | null> => {
+    if (!pdfConserve) return 'absent';
+
+    const aujourdHui = new Date().toISOString();
+    const nom = nomPieceJugement(resultat, aujourdHui.slice(0, 10));
+
+    // Un parent qui réimporte son jugement ne doit pas remplir son coffre-fort
+    // de copies. Le nom porte la date de la décision : deux imports de la même
+    // pièce produisent donc le même nom, et le second est inutile.
+    const dejaPresent = useStore
+      .getState()
+      .documents.some((d) => d.nom === nom && !!d.fichierUrl);
+    if (dejaPresent) return null;
+
+    const dateJugement = String(resultat?.date_jugement ?? '').slice(0, 10);
+    try {
+      await ajouterDocument(
+        {
+          id: `doc-${Date.now()}`,
+          nom,
+          categorie: 'juridique',
+          auteurId: parentActif,
+          date: /^\d{4}-\d{2}-\d{2}$/.test(dateJugement) ? dateJugement : aujourdHui,
+          // JAMAIS true. Dualia n'horodate rien de façon qualifiée tant
+          // qu'aucun contrat avec un prestataire de confiance n'est effectif.
+          // Un badge « Certifié » sur la pièce maîtresse du dossier coûterait
+          // la crédibilité de tout le reste.
+          certifie: false,
+          note: notePieceJugement(resultat),
+          portee: 'famille',
+          enfantIds: [],
+        },
+        { base64: pdfConserve, contentType: 'application/pdf' }
+      );
+      return null;
+    } catch (e: any) {
+      console.error('[Dualia] Pièce du jugement non archivée :', e);
+      return e?.message ?? 'inconnu';
+    }
+  };
+
   const passerALaValidation = async () => {
     const cadre = construireCadreFamilial(resultat);
     setSynchronisationEnCours(true);
     try {
       await synchroniserCadreFamilial(cadre);
+
+      const echecPiece = await archiverPiece();
+      if (echecPiece && echecPiece !== 'absent') {
+        const message =
+          "Les clauses sont enregistrées, mais le PDF n'a pas pu être déposé dans le coffre-fort. " +
+          'Tu peux l\'ajouter à la main depuis Documents.\n\n' +
+          echecPiece;
+        if (Platform.OS === 'web') {
+          window.alert(message);
+        } else {
+          Alert.alert('Pièce non archivée', message);
+        }
+      }
+
       onTermine?.();
       router.push('/validation-cadre' as any);
     } catch (e: any) {
