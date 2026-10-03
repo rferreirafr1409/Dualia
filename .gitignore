@@ -42,3 +42,5 @@ yarn-error.*
 app/(tabs)/backups-storage/
 app/securite-compte.tsx.orig
 app/(tabs)/backup-storage-dualia.js
+
+sauvegardes/

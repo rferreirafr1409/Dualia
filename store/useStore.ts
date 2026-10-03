@@ -263,6 +263,47 @@ const cadreDepuisDB = (c: any, regles: any[]): CadreFamilial => ({
 });
 
 async function assurerCadreFamilialDistant(familleId: string, cadre: CadreFamilial): Promise<string> {
+  // Un import de jugement est une PROPOSITION. Cet upsert réécrit la ligne
+  // entière : tel quel, il effaçait ce que le parent avait saisi ou confirmé
+  // lui-même, sans qu'aucun écran ne le signale.
+  //
+  // Deux pertes, vérifiées :
+  //
+  //   · pension_extra.indexation.indiceInitialConfirme — l'indice INSEE de
+  //     référence, tapé à la main et « verrouillé » par le parent. Une
+  //     extraction fraîche (construireCadreFamilial) ne porte AUCUNE
+  //     indexation : le champ partait donc à chaque réimport, et avec lui la
+  //     base de toutes les revalorisations de la pension.
+  //   · garde.regimeConfirme et garde.generation — la réponse du parent à
+  //     « où la résidence est-elle fixée ? » et le verdict de génération du
+  //     calendrier.
+  //
+  // C'est exactement le danger que verrouillerIndiceInitial documente pour
+  // justifier son update d'une seule colonne. La leçon n'avait pas été
+  // appliquée ici. On relit donc l'existant et on reporte ce que le nouveau
+  // cadre n'apporte pas.
+  const { data: existant } = await supabase
+    .from('cadre_familial')
+    .select('garde, pension_extra')
+    .eq('famille_id', familleId)
+    .maybeSingle();
+
+  const extraExistant = (existant?.pension_extra ?? null) as
+    | { indexation?: { indiceInitialConfirme?: number } }
+    | null;
+  const indiceVerrouille = extraExistant?.indexation?.indiceInitialConfirme;
+
+  const indexationFusionnee =
+    cadre.pension?.indexation?.indiceInitialConfirme === undefined && indiceVerrouille !== undefined
+      ? { ...(cadre.pension?.indexation ?? {}), indiceInitialConfirme: indiceVerrouille }
+      : cadre.pension?.indexation;
+
+  // Le bloc garde, lui, ne survit que si le nouveau cadre n'en apporte pas :
+  // un jugement différent impose de reposer la question du régime, et l'écran
+  // de validation la repose. Conserver l'ancien régime sous de nouvelles
+  // clauses produirait un calendrier justifié par le mauvais document.
+  const gardeAEcrire = cadre.garde ?? existant?.garde ?? null;
+
   const { data, error } = await supabase
     .from('cadre_familial')
     .upsert(
@@ -274,15 +315,15 @@ async function assurerCadreFamilialDistant(familleId: string, cadre: CadreFamili
         document_source_date: cadre.documentSource?.date ?? null,
         statut: cadre.statut,
         valide_le: cadre.valideLe ?? null,
-        garde: cadre.garde ?? null,
+        garde: gardeAEcrire,
         dates_speciales: cadre.datesSpeciales ?? null,
         pension_extra: cadre.pension
           ? {
               montantParEnfant: cadre.pension.montantParEnfant,
               nombreEnfantsConcernes: cadre.pension.nombreEnfantsConcernes,
-              indexation: cadre.pension.indexation,
+              indexation: indexationFusionnee,
             }
-          : null,
+          : extraExistant,
       },
       { onConflict: 'famille_id' }
     )
@@ -296,6 +337,34 @@ async function assurerCadreFamilialDistant(familleId: string, cadre: CadreFamili
 }
 
 const EST_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * La purge d'un ancien planning n'est lancée que si CHAQUE événement qu'on
+ * vient de poser a reçu son identifiant distant.
+ *
+ * Pourquoi : purgerPlanningsGeneres épargne les identifiants qu'on lui
+ * passe, mais ne retient que les UUID — un identifiant local
+ * (« garde-sem-1759… ») est écarté du `.not('id','in',…)`. Si la
+ * réconciliation est partielle, la liste à épargner rétrécit, et le DELETE
+ * emporte les lignes fraîchement insérées. L'écran, lui, annonce « 12
+ * semaines générées » : le parent garde son planning sur son appareil, le
+ * co-parent et le magistrat ne voient rien, et aucun rechargement ne révèle
+ * la contradiction.
+ *
+ * En cas de doute on ne purge donc pas. Un ancien planning qui subsiste se
+ * voit et se régénère ; un nouveau planning effacé en silence, non.
+ */
+function purgeSansRisque(poses: string[], attendus: number): boolean {
+  const complet = poses.length === attendus && poses.every((id) => EST_UUID.test(id));
+  if (!complet) {
+    console.error(
+      '[Dualia] Purge de l’ancien planning ignorée : identifiants distants incomplets ' +
+        `(${poses.filter((id) => EST_UUID.test(id)).length}/${attendus}). ` +
+        'Le nouveau planning est en base ; l’ancien peut subsister.'
+    );
+  }
+  return complet;
+}
 
 const evenementCalendrierVersDB = (ev: EvenementCalendrier, familleId: string, parentUuid?: string) => ({
   famille_id: familleId,
@@ -1128,7 +1197,10 @@ export const useStore = create<DualiaStore>()(
       .insert(evs.map((ev) => evenementGardeVersDB(ev, familleId, parents[ev.parentId]?.uuid)))
       .select();
 
-    if (error || !data) {
+    // `data: []` est TRUTHY : un tableau vide passait pour une réussite, et
+    // le planning était ensuite annoncé comme généré alors que la réponse ne
+    // ramenait aucune ligne.
+    if (error || !data || data.length === 0) {
       console.error('[Dualia] Échec synchronisation du planning :', error);
       // La réponse remonte jusqu'au verdict affiché : un planning qui
       // n'existe qu'en mémoire ne doit pas être annoncé comme généré. Il
@@ -1262,6 +1334,7 @@ export const useStore = create<DualiaStore>()(
     const evenements = construireSemainesAlternees(dateDebutIso, parentQuiCommence, nombreSemaines);
     const poses = await ajouterEvenementsEnLot(evenements);
     if (!poses) return false;
+    if (!purgeSansRisque(poses, evenements.length)) return true;
     await purgerPlanningsGeneres(evenements[0]?.dateDebut, poses);
     return true;
   },
@@ -1278,6 +1351,7 @@ export const useStore = create<DualiaStore>()(
     );
     const poses = await ajouterEvenementsEnLot(evenements);
     if (!poses) return false;
+    if (!purgeSansRisque(poses, evenements.length)) return true;
     await purgerPlanningsGeneres(evenements[0]?.dateDebut, poses);
     return true;
   },
@@ -1442,6 +1516,20 @@ export const useStore = create<DualiaStore>()(
           .then(({ data, error }) => {
             if (error || !data) {
               console.error('[Dualia] Échec synchronisation événement calendrier :', error);
+              // Retrait de l'état local. Sans ce retour en arrière, un
+              // rendez-vous refusé par le serveur restait affiché chez son
+              // auteur — et evenementsCalendrier est persisté, donc
+              // DÉFINITIVEMENT, rechargement compris — pendant que l'autre
+              // parent ne le voyait jamais. « Noël chez le père » apparaissait
+              // sur un téléphone et pas sur l'autre, et le désaccord naissait
+              // six semaines plus tard sans que personne ne puisse comprendre
+              // pourquoi. Mieux vaut un événement qui disparaît qu'un
+              // événement que l'on croit partagé.
+              set((state) => ({
+                evenementsCalendrier: state.evenementsCalendrier.filter(
+                  (e) => !(e === ev || e.id === ev.id)
+                ),
+              }));
               return;
             }
             set((state) => ({
@@ -2665,23 +2753,42 @@ export const useStore = create<DualiaStore>()(
   setCadreFamilial: (cadre) => set({ cadreFamilial: cadre }),
 
   synchroniserCadreFamilial: async (cadre) => {
+    // Le cadre précédent est gardé sous la main : en cas d'échec, l'écran
+    // affiche « réessaie », et le parent doit retrouver l'état d'avant plutôt
+    // qu'un cadre fantôme visible chez lui seul.
+    const precedent = get().cadreFamilial;
     set({ cadreFamilial: cadre });
 
     const familleId = get().familleId;
     if (!familleId) {
-      console.error('[Dualia] Cadre familial non synchronisé : aucune famille active.');
-      return;
+      // Sortir en silence laissait un cadre purement local, que le co-parent
+      // ne verrait jamais, après un écran annonçant la réussite.
+      set({ cadreFamilial: precedent });
+      throw new Error("Aucune famille active : le cadre familial n'a pas été enregistré.");
     }
 
     try {
       const cadreFamilialId = await assurerCadreFamilialDistant(familleId, cadre);
 
-      const { error: erreurSuppression } = await supabase
+      // Les identifiants existants sont relevés AVANT toute écriture : la
+      // suppression portera sur eux seuls, jamais sur ce qu'on vient de poser.
+      const { data: anciennes, error: erreurLecture } = await supabase
         .from('regles_partage')
-        .delete()
+        .select('id')
         .eq('cadre_familial_id', cadreFamilialId);
-      if (erreurSuppression) throw erreurSuppression;
+      if (erreurLecture) throw erreurLecture;
+      const anciensIds = (anciennes ?? []).map((r) => r.id as string);
 
+      // ON POSE D'ABORD, ON EFFACE ENSUITE.
+      //
+      // L'ordre inverse — delete puis insert — détruisait les règles validées
+      // avant de savoir si les nouvelles pouvaient être écrites. Si l'insert
+      // échouait (réseau, refus RLS, une seule ligne invalide), la famille se
+      // retrouvait avec ZÉRO règle, leur validation_statut, leur valide_le et
+      // leur valide_par partis — c'est-à-dire la trace d'audit qu'un médiateur
+      // vient précisément chercher — pendant que l'écran affichait
+      // « Impossible d'enregistrer pour l'instant, réessaie », qui laisse
+      // croire que rien n'a bougé.
       let reglesSyncees: ReglePartage[] = [];
       if (cadre.regles.length > 0) {
         const { data, error } = await supabase
@@ -2692,6 +2799,14 @@ export const useStore = create<DualiaStore>()(
         reglesSyncees = (data ?? []).map(regleDepuisDB);
       }
 
+      if (anciensIds.length > 0) {
+        const { error: erreurSuppression } = await supabase
+          .from('regles_partage')
+          .delete()
+          .in('id', anciensIds);
+        if (erreurSuppression) throw erreurSuppression;
+      }
+
       set((state) => ({
         cadreFamilial: state.cadreFamilial
           ? { ...state.cadreFamilial, id: cadreFamilialId, regles: reglesSyncees }
@@ -2699,6 +2814,7 @@ export const useStore = create<DualiaStore>()(
       }));
     } catch (e) {
       console.error('[Dualia] Échec de la synchronisation du cadre familial :', e);
+      set({ cadreFamilial: precedent });
       throw e;
     }
   },
@@ -3324,14 +3440,25 @@ export const useStore = create<DualiaStore>()(
       .select('*')
       .eq('famille_id', familleId)
       .order('created_at', { ascending: false });
-    if (erreurMoments) console.error('[Dualia] Échec chargement Fil de vie :', erreurMoments);
-    const momentsCharges = (momentsDB ?? []).map((row: any) => momentDepuisDB(row, roleParUuid));
-    const urlsMoments = await signerChemins('moments-photos', momentsCharges.map((m) => m.photoUrl));
-    set({
-      moments: momentsCharges.map((m) =>
-        m.photoUrl && urlsMoments[m.photoUrl] ? { ...m, photoUrl: urlsMoments[m.photoUrl] } : m
-      ),
-    });
+    // « Je ne trouve rien » n'est pas « il n'y a rien ».
+    //
+    // supabase-js rend data: null quand la requête échoue : le `?? []` qui
+    // suivait écrivait donc un tableau VIDE dans l'état, et le middleware
+    // persist le réécrivait aussitôt dans le stockage local. Un wifi qui
+    // lâche en plein chargement ne masquait pas les données du parent, il les
+    // DÉTRUISAIT sur son appareil. La branche `enfants` avait été protégée,
+    // et son commentaire affirmait que « tout le reste de cette fonction est
+    // prudent dans ce cas » — ce n'était pas le cas. Chaque collection est
+    // désormais traitée comme elle.
+    if (!erreurMoments) {
+      const momentsCharges = (momentsDB ?? []).map((row: any) => momentDepuisDB(row, roleParUuid));
+      const urlsMoments = await signerChemins('moments-photos', momentsCharges.map((m) => m.photoUrl));
+      set({
+        moments: momentsCharges.map((m) =>
+          m.photoUrl && urlsMoments[m.photoUrl] ? { ...m, photoUrl: urlsMoments[m.photoUrl] } : m
+        ),
+      });
+    }
 
     const { data: cadreDB, error: erreurCadre } = await supabase
       .from('cadre_familial')
@@ -3340,8 +3467,10 @@ export const useStore = create<DualiaStore>()(
       .maybeSingle();
 
     if (erreurCadre) {
+      // On garde le cadre déjà connu. L'effacer sur une lecture en échec
+      // faisait disparaître la pension, les règles validées et le régime de
+      // garde confirmé — et, l'état étant persisté, pour de bon.
       console.error('[Dualia] Échec chargement cadre familial :', erreurCadre);
-      set({ cadreFamilial: null });
     } else if (cadreDB) {
       const { data: reglesDB } = await supabase
         .from('regles_partage')
@@ -3372,7 +3501,9 @@ export const useStore = create<DualiaStore>()(
         evenementsLus.filter((e) => !estInstantValide(e.date)).map((e) => ({ id: e.id, date: e.date }))
       );
     }
-    set({ evenementsCalendrier: evenementsLisibles });
+    if (!erreurEvenements) {
+        set({ evenementsCalendrier: evenementsLisibles });
+    }
 
     const { data: depensesDB, error: erreurDepenses } = await supabase
       .from('depenses')
@@ -3380,7 +3511,9 @@ export const useStore = create<DualiaStore>()(
       .eq('famille_id', familleId)
       .order('date', { ascending: false });
     if (erreurDepenses) console.error('[Dualia] Échec chargement dépenses :', erreurDepenses);
-    set({ depenses: (depensesDB ?? []).map((d: any) => depenseDepuisDB(d, roleParUuid)) });
+    if (!erreurDepenses) {
+        set({ depenses: (depensesDB ?? []).map((d: any) => depenseDepuisDB(d, roleParUuid)) });
+    }
 
     const { data: journalDB, error: erreurJournal } = await supabase
       .from('journal_entries')
@@ -3388,13 +3521,15 @@ export const useStore = create<DualiaStore>()(
       .eq('famille_id', familleId)
       .order('date', { ascending: false });
     if (erreurJournal) console.error('[Dualia] Échec chargement journal :', erreurJournal);
-    const journalCharge = (journalDB ?? []).map((e: any) => journalDepuisDB(e, roleParUuid));
-    const urlsJournal = await signerChemins('journal-photos', journalCharge.map((e) => e.photoUrl));
-    set({
-      journalEntries: journalCharge.map((e) =>
-        e.photoUrl && urlsJournal[e.photoUrl] ? { ...e, photoUrl: urlsJournal[e.photoUrl] } : e
-      ),
-    });
+    if (!erreurJournal) {
+      const journalCharge = (journalDB ?? []).map((e: any) => journalDepuisDB(e, roleParUuid));
+      const urlsJournal = await signerChemins('journal-photos', journalCharge.map((e) => e.photoUrl));
+      set({
+        journalEntries: journalCharge.map((e) =>
+          e.photoUrl && urlsJournal[e.photoUrl] ? { ...e, photoUrl: urlsJournal[e.photoUrl] } : e
+        ),
+      });
+    }
 
     const { data: decisionsDB, error: erreurDecisions } = await supabase
       .from('decisions')
@@ -3402,7 +3537,9 @@ export const useStore = create<DualiaStore>()(
       .eq('famille_id', familleId)
       .order('date_creation', { ascending: false });
     if (erreurDecisions) console.error('[Dualia] Échec chargement décisions :', erreurDecisions);
-    set({ decisions: (decisionsDB ?? []).map((row: any) => decisionDepuisDB(row, roleParUuid)) });
+    if (!erreurDecisions) {
+        set({ decisions: (decisionsDB ?? []).map((row: any) => decisionDepuisDB(row, roleParUuid)) });
+    }
 
     const { data: messagesDB, error: erreurMessages } = await supabase
       .from('messages')
@@ -3410,7 +3547,9 @@ export const useStore = create<DualiaStore>()(
       .eq('famille_id', familleId)
       .order('date_envoi', { ascending: true });
     if (erreurMessages) console.error('[Dualia] Échec chargement messages :', erreurMessages);
-    set({ messages: (messagesDB ?? []).map((row: any) => messageDepuisDB(row, roleParUuid)) });
+    if (!erreurMessages) {
+        set({ messages: (messagesDB ?? []).map((row: any) => messageDepuisDB(row, roleParUuid)) });
+    }
 
     const { data: tiersDB, error: erreurTiers } = await supabase
       .from('tiers')
@@ -3429,15 +3568,17 @@ export const useStore = create<DualiaStore>()(
       if (erreurLiens) console.error('[Dualia] Échec chargement des rattachements tiers :', erreurLiens);
       liensTiers = liensDB ?? [];
     }
-    set({
-      tiers: (tiersDB ?? []).map((row: any) =>
-        tiersDepuisDB(
-          row,
-          roleParUuid,
-          liensTiers.filter((l) => l.tiers_id === row.id).map((l) => l.enfant_id)
-        )
-      ),
-    });
+    if (!erreurTiers) {
+      set({
+        tiers: (tiersDB ?? []).map((row: any) =>
+          tiersDepuisDB(
+            row,
+            roleParUuid,
+            liensTiers.filter((l) => l.tiers_id === row.id).map((l) => l.enfant_id)
+          )
+        ),
+      });
+    }
 
     const { data: agendaScolaireDB, error: erreurAgendaScolaire } = await supabase
       .from('agenda_scolaire')
@@ -3445,7 +3586,9 @@ export const useStore = create<DualiaStore>()(
       .eq('famille_id', familleId)
       .order('date_echeance', { ascending: true });
     if (erreurAgendaScolaire) console.error('[Dualia] Échec chargement agenda scolaire :', erreurAgendaScolaire);
-    set({ agendaScolaire: (agendaScolaireDB ?? []).map((row: any) => agendaScolaireDepuisDB(row, roleParUuid)) });
+    if (!erreurAgendaScolaire) {
+      set({ agendaScolaire: (agendaScolaireDB ?? []).map((row: any) => agendaScolaireDepuisDB(row, roleParUuid)) });
+    }
 
     const { data: evenementsGardeDB, error: erreurEvenementsGarde } = await supabase
       .from('evenements_garde')
@@ -3453,7 +3596,9 @@ export const useStore = create<DualiaStore>()(
       .eq('famille_id', familleId)
       .order('date_debut', { ascending: true });
     if (erreurEvenementsGarde) console.error('[Dualia] Échec chargement calendrier de garde :', erreurEvenementsGarde);
-    set({ evenements: (evenementsGardeDB ?? []).map((row: any) => evenementGardeDepuisDB(row, roleParUuid)) });
+    if (!erreurEvenementsGarde) {
+      set({ evenements: (evenementsGardeDB ?? []).map((row: any) => evenementGardeDepuisDB(row, roleParUuid)) });
+    }
 
     const { data: documentsDB, error: erreurDocuments } = await supabase
       .from('documents')
@@ -3474,15 +3619,17 @@ export const useStore = create<DualiaStore>()(
       if (erreurLiaisons) console.error('[Dualia] Échec chargement document_enfants :', erreurLiaisons);
       liaisonsDocEnfants = liaisons ?? [];
     }
-    set({
-      documents: (documentsDB ?? []).map((row: any) =>
-        documentDepuisDB(
-          row,
-          roleParUuid,
-          liaisonsDocEnfants.filter((l) => l.document_id === row.id).map((l) => l.enfant_id)
-        )
-      ),
-    });
+    if (!erreurDocuments) {
+      set({
+        documents: (documentsDB ?? []).map((row: any) =>
+          documentDepuisDB(
+            row,
+            roleParUuid,
+            liaisonsDocEnfants.filter((l) => l.document_id === row.id).map((l) => l.enfant_id)
+          )
+        ),
+      });
+    }
 
 
 

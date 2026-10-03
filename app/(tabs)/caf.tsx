@@ -1,14 +1,63 @@
-import { useState, useEffect } from 'react';
+// app/(tabs)/caf.tsx
+//
+// Ce que Dualia sait de la pension, et sa revalorisation.
+//
+// ---------------------------------------------------------------------------
+// POURQUOI CET ÉCRAN A ÉTÉ REFAIT
+// ---------------------------------------------------------------------------
+//
+// La version précédente était une maquette remplie de valeurs inventées,
+// présentées avec l'autorité du reste de l'application :
+//
+//   · « ~132 €/mois — Pour 2 enfants (Emma 8 ans, Léo 5 ans) » : deux enfants
+//     qui n'existent dans aucune famille, un montant sans calcul.
+//   · « Attestation de garde alternée — 15 jan. 2026 » et « Déclaration
+//     revenus CAF 2025 », tous deux badgés « ✓ Certifié », pour des documents
+//     que Dualia n'a jamais produits.
+//   · Une carte « Crédit d'impôt estimé 2025 » qui affichait en réalité le
+//     montant de la pension, et « 1 840 € » codé en dur en son absence.
+//   · Un simulateur dont le champ « Revenus annuels nets » n'entrait dans
+//     aucun calcul : 20 000 € et 200 000 € rendaient le même résultat.
+//   · « Garde alternée déclarée ✓ » affiché par défaut, quelle que soit la
+//     situation réelle de la famille.
+//
+// Devant un magistrat, un badge « Certifié » sur un document fabriqué coûte
+// la crédibilité de tout le reste — y compris de ce qui est vrai. Tout cela
+// est retiré. Cet écran n'affiche plus que ce qui vient du jugement du
+// parent, et dit en toutes lettres ce qu'il ne sait pas encore faire.
+//
+// ---------------------------------------------------------------------------
+// LE CHANGEMENT DE BASE DE L'INSEE
+// ---------------------------------------------------------------------------
+//
+// L'INSEE a changé la base de référence de l'indice des prix à la
+// consommation en janvier 2026 : les valeurs publiées depuis sont en
+// base 2025, celles d'avant en base 2015.
+//
+// Un jugement rendu avant 2026 cite donc un indice en base 2015, et la
+// valeur récupérée automatiquement aujourd'hui est en base 2025. Faire le
+// rapport des deux est faux, et faux dans le mauvais sens : 800 × (102,5 /
+// 103,65) FAIT BAISSER la pension au lieu de la revaloriser. L'INSEE ne
+// publie aucun coefficient de raccordement officiel entre les deux bases,
+// seulement une table de correspondance des séries.
+//
+// Cet écran demande donc au parent de quelle base relève l'indice de son
+// jugement, et REFUSE de calculer quand les deux bases diffèrent. Un outil
+// qui rend un chiffre qu'il ne peut pas justifier ne vaut rien devant un
+// juge ; un outil qui dit « je ne peux pas, et voici pourquoi » se défend.
+//
+// Les libellés sont définis ici plutôt que dans constants/i18n.ts : les clés
+// de l'ancien écran décrivaient les données fictives, et les réutiliser
+// aurait fait réapparaître « Emma » et « Léo » dans une autre langue.
+
+import { useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Modal,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
   Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -18,170 +67,358 @@ import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { useStore } from '../../store/useStore';
 import { entetesBackend } from '../../lib/appelBackend';
 import { supabase } from '../../constants/supabase';
-import { TRADUCTIONS } from '../../constants/i18n';
-
-type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
+import { formatMontant } from '../../lib/comptes';
 
 const ACCENT = '#B5927C';
 
+type Langue = 'fr' | 'es' | 'pt' | 'en';
+
+// ---------------------------------------------------------------------------
+// Libellés
+// ---------------------------------------------------------------------------
+
+const L = {
+  fr: {
+    titre: 'Pension',
+    sousTitre: 'Ce que dit ta décision, et sa revalorisation',
+
+    aucunCadreTitre: 'Aucun cadre familial validé',
+    aucunCadreTexte:
+      "Importe ton jugement ou ta convention depuis l'onglet Décisions, puis vérifie-le. Les montants et les clauses apparaîtront ici, tels que le document les écrit.",
+
+    pensionTitre: 'Contribution à l’entretien et à l’éducation',
+    parMois: 'par mois',
+    parTrimestre: 'par trimestre',
+    periodiciteAutre: 'périodicité à préciser',
+    parEnfant: (n: number, m: string) => `${m} par enfant · ${n} enfant${n > 1 ? 's' : ''} concerné${n > 1 ? 's' : ''}`,
+    clauseSource: 'Clause du document',
+
+    gardeTitre: 'Ce que le document dit de la garde',
+    residence: 'Résidence',
+    droitVisite: 'Droit de visite et d’hébergement',
+    nonRenseigne: 'Non renseigné dans le document',
+
+    revalTitre: 'Revalorisation',
+    revalFormuleDefaut:
+      'Pension revalorisée = montant initial × (nouvel indice ÷ indice de base).',
+    revalIndiceRef: (s: string) => `Indice retenu par le document : ${s}`,
+    revalDateRevision: (s: string) => `Révision : ${s}`,
+
+    baseQuestion: 'De quelle base relève l’indice cité par ton document ?',
+    baseAide:
+      'Un jugement rendu avant 2026 cite un indice en base 2015. L’INSEE est passé en base 2025 en janvier 2026.',
+    base2015: 'Base 2015',
+    base2025: 'Base 2025',
+    baseInconnue: 'Je ne sais pas',
+    baseInconnueTexte:
+      'Regarde la date de ton jugement : avant janvier 2026, c’est la base 2015.',
+
+    indiceInitialLabel: 'Indice de base, celui que cite le document',
+    indiceInitialPlaceholder: 'par exemple 103,61',
+    enregistrer: 'Enregistrer',
+    enregistre: (v: number) => `${String(v).replace('.', ',')} — enregistré`,
+
+    indiceActuelLabel: 'Indice le plus récent',
+    indiceActuelPlaceholder: 'par exemple 102,5',
+    auto: (v: number, base: number | null, d: string) =>
+      `Récupéré : ${String(v).replace('.', ',')}${base ? ` — base ${base}` : ''}, le ${d}`,
+    recuperer: 'Récupérer la valeur du jour',
+    recuperationEnCours: 'Récupération…',
+    recuperationEchec:
+      'La valeur n’a pas pu être récupérée. Saisis-la à la main depuis le site de l’INSEE.',
+    lienInsee: 'Consulter la série sur insee.fr',
+
+    basesDifferentesTitre: 'Calcul impossible : les deux indices ne sont pas dans la même base',
+    basesDifferentesTexte:
+      'Ton document cite un indice en base 2015 et la valeur récupérée est en base 2025. Leur rapport n’a pas de sens : il ferait baisser ta pension au lieu de la revaloriser. L’INSEE ne publie pas de coefficient de conversion officiel entre les deux bases. Saisis l’indice le plus récent publié dans la même base que ton jugement.',
+
+    resultatLabel: 'Montant revalorisé',
+    resultatDetail: (initial: string, ia: string, ib: string) =>
+      `${initial} × (${ia} ÷ ${ib})`,
+    note:
+      'Ce calcul est une aide à la lecture de ta décision. Il n’a aucune valeur juridique : seul le document fait foi, et la revalorisation relève du parent débiteur.',
+
+    pasEncoreTitre: 'Pas encore disponible',
+    pasEncoreTexte:
+      'Le calcul des aides familiales et la production d’attestations ne sont pas encore dans Dualia. Ils arriveront, et ils seront calculés à partir de ton dossier — pas estimés.',
+  },
+
+  es: {
+    titre: 'Pensión',
+    sousTitre: 'Lo que dice tu resolución, y su actualización',
+    aucunCadreTitre: 'Ningún marco familiar validado',
+    aucunCadreTexte:
+      'Importa tu sentencia o convenio desde la pestaña Decisiones y verifícalo. Los importes y las cláusulas aparecerán aquí, tal como los escribe el documento.',
+    pensionTitre: 'Contribución al mantenimiento y la educación',
+    parMois: 'al mes',
+    parTrimestre: 'al trimestre',
+    periodiciteAutre: 'periodicidad por precisar',
+    parEnfant: (n: number, m: string) => `${m} por hijo · ${n} hijo${n > 1 ? 's' : ''}`,
+    clauseSource: 'Cláusula del documento',
+    gardeTitre: 'Lo que el documento dice sobre la custodia',
+    residence: 'Residencia',
+    droitVisite: 'Régimen de visitas y estancias',
+    nonRenseigne: 'No consta en el documento',
+    revalTitre: 'Actualización',
+    revalFormuleDefaut:
+      'Pensión actualizada = importe inicial × (nuevo índice ÷ índice base).',
+    revalIndiceRef: (s: string) => `Índice del documento: ${s}`,
+    revalDateRevision: (s: string) => `Revisión: ${s}`,
+    baseQuestion: '¿De qué base es el índice que cita tu documento?',
+    baseAide:
+      'Una resolución anterior a 2026 cita un índice en base 2015. El INSEE pasó a base 2025 en enero de 2026.',
+    base2015: 'Base 2015',
+    base2025: 'Base 2025',
+    baseInconnue: 'No lo sé',
+    baseInconnueTexte: 'Mira la fecha: antes de enero de 2026, es base 2015.',
+    indiceInitialLabel: 'Índice base, el que cita el documento',
+    indiceInitialPlaceholder: 'por ejemplo 103,61',
+    enregistrer: 'Guardar',
+    enregistre: (v: number) => `${String(v).replace('.', ',')} — guardado`,
+    indiceActuelLabel: 'Índice más reciente',
+    indiceActuelPlaceholder: 'por ejemplo 102,5',
+    auto: (v: number, base: number | null, d: string) =>
+      `Recuperado: ${String(v).replace('.', ',')}${base ? ` — base ${base}` : ''}, el ${d}`,
+    recuperer: 'Recuperar el valor del día',
+    recuperationEnCours: 'Recuperando…',
+    recuperationEchec: 'No se pudo recuperar. Introdúcelo a mano desde el sitio del INSEE.',
+    lienInsee: 'Ver la serie en insee.fr',
+    basesDifferentesTitre: 'Cálculo imposible: los índices no son de la misma base',
+    basesDifferentesTexte:
+      'Tu documento cita un índice en base 2015 y el valor recuperado es base 2025. Su cociente no tiene sentido: haría bajar la pensión. El INSEE no publica coeficiente oficial de conversión. Introduce el índice más reciente de la misma base.',
+    resultatLabel: 'Importe actualizado',
+    resultatDetail: (initial: string, ia: string, ib: string) => `${initial} × (${ia} ÷ ${ib})`,
+    note:
+      'Este cálculo ayuda a leer tu resolución. No tiene valor jurídico: solo el documento da fe.',
+    pasEncoreTitre: 'Aún no disponible',
+    pasEncoreTexte:
+      'El cálculo de ayudas y la emisión de certificados aún no están en Dualia. Llegarán, y se calcularán a partir de tu expediente, no estimados.',
+  },
+
+  pt: {
+    titre: 'Pensão',
+    sousTitre: 'O que diz a tua decisão, e a sua atualização',
+    aucunCadreTitre: 'Nenhum quadro familiar validado',
+    aucunCadreTexte:
+      'Importa a tua sentença ou acordo no separador Decisões e verifica-o. Os montantes e as cláusulas aparecerão aqui, tal como o documento os escreve.',
+    pensionTitre: 'Contribuição para o sustento e a educação',
+    parMois: 'por mês',
+    parTrimestre: 'por trimestre',
+    periodiciteAutre: 'periodicidade por precisar',
+    parEnfant: (n: number, m: string) => `${m} por filho · ${n} filho${n > 1 ? 's' : ''}`,
+    clauseSource: 'Cláusula do documento',
+    gardeTitre: 'O que o documento diz sobre a guarda',
+    residence: 'Residência',
+    droitVisite: 'Direito de visita e alojamento',
+    nonRenseigne: 'Não consta no documento',
+    revalTitre: 'Atualização',
+    revalFormuleDefaut:
+      'Pensão atualizada = montante inicial × (novo índice ÷ índice de base).',
+    revalIndiceRef: (s: string) => `Índice do documento: ${s}`,
+    revalDateRevision: (s: string) => `Revisão: ${s}`,
+    baseQuestion: 'De que base é o índice citado pelo teu documento?',
+    baseAide:
+      'Uma decisão anterior a 2026 cita um índice na base 2015. O INSEE passou à base 2025 em janeiro de 2026.',
+    base2015: 'Base 2015',
+    base2025: 'Base 2025',
+    baseInconnue: 'Não sei',
+    baseInconnueTexte: 'Vê a data: antes de janeiro de 2026, é base 2015.',
+    indiceInitialLabel: 'Índice de base, o que o documento cita',
+    indiceInitialPlaceholder: 'por exemplo 103,61',
+    enregistrer: 'Guardar',
+    enregistre: (v: number) => `${String(v).replace('.', ',')} — guardado`,
+    indiceActuelLabel: 'Índice mais recente',
+    indiceActuelPlaceholder: 'por exemplo 102,5',
+    auto: (v: number, base: number | null, d: string) =>
+      `Obtido: ${String(v).replace('.', ',')}${base ? ` — base ${base}` : ''}, em ${d}`,
+    recuperer: 'Obter o valor do dia',
+    recuperationEnCours: 'A obter…',
+    recuperationEchec: 'Não foi possível obter. Introduz à mão a partir do site do INSEE.',
+    lienInsee: 'Ver a série em insee.fr',
+    basesDifferentesTitre: 'Cálculo impossível: os índices não são da mesma base',
+    basesDifferentesTexte:
+      'O teu documento cita um índice na base 2015 e o valor obtido é base 2025. O rácio não faz sentido: faria baixar a pensão. O INSEE não publica coeficiente oficial de conversão. Introduz o índice mais recente da mesma base.',
+    resultatLabel: 'Montante atualizado',
+    resultatDetail: (initial: string, ia: string, ib: string) => `${initial} × (${ia} ÷ ${ib})`,
+    note:
+      'Este cálculo ajuda a ler a tua decisão. Não tem valor jurídico: só o documento faz fé.',
+    pasEncoreTitre: 'Ainda não disponível',
+    pasEncoreTexte:
+      'O cálculo de apoios e a emissão de certidões ainda não existem no Dualia. Virão, e serão calculados a partir do teu processo, não estimados.',
+  },
+
+  en: {
+    titre: 'Child support',
+    sousTitre: 'What your order says, and its indexation',
+    aucunCadreTitre: 'No validated family framework',
+    aucunCadreTexte:
+      'Import your judgment or agreement from the Decisions tab, then verify it. Amounts and clauses will appear here, exactly as the document writes them.',
+    pensionTitre: 'Contribution to maintenance and education',
+    parMois: 'per month',
+    parTrimestre: 'per quarter',
+    periodiciteAutre: 'frequency to be confirmed',
+    parEnfant: (n: number, m: string) => `${m} per child · ${n} child${n > 1 ? 'ren' : ''}`,
+    clauseSource: 'Clause from the document',
+    gardeTitre: 'What the document says about custody',
+    residence: 'Residence',
+    droitVisite: 'Contact and staying arrangements',
+    nonRenseigne: 'Not stated in the document',
+    revalTitre: 'Indexation',
+    revalFormuleDefaut:
+      'Indexed amount = initial amount × (new index ÷ base index).',
+    revalIndiceRef: (s: string) => `Index named by the document: ${s}`,
+    revalDateRevision: (s: string) => `Review: ${s}`,
+    baseQuestion: 'Which reference year does your document’s index use?',
+    baseAide:
+      'An order made before 2026 cites a 2015-base index. INSEE moved to a 2025 base in January 2026.',
+    base2015: '2015 base',
+    base2025: '2025 base',
+    baseInconnue: 'I don’t know',
+    baseInconnueTexte: 'Check the date: before January 2026, it is the 2015 base.',
+    indiceInitialLabel: 'Base index, the one the document cites',
+    indiceInitialPlaceholder: 'for example 103.61',
+    enregistrer: 'Save',
+    enregistre: (v: number) => `${v} — saved`,
+    indiceActuelLabel: 'Most recent index',
+    indiceActuelPlaceholder: 'for example 102.5',
+    auto: (v: number, base: number | null, d: string) =>
+      `Retrieved: ${v}${base ? ` — ${base} base` : ''}, on ${d}`,
+    recuperer: 'Fetch today’s value',
+    recuperationEnCours: 'Fetching…',
+    recuperationEchec: 'Could not fetch. Enter it by hand from the INSEE site.',
+    lienInsee: 'View the series on insee.fr',
+    basesDifferentesTitre: 'Cannot compute: the two indices use different base years',
+    basesDifferentesTexte:
+      'Your document cites a 2015-base index and the retrieved value is 2025-base. Their ratio is meaningless: it would lower the amount instead of raising it. INSEE publishes no official conversion coefficient. Enter the most recent index published on the same base as your judgment.',
+    resultatLabel: 'Indexed amount',
+    resultatDetail: (initial: string, ia: string, ib: string) => `${initial} × (${ia} ÷ ${ib})`,
+    note:
+      'This calculation helps you read your order. It has no legal force: only the document governs.',
+    pasEncoreTitre: 'Not available yet',
+    pasEncoreTexte:
+      'Benefit calculations and certificate generation are not in Dualia yet. They will be computed from your file, not estimated.',
+  },
+} as const;
+
+const SERIE_INSEE = 'https://www.insee.fr/fr/statistiques/serie/001763852';
+
 export default function CafScreen() {
-  const langue = useStore((s) => s.langue);
-  const t = TRADUCTIONS[langue].caf;
+  const langue = (useStore((s) => s.langue) || 'fr') as Langue;
+  const t = L[langue] ?? L.fr;
   const cadreFamilial = useStore((s) => s.cadreFamilial);
-
-  // Relie enfin le montant réel extrait du jugement (une fois le cadre
-  // validé) à ce module — jusqu'ici il restait affiché uniquement sur
-  // l'écran de validation, sans jamais remonter ici où il a le plus de sens.
-  const pensionReelle =
-    cadreFamilial?.statut === 'valide' && cadreFamilial.pension
-      ? `${cadreFamilial.pension.montant} €`
-      : null;
-
-  // Le libellé reflète maintenant ce qui a vraiment été détecté dans le
-  // document, une fois le cadre validé — et est traduit dans les 4 langues.
-  const texteGardeCaf = `${cadreFamilial?.garde?.residencePrincipale || ''} ${cadreFamilial?.garde?.droitVisiteHebergementDescription || ''}`.toLowerCase();
-  const modeGardeLabel =
-    cadreFamilial?.statut === 'valide' && cadreFamilial.garde
-      ? texteGardeCaf.includes('altern')
-        ? t.residenceAlterneeDeclaree
-        : t.gardeExclusiveDeclaree
-      : t.gardeAlterneeDeclaree;
-
-  const indexation = cadreFamilial?.statut === 'valide' ? cadreFamilial.pension?.indexation : undefined;
   const verrouillerIndiceInitial = useStore((s) => s.verrouillerIndiceInitial);
+
+  const localeDate =
+    langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
+
+  // Rien n'est affiché depuis un cadre non validé : un cadre « à vérifier »
+  // contient ce qu'une extraction a cru lire, pas ce que le parent a confirmé.
+  const cadreValide = cadreFamilial?.statut === 'valide' ? cadreFamilial : null;
+  const pension = cadreValide?.pension;
+  const garde = cadreValide?.garde;
+  const indexation = pension?.indexation;
+
   const [indiceInitialSaisie, setIndiceInitialSaisie] = useState('');
   const [indiceActuel, setIndiceActuel] = useState('');
+  const [baseJugement, setBaseJugement] = useState<2015 | 2025 | null>(null);
   const [recuperationEnCours, setRecuperationEnCours] = useState(false);
   const [recuperationErreur, setRecuperationErreur] = useState<string | null>(null);
-  const [recuperationAvertissement, setRecuperationAvertissement] = useState<string | null>(null);
-  const [valeurAutomatique, setValeurAutomatique] = useState<{ valeur: number; date: string } | null>(null);
+  const [valeurAutomatique, setValeurAutomatique] = useState<{
+    valeur: number;
+    base: number | null;
+    date: string;
+  } | null>(null);
 
+  // La base est lue en même temps que la valeur. L'ancienne version ne lisait
+  // que `valeur_num` : c'est précisément l'information manquante qui rendait
+  // le calcul faux sans que rien ne le signale.
   useEffect(() => {
+    let vivant = true;
     supabase
       .from('parametres_globaux')
-      .select('valeur_num, mis_a_jour_le')
+      .select('valeur_num, base, mis_a_jour_le')
       .eq('cle', 'insee_indice_actuel')
       .maybeSingle()
       .then(({ data }) => {
-        if (data?.valeur_num) {
-          setValeurAutomatique({ valeur: data.valeur_num, date: data.mis_a_jour_le });
-        }
+        if (!vivant || !data?.valeur_num) return;
+        setValeurAutomatique({
+          valeur: Number(data.valeur_num),
+          base: data.base != null ? Number(data.base) : null,
+          date: data.mis_a_jour_le,
+        });
       });
+    return () => {
+      vivant = false;
+    };
   }, []);
 
   const recupererIndiceActuel = async () => {
     setRecuperationEnCours(true);
     setRecuperationErreur(null);
-    setRecuperationAvertissement(null);
     try {
       const reponse = await fetch('https://dualia-backend.vercel.app/api/insee-indice', {
         headers: await entetesBackend(),
       });
       const data = await reponse.json();
-      if (!reponse.ok || !data.valeur) {
-        throw new Error(data.error || 'Réponse invalide');
-      }
+      if (!reponse.ok || !data.valeur) throw new Error(data.error || 'Reponse invalide');
       setIndiceActuel(String(data.valeur).replace('.', ','));
-      if (data.avertissement) setRecuperationAvertissement(data.avertissement);
-    } catch (err: any) {
-      setRecuperationErreur(t.revalEchec);
+      if (data.base != null) {
+        setValeurAutomatique((v) => ({
+          valeur: Number(data.valeur),
+          base: Number(data.base),
+          date: v?.date ?? new Date().toISOString(),
+        }));
+      }
+    } catch {
+      setRecuperationErreur(t.recuperationEchec);
     } finally {
       setRecuperationEnCours(false);
     }
   };
 
-  const montantInitial = cadreFamilial?.pension?.montant;
+  const nombre = (s: string) => {
+    const v = parseFloat(String(s).replace(',', '.'));
+    return Number.isFinite(v) && v > 0 ? v : null;
+  };
+
   const indiceInitialVerrouille = indexation?.indiceInitialConfirme;
-  const indiceInitialNum = indiceInitialVerrouille ?? parseFloat(indiceInitialSaisie.replace(',', '.'));
-  const indiceActuelNum = parseFloat(indiceActuel.replace(',', '.'));
-  const montantRevalorise =
-    montantInitial && indiceInitialNum > 0 && indiceActuelNum > 0
-      ? Math.round((montantInitial * indiceActuelNum / indiceInitialNum) * 100) / 100
-      : null;
+  const indiceInitialNum = indiceInitialVerrouille ?? nombre(indiceInitialSaisie);
+  const indiceActuelNum = nombre(indiceActuel);
 
-  const localeDate = langue === 'pt' ? 'pt-PT' : langue === 'es' ? 'es-ES' : langue === 'en' ? 'en-GB' : 'fr-FR';
+  // La valeur saisie à la main peut venir de n'importe quelle base ; on ne
+  // connaît avec certitude que celle de la valeur récupérée automatiquement.
+  // Le conflit n'est donc affirmé que lorsque le champ porte EXACTEMENT la
+  // valeur automatique — sinon on ne sait pas, et on ne prétend pas savoir.
+  const valeurActuelleEstAutomatique =
+    valeurAutomatique != null &&
+    indiceActuelNum != null &&
+    Math.abs(indiceActuelNum - valeurAutomatique.valeur) < 1e-9;
 
-  const DROITS = [
-    {
-      titre: t.droitAllocFamTitre,
-      montant: t.droitAllocFamMontant,
-      desc: t.droitAllocFamDesc,
-      icone: 'people-outline' as IoniconName,
-      fond: '#F7EEE9',
-      couleur: ACCENT,
-    },
-    {
-      titre: t.droitCreditGardeTitre,
-      montant: t.droitCreditGardeMontant,
-      desc: t.droitCreditGardeDesc,
-      icone: 'card-outline' as IoniconName,
-      fond: '#FBF3DF',
-      couleur: COLORS.or,
-    },
-    {
-      titre: t.droitPrimeTitre,
-      montant: t.droitPrimeMontant,
-      desc: t.droitPrimeDesc,
-      icone: 'trending-up-outline' as IoniconName,
-      fond: '#E8F3ED',
-      couleur: COLORS.vert,
-    },
-    {
-      titre: t.droitApITitre,
-      montant: t.droitApIMontant,
-      desc: t.droitApIDesc,
-      icone: 'home-outline' as IoniconName,
-      fond: '#EEF1F0',
-      couleur: COLORS.ardoise,
-    },
-  ];
+  const basesIncompatibles =
+    baseJugement != null &&
+    valeurActuelleEstAutomatique &&
+    valeurAutomatique?.base != null &&
+    valeurAutomatique.base !== baseJugement;
 
-  const DOCS_GENERES = [
-    {
-      nom: t.docAttestationNom,
-      date: t.docAttestationDate,
-      icone: 'document-text-outline' as IoniconName,
-      certifie: true,
-    },
-    {
-      nom: t.docDeclarationNom,
-      date: t.docDeclarationDate,
-      icone: 'document-outline' as IoniconName,
-      certifie: true,
-    },
-  ];
+  const montantRevalorise = useMemo(() => {
+    if (!pension?.montant || !indiceInitialNum || !indiceActuelNum) return null;
+    if (basesIncompatibles) return null;
+    return Math.round((pension.montant * indiceActuelNum) / indiceInitialNum * 100) / 100;
+  }, [pension?.montant, indiceInitialNum, indiceActuelNum, basesIncompatibles]);
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [revenus, setRevenus] = useState('');
-  const [joursPar, setJoursPar] = useState('');
-  const [resultat, setResultat] = useState<number | null>(null);
-
-  const simuler = () => {
-    const rev = parseFloat(revenus.replace(',', '.'));
-    const jours = parseFloat(joursPar.replace(',', '.'));
-    if (!rev || !jours) return;
-    const fraisEstimes = jours * 6.5 * 12;
-    const credit = Math.min(fraisEstimes * 0.5, 3500);
-    setResultat(Math.round(credit));
-  };
-
-  const fermerModal = () => {
-    setModalVisible(false);
-    setRevenus('');
-    setJoursPar('');
-    setResultat(null);
-  };
+  const libellePeriodicite =
+    pension?.periodicite === 'mensuelle'
+      ? t.parMois
+      : pension?.periodicite === 'trimestrielle'
+      ? t.parTrimestre
+      : t.periodiciteAutre;
 
   return (
     <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
-      {/* Header */}
       <LinearGradient colors={['#9E7A64', ACCENT]} style={styles.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.headerTitre}>{t.titre}</Text>
           <Text style={styles.headerSous}>{t.sousTitre}</Text>
-        </View>
-        <View style={styles.headerBadge}>
-          <Ionicons name="shield-checkmark" size={20} color={COLORS.blanc} />
         </View>
       </LinearGradient>
 
@@ -190,250 +427,198 @@ export default function CafScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Cartes dashboard */}
-        <View style={styles.dashRow}>
-          <View style={[styles.dashCard, { flex: 1 }]}>
-            <Ionicons name="checkmark-circle" size={22} color={COLORS.succes} />
-            <Text style={styles.dashValeur}>✓</Text>
-            <Text style={styles.dashLabel}>{modeGardeLabel}</Text>
+        {!cadreValide ? (
+          <View style={styles.carte}>
+            <Ionicons name="document-text-outline" size={22} color={COLORS.ardoise} />
+            <Text style={styles.carteTitre}>{t.aucunCadreTitre}</Text>
+            <Text style={styles.carteTexte}>{t.aucunCadreTexte}</Text>
           </View>
-          <View style={[styles.dashCard, { flex: 1 }]}>
-            <Ionicons name="cash-outline" size={22} color={COLORS.or} />
-            <Text style={styles.dashValeur}>{pensionReelle ?? '1 840 €'}</Text>
-            <Text style={styles.dashLabel}>{t.creditImpotEstime}</Text>
-          </View>
-        </View>
+        ) : null}
 
-        {montantInitial ? (
-          <View style={styles.revalCard}>
-            <Text style={styles.revalEyebrow}>{t.revalTitre}</Text>
-            {indexation?.formuleTexteSource ? (
-              <Text style={styles.revalFormule}>« {indexation.formuleTexteSource} »</Text>
-            ) : (
-              <Text style={styles.revalFormule}>{t.revalFormuleDefaut}</Text>
-            )}
+        {pension?.montant ? (
+          <View style={styles.carte}>
+            <Text style={styles.eyebrow}>{t.pensionTitre}</Text>
+            <Text style={styles.montant}>{formatMontant(pension.montant, langue)}</Text>
+            <Text style={styles.montantMeta}>{libellePeriodicite}</Text>
+
+            {pension.montantParEnfant && pension.nombreEnfantsConcernes ? (
+              <Text style={styles.montantMeta}>
+                {t.parEnfant(
+                  pension.nombreEnfantsConcernes,
+                  formatMontant(pension.montantParEnfant, langue)
+                )}
+              </Text>
+            ) : null}
+
+            {pension.clauseSource?.extrait ? (
+              <>
+                <Text style={styles.label}>{t.clauseSource}</Text>
+                <Text style={styles.citation}>« {pension.clauseSource.extrait} »</Text>
+              </>
+            ) : null}
+          </View>
+        ) : null}
+
+        {garde ? (
+          <View style={styles.carte}>
+            <Text style={styles.eyebrow}>{t.gardeTitre}</Text>
+
+            <Text style={styles.label}>{t.residence}</Text>
+            <Text style={styles.valeur}>{garde.residencePrincipale || t.nonRenseigne}</Text>
+
+            <Text style={styles.label}>{t.droitVisite}</Text>
+            <Text style={styles.valeur}>
+              {garde.droitVisiteHebergementDescription || t.nonRenseigne}
+            </Text>
+          </View>
+        ) : null}
+
+        {pension?.montant ? (
+          <View style={styles.carte}>
+            <Text style={styles.eyebrow}>{t.revalTitre}</Text>
+
+            <Text style={styles.formule}>
+              {indexation?.formuleTexteSource
+                ? `« ${indexation.formuleTexteSource} »`
+                : t.revalFormuleDefaut}
+            </Text>
+
             {indexation?.indiceReference ? (
-              <Text style={styles.revalMeta}>{t.revalIndiceRef(indexation.indiceReference)}</Text>
+              <Text style={styles.meta}>{t.revalIndiceRef(indexation.indiceReference)}</Text>
             ) : null}
             {indexation?.dateRevisionAnnuelle ? (
-              <Text style={styles.revalMeta}>{t.revalDateRevision(indexation.dateRevisionAnnuelle)}</Text>
+              <Text style={styles.meta}>{t.revalDateRevision(indexation.dateRevisionAnnuelle)}</Text>
             ) : null}
 
-            <Text style={styles.revalLabel}>{t.revalIndiceJugement}</Text>
+            <View style={styles.separateur} />
+
+            <Text style={styles.label}>{t.baseQuestion}</Text>
+            <Text style={styles.aide}>{t.baseAide}</Text>
+            <View style={styles.choixRangee}>
+              <TouchableOpacity
+                style={[styles.choix, baseJugement === 2015 && styles.choixActif]}
+                onPress={() => setBaseJugement(2015)}
+              >
+                <Text style={[styles.choixTexte, baseJugement === 2015 && styles.choixTexteActif]}>
+                  {t.base2015}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.choix, baseJugement === 2025 && styles.choixActif]}
+                onPress={() => setBaseJugement(2025)}
+              >
+                <Text style={[styles.choixTexte, baseJugement === 2025 && styles.choixTexteActif]}>
+                  {t.base2025}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {baseJugement === null ? <Text style={styles.aide}>{t.baseInconnueTexte}</Text> : null}
+
+            <View style={styles.separateur} />
+
+            <Text style={styles.label}>{t.indiceInitialLabel}</Text>
             {indiceInitialVerrouille ? (
-              <View style={styles.revalVerrouille}>
+              <View style={styles.verrou}>
                 <Ionicons name="lock-closed" size={13} color={COLORS.ardoise} />
-                <Text style={styles.revalVerrouilleTexte}>{t.revalEnregistre(indiceInitialVerrouille)}</Text>
+                <Text style={styles.verrouTexte}>{t.enregistre(indiceInitialVerrouille)}</Text>
               </View>
             ) : (
               <>
                 <TextInput
-                  style={styles.revalInput}
+                  style={styles.input}
                   value={indiceInitialSaisie}
                   onChangeText={setIndiceInitialSaisie}
-                  placeholder={t.revalIndicePlaceholder}
+                  placeholder={t.indiceInitialPlaceholder}
                   placeholderTextColor={COLORS.ardoise}
                   keyboardType="decimal-pad"
                 />
                 <TouchableOpacity
-                  style={[styles.revalVerrouillerBtn, !indiceInitialSaisie && styles.revalVerrouillerBtnDesactive]}
-                  disabled={!indiceInitialSaisie}
+                  style={[styles.btn, !nombre(indiceInitialSaisie) && styles.btnDesactive]}
+                  disabled={!nombre(indiceInitialSaisie)}
                   onPress={() => {
-                    const v = parseFloat(indiceInitialSaisie.replace(',', '.'));
-                    if (v > 0) verrouillerIndiceInitial(v);
+                    const v = nombre(indiceInitialSaisie);
+                    if (v) verrouillerIndiceInitial(v);
                   }}
                 >
-                  <Text style={styles.revalVerrouillerBtnTexte}>{t.revalEnregistrerBtn}</Text>
+                  <Text style={styles.btnTexte}>{t.enregistrer}</Text>
                 </TouchableOpacity>
               </>
             )}
 
-            <Text style={styles.revalLabel}>{t.revalIndiceActuelLabel}</Text>
+            <Text style={styles.label}>{t.indiceActuelLabel}</Text>
             {valeurAutomatique && !indiceActuel ? (
               <TouchableOpacity
-                style={styles.revalAutoBloc}
+                style={styles.autoBloc}
                 onPress={() => setIndiceActuel(String(valeurAutomatique.valeur).replace('.', ','))}
               >
                 <Ionicons name="sync-outline" size={14} color={COLORS.vert} />
-                <Text style={styles.revalAutoTexte}>
-                  {t.revalAutoRecupere(valeurAutomatique.valeur, new Date(valeurAutomatique.date).toLocaleDateString(localeDate))}
+                <Text style={styles.autoTexte}>
+                  {t.auto(
+                    valeurAutomatique.valeur,
+                    valeurAutomatique.base,
+                    new Date(valeurAutomatique.date).toLocaleDateString(localeDate)
+                  )}
                 </Text>
               </TouchableOpacity>
             ) : null}
             <TextInput
-              style={styles.revalInput}
+              style={styles.input}
               value={indiceActuel}
               onChangeText={setIndiceActuel}
-              placeholder={t.revalIndiceActuelPlaceholder}
+              placeholder={t.indiceActuelPlaceholder}
               placeholderTextColor={COLORS.ardoise}
               keyboardType="decimal-pad"
             />
-            <TouchableOpacity style={styles.revalRecupererBtn} onPress={recupererIndiceActuel} disabled={recuperationEnCours}>
-              <Text style={styles.revalRecupererBtnTexte}>
-                {recuperationEnCours ? t.revalRecuperationEnCours : t.revalRecupererBtn}
+            <TouchableOpacity
+              style={styles.btnSecondaire}
+              onPress={recupererIndiceActuel}
+              disabled={recuperationEnCours}
+            >
+              <Text style={styles.btnSecondaireTexte}>
+                {recuperationEnCours ? t.recuperationEnCours : t.recuperer}
               </Text>
             </TouchableOpacity>
-            {recuperationErreur ? <Text style={styles.revalErreur}>{recuperationErreur}</Text> : null}
-            {recuperationAvertissement ? <Text style={styles.revalAvertissement}>{recuperationAvertissement}</Text> : null}
-            <Text style={styles.revalLien} onPress={() => Linking.openURL('https://www.insee.fr/fr/statistiques/serie/001763852')}>
-              {t.revalLienManuel}
+            {recuperationErreur ? <Text style={styles.erreur}>{recuperationErreur}</Text> : null}
+
+            <Text style={styles.lien} onPress={() => Linking.openURL(SERIE_INSEE)}>
+              {t.lienInsee}
             </Text>
 
-            {montantRevalorise ? (
-              <View style={styles.revalResultat}>
-                <Text style={styles.revalResultatLabel}>{t.revalMontantLabel}</Text>
-                <Text style={styles.revalResultatValeur}>{montantRevalorise} € / mois</Text>
+            {basesIncompatibles ? (
+              <View style={styles.alerte}>
+                <Text style={styles.alerteTitre}>{t.basesDifferentesTitre}</Text>
+                <Text style={styles.alerteTexte}>{t.basesDifferentesTexte}</Text>
               </View>
             ) : null}
 
-            <Text style={styles.revalAvertissement}>{t.revalNote}</Text>
+            {montantRevalorise != null && indiceInitialNum && indiceActuelNum ? (
+              <View style={styles.resultat}>
+                <Text style={styles.resultatLabel}>{t.resultatLabel}</Text>
+                <Text style={styles.resultatValeur}>
+                  {formatMontant(montantRevalorise, langue)}
+                </Text>
+                <Text style={styles.resultatMeta}>{libellePeriodicite}</Text>
+                <Text style={styles.resultatDetail}>
+                  {t.resultatDetail(
+                    formatMontant(pension.montant, langue),
+                    String(indiceActuelNum).replace('.', ','),
+                    String(indiceInitialNum).replace('.', ',')
+                  )}
+                </Text>
+              </View>
+            ) : null}
+
+            <Text style={styles.note}>{t.note}</Text>
           </View>
         ) : null}
 
-        <View style={[styles.dashCard, styles.dashCardFull]}>
-          <View style={styles.dashCardRow}>
-            <Ionicons name="calendar-outline" size={22} color={ACCENT} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.dashValeur}>{t.prochaineDeclarationDate}</Text>
-              <Text style={styles.dashLabel}>{t.prochaineDeclaration}</Text>
-            </View>
-          </View>
+        <View style={styles.carteSobre}>
+          <Text style={styles.carteTitreSobre}>{t.pasEncoreTitre}</Text>
+          <Text style={styles.carteTexte}>{t.pasEncoreTexte}</Text>
         </View>
-
-        {/* Mes droits */}
-        <Text style={styles.sectionTitre}>{t.mesDroits}</Text>
-        {DROITS.map((droit, i) => (
-          <View key={i} style={styles.droitCard}>
-            <View style={[styles.droitIcon, { backgroundColor: droit.fond }]}>
-              <Ionicons name={droit.icone} size={20} color={droit.couleur} />
-            </View>
-            <View style={styles.droitInfo}>
-              <Text style={styles.droitTitre}>{droit.titre}</Text>
-              <Text style={styles.droitDesc}>{droit.desc}</Text>
-            </View>
-            <Text style={[styles.droitMontant, { color: droit.couleur }]}>
-              {droit.montant}
-            </Text>
-          </View>
-        ))}
-
-        {/* Documents générés */}
-        <Text style={[styles.sectionTitre, { marginTop: SPACING.xl }]}>
-          {t.documentsGeneres}
-        </Text>
-        {DOCS_GENERES.map((doc, i) => (
-          <View key={i} style={styles.docCard}>
-            <View style={styles.docIconWrap}>
-              <Ionicons name={doc.icone} size={20} color={ACCENT} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.docNom}>{doc.nom}</Text>
-              <Text style={styles.docDate}>{doc.date}</Text>
-            </View>
-            {doc.certifie && (
-              <View style={styles.certifBadge}>
-                <Text style={styles.certifTxt}>✓ {t.certifie}</Text>
-              </View>
-            )}
-          </View>
-        ))}
-
-        {/* Bouton simulation */}
-        <TouchableOpacity
-          style={styles.btnSimuler}
-          onPress={() => setModalVisible(true)}
-          activeOpacity={0.85}
-        >
-          <LinearGradient
-            colors={['#9E7A64', ACCENT]}
-            style={styles.btnSimulerGradient}
-          >
-            <Ionicons name="calculator-outline" size={20} color={COLORS.blanc} />
-            <Text style={styles.btnSimulerTxt}>
-              {t.simulerCreditImpot}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
 
         <View style={{ height: 40 }} />
       </ScrollView>
-
-      {/* Modal simulation */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={fermerModal}
-      >
-        <KeyboardAvoidingView
-          style={styles.overlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <View style={styles.modal}>
-            <View style={styles.modalPoignee} />
-            <Text style={styles.modalTitre}>{t.modalTitre}</Text>
-            <Text style={styles.modalInfo}>
-              {t.modalInfo}
-            </Text>
-
-            {resultat !== null ? (
-              <View style={styles.resultatWrap}>
-                <Text style={styles.resultatLabel}>{t.resultatLabel}</Text>
-                <Text style={styles.resultatValeur}>
-                  {resultat.toLocaleString(localeDate)} €
-                </Text>
-                <Text style={styles.resultatNote}>
-                  {t.resultatNote}
-                </Text>
-                <TouchableOpacity style={styles.btnFermer} onPress={fermerModal}>
-                  <Text style={styles.btnFermerTxt}>{t.fermer}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.label}>{t.revenusLabel}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={revenus}
-                  onChangeText={setRevenus}
-                  placeholder={t.revenusPlaceholder}
-                  placeholderTextColor={COLORS.ardoise}
-                  keyboardType="decimal-pad"
-                />
-
-                <Text style={styles.label}>{t.joursLabel}</Text>
-                <TextInput
-                  style={styles.input}
-                  value={joursPar}
-                  onChangeText={setJoursPar}
-                  placeholder={t.joursPlaceholder}
-                  placeholderTextColor={COLORS.ardoise}
-                  keyboardType="decimal-pad"
-                />
-
-                <View style={styles.actions}>
-                  <TouchableOpacity
-                    style={styles.btnAnnuler}
-                    onPress={fermerModal}
-                  >
-                    <Text style={styles.btnAnnulerTxt}>{t.annuler}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[
-                      styles.btnValider,
-                      (!revenus || !joursPar) && styles.btnDisabled,
-                    ]}
-                    onPress={simuler}
-                    disabled={!revenus || !joursPar}
-                  >
-                    <Text style={styles.btnValiderTxt}>{t.simuler}</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -443,326 +628,180 @@ const styles = StyleSheet.create({
 
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SPACING.xl,
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.xxl,
   },
-  headerTitre: {
-    fontSize: TYPOGRAPHY.xl,
-    fontWeight: TYPOGRAPHY.bold,
-    color: COLORS.blanc,
-  },
-  headerSous: {
-    fontSize: TYPOGRAPHY.sm,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: SPACING.xs,
-  },
-  headerBadge: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.full,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  headerTitre: { fontSize: TYPOGRAPHY.xl, fontWeight: TYPOGRAPHY.bold, color: COLORS.blanc },
+  headerSous: { fontSize: TYPOGRAPHY.sm, color: 'rgba(255,255,255,0.75)', marginTop: SPACING.xs },
 
-  scroll: { flex: 1 },
-  scrollContent: { padding: SPACING.lg },
+  scroll: { flex: 1, marginTop: -SPACING.lg },
+  scrollContent: { paddingHorizontal: SPACING.xl, paddingTop: SPACING.lg },
 
-  sectionTitre: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.ardoise,
-    letterSpacing: 1.5,
-    marginBottom: SPACING.md,
-  },
-
-  dashRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginBottom: SPACING.md,
-  },
-  dashCard: {
-    backgroundColor: COLORS.blanc,
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    alignItems: 'center',
-    gap: SPACING.xs,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  dashCardFull: {
-    alignItems: 'flex-start',
-    marginBottom: SPACING.xl,
-  },
-  dashCardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  dashValeur: {
-    fontSize: TYPOGRAPHY.xl,
-    fontWeight: TYPOGRAPHY.bold,
-    color: COLORS.texte,
-  },
-  dashLabel: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-
-  revalCard: {
-    backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: ACCENT, borderRadius: RADIUS.lg,
-    padding: SPACING.lg, marginHorizontal: SPACING.lg, marginTop: SPACING.md,
-  },
-  revalEyebrow: { fontSize: TYPOGRAPHY.xs, fontWeight: TYPOGRAPHY.semibold, color: ACCENT, letterSpacing: 0.6, marginBottom: 8 },
-  revalFormule: { fontSize: 12.5, color: COLORS.texte, fontStyle: 'italic', marginBottom: 6, lineHeight: 18 },
-  revalMeta: { fontSize: 11.5, color: COLORS.ardoise, marginBottom: 2 },
-  revalLabel: { fontSize: 12, fontWeight: TYPOGRAPHY.semibold, color: COLORS.texte, marginTop: SPACING.sm, marginBottom: 4 },
-  revalInput: {
-    backgroundColor: COLORS.ivoire, borderWidth: 1, borderColor: COLORS.bordure, borderRadius: RADIUS.md,
-    paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, color: COLORS.texte,
-  },
-  revalLien: { fontSize: 12, color: ACCENT, fontWeight: TYPOGRAPHY.semibold, marginTop: 8 },
-  revalVerrouille: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.ivoire, borderRadius: RADIUS.md, paddingVertical: 10, paddingHorizontal: 12 },
-  revalVerrouilleTexte: { fontSize: 13, color: COLORS.ardoise },
-  revalVerrouillerBtn: { backgroundColor: ACCENT, borderRadius: RADIUS.md, paddingVertical: 9, alignItems: 'center', marginTop: 6 },
-  revalVerrouillerBtnDesactive: { opacity: 0.4 },
-  revalVerrouillerBtnTexte: { fontSize: 12.5, fontWeight: TYPOGRAPHY.semibold, color: COLORS.blanc },
-  revalRecupererBtn: { backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 10, alignItems: 'center', marginTop: 8 },
-  revalRecupererBtnTexte: { fontSize: 12.5, fontWeight: TYPOGRAPHY.semibold, color: COLORS.blanc },
-  revalErreur: { fontSize: 11, color: COLORS.erreur, marginTop: 6 },
-  revalAutoBloc: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#EEF4F1', borderRadius: RADIUS.md, padding: 10, marginBottom: 6 },
-  revalAutoTexte: { flex: 1, fontSize: 11, color: COLORS.vert, lineHeight: 15 },
-  revalResultat: {
-    backgroundColor: '#F7EEE9', borderRadius: RADIUS.md, padding: SPACING.md, marginTop: SPACING.md, alignItems: 'center',
-  },
-  revalResultatLabel: { fontSize: 11.5, color: ACCENT, marginBottom: 2 },
-  revalResultatValeur: { fontSize: TYPOGRAPHY.xl, fontWeight: TYPOGRAPHY.bold, color: COLORS.texte },
-  revalAvertissement: { fontSize: 10.5, color: COLORS.ardoise, marginTop: SPACING.sm, lineHeight: 15 },
-
-  droitCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
+  carte: {
     backgroundColor: COLORS.blanc,
     borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 3,
+    padding: SPACING.xl,
+    marginBottom: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.bordure,
   },
-  droitIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
+  carteSobre: {
+    backgroundColor: COLORS.ivoireFonce,
+    borderRadius: RADIUS.lg,
+    padding: SPACING.xl,
+    marginBottom: SPACING.lg,
   },
-  droitInfo: { flex: 1 },
-  droitTitre: {
-    fontSize: TYPOGRAPHY.sm,
+  carteTitre: {
+    fontSize: TYPOGRAPHY.lg,
     fontWeight: TYPOGRAPHY.semibold,
     color: COLORS.texte,
-    marginBottom: 2,
+    marginTop: SPACING.sm,
   },
-  droitDesc: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    lineHeight: 16,
-  },
-  droitMontant: {
-    fontSize: TYPOGRAPHY.xs,
-    fontWeight: TYPOGRAPHY.bold,
-    textAlign: 'right',
-    maxWidth: 72,
-  },
-
-  docCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    backgroundColor: COLORS.blanc,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.lg,
-    marginBottom: SPACING.sm,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  docIconWrap: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.md,
-    backgroundColor: '#F7EEE9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flexShrink: 0,
-  },
-  docNom: {
-    fontSize: TYPOGRAPHY.sm,
-    fontWeight: TYPOGRAPHY.medium,
-    color: COLORS.texte,
-    marginBottom: 2,
-  },
-  docDate: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-  },
-  certifBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: RADIUS.full,
-    backgroundColor: '#E6F4EA',
-  },
-  certifTxt: {
-    fontSize: 10,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.succes,
-  },
-
-  btnSimuler: {
-    marginTop: SPACING.xl,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    shadowColor: ACCENT,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  btnSimulerGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.sm,
-    paddingVertical: SPACING.lg,
-  },
-  btnSimulerTxt: {
+  carteTitreSobre: {
     fontSize: TYPOGRAPHY.md,
     fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.blanc,
-  },
-
-  overlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  modal: {
-    backgroundColor: COLORS.blanc,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
-    padding: SPACING.xl,
-    paddingBottom: SPACING.xxxl,
-  },
-  modalPoignee: {
-    width: 36,
-    height: 4,
-    backgroundColor: COLORS.bordure,
-    borderRadius: RADIUS.full,
-    alignSelf: 'center',
-    marginBottom: SPACING.xl,
-  },
-  modalTitre: {
-    fontSize: TYPOGRAPHY.xl,
-    fontWeight: TYPOGRAPHY.bold,
     color: COLORS.texte,
     marginBottom: SPACING.xs,
   },
-  modalInfo: {
+  carteTexte: { fontSize: TYPOGRAPHY.sm, color: COLORS.texteMuted, lineHeight: 20, marginTop: SPACING.xs },
+
+  eyebrow: {
     fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    marginBottom: SPACING.xl,
-    lineHeight: 17,
+    fontWeight: TYPOGRAPHY.semibold,
+    color: ACCENT,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+    marginBottom: SPACING.sm,
   },
+  montant: { fontSize: TYPOGRAPHY.titre, fontWeight: TYPOGRAPHY.bold, color: COLORS.texte },
+  montantMeta: { fontSize: TYPOGRAPHY.sm, color: COLORS.texteMuted, marginTop: SPACING.xs },
+
   label: {
     fontSize: TYPOGRAPHY.xs,
     fontWeight: TYPOGRAPHY.semibold,
     color: COLORS.ardoise,
-    letterSpacing: 1,
-    marginBottom: SPACING.sm,
     textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.xs,
   },
-  input: {
-    backgroundColor: COLORS.ivoireFonce,
-    borderRadius: RADIUS.md,
-    padding: SPACING.md,
+  valeur: { fontSize: TYPOGRAPHY.md, color: COLORS.texte, lineHeight: 22 },
+  citation: {
     fontSize: TYPOGRAPHY.sm,
-    color: COLORS.texte,
-    marginBottom: SPACING.lg,
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    marginTop: SPACING.xs,
-  },
-  btnAnnuler: {
-    flex: 1,
-    padding: SPACING.lg,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.ivoireFonce,
-    alignItems: 'center',
-  },
-  btnAnnulerTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.ardoise,
-    fontWeight: TYPOGRAPHY.medium,
-  },
-  btnValider: {
-    flex: 2,
-    padding: SPACING.lg,
-    borderRadius: RADIUS.md,
-    backgroundColor: ACCENT,
-    alignItems: 'center',
-  },
-  btnDisabled: { opacity: 0.45 },
-  btnValiderTxt: {
-    fontSize: TYPOGRAPHY.sm,
-    color: COLORS.blanc,
-    fontWeight: TYPOGRAPHY.semibold,
+    color: COLORS.texteMuted,
+    fontStyle: 'italic',
+    lineHeight: 20,
+    borderLeftWidth: 2,
+    borderLeftColor: COLORS.bordure,
+    paddingLeft: SPACING.md,
   },
 
-  resultatWrap: { alignItems: 'center', paddingVertical: SPACING.lg },
-  resultatLabel: {
+  formule: { fontSize: TYPOGRAPHY.sm, color: COLORS.texte, lineHeight: 20 },
+  meta: { fontSize: TYPOGRAPHY.xs, color: COLORS.texteMuted, marginTop: SPACING.xs },
+  aide: { fontSize: TYPOGRAPHY.xs, color: COLORS.texteMuted, lineHeight: 18, marginTop: SPACING.xs },
+
+  separateur: { height: 1, backgroundColor: COLORS.bordure, marginTop: SPACING.lg },
+
+  choixRangee: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.sm },
+  choix: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.bordure,
+    alignItems: 'center',
+  },
+  choixActif: { borderColor: COLORS.vert, backgroundColor: '#E8F3ED' },
+  choixTexte: { fontSize: TYPOGRAPHY.sm, color: COLORS.texte },
+  choixTexteActif: { color: COLORS.vert, fontWeight: TYPOGRAPHY.semibold },
+
+  input: {
+    borderWidth: 1,
+    borderColor: COLORS.bordure,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+    fontSize: TYPOGRAPHY.md,
+    color: COLORS.texte,
+    backgroundColor: COLORS.blanc,
+  },
+  btn: {
+    marginTop: SPACING.sm,
+    backgroundColor: COLORS.vert,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  btnDesactive: { backgroundColor: COLORS.bordure },
+  btnTexte: { color: COLORS.blanc, fontWeight: TYPOGRAPHY.semibold, fontSize: TYPOGRAPHY.sm },
+  btnSecondaire: {
+    marginTop: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.vert,
+    borderRadius: RADIUS.md,
+    paddingVertical: SPACING.md,
+    alignItems: 'center',
+  },
+  btnSecondaireTexte: { color: COLORS.vert, fontWeight: TYPOGRAPHY.semibold, fontSize: TYPOGRAPHY.sm },
+
+  verrou: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
+  verrouTexte: { fontSize: TYPOGRAPHY.md, color: COLORS.texte },
+
+  autoBloc: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: SPACING.sm,
+  },
+  autoTexte: { fontSize: TYPOGRAPHY.sm, color: COLORS.vert, flex: 1 },
+
+  erreur: { fontSize: TYPOGRAPHY.sm, color: COLORS.erreur, marginTop: SPACING.sm },
+  lien: {
     fontSize: TYPOGRAPHY.sm,
-    color: COLORS.ardoise,
-    marginBottom: SPACING.sm,
+    color: ACCENT,
+    textDecorationLine: 'underline',
+    marginTop: SPACING.md,
+  },
+
+  alerte: {
+    marginTop: SPACING.lg,
+    backgroundColor: '#FDF3E7',
+    borderLeftWidth: 3,
+    borderLeftColor: COLORS.avertissement,
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+  },
+  alerteTitre: {
+    fontSize: TYPOGRAPHY.sm,
+    fontWeight: TYPOGRAPHY.semibold,
+    color: COLORS.avertissement,
+    marginBottom: SPACING.xs,
+  },
+  alerteTexte: { fontSize: TYPOGRAPHY.sm, color: COLORS.texte, lineHeight: 20 },
+
+  resultat: {
+    marginTop: SPACING.lg,
+    backgroundColor: '#E8F3ED',
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+  },
+  resultatLabel: {
+    fontSize: TYPOGRAPHY.xs,
+    fontWeight: TYPOGRAPHY.semibold,
+    color: COLORS.vert,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
   },
   resultatValeur: {
-    fontSize: 40,
+    fontSize: TYPOGRAPHY.xxl,
     fontWeight: TYPOGRAPHY.bold,
-    color: ACCENT,
-    marginBottom: SPACING.sm,
+    color: COLORS.vertFonce,
+    marginTop: SPACING.xs,
   },
-  resultatNote: {
-    fontSize: TYPOGRAPHY.xs,
-    color: COLORS.ardoise,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: SPACING.xl,
-  },
-  btnFermer: {
-    paddingHorizontal: SPACING.xxxl,
-    paddingVertical: SPACING.lg,
-    borderRadius: RADIUS.lg,
-    backgroundColor: ACCENT,
-  },
-  btnFermerTxt: {
-    fontSize: TYPOGRAPHY.md,
-    fontWeight: TYPOGRAPHY.semibold,
-    color: COLORS.blanc,
-  },
+  resultatMeta: { fontSize: TYPOGRAPHY.sm, color: COLORS.vert },
+  resultatDetail: { fontSize: TYPOGRAPHY.xs, color: COLORS.ardoise, marginTop: SPACING.sm },
+
+  note: { fontSize: TYPOGRAPHY.xs, color: COLORS.texteMuted, lineHeight: 18, marginTop: SPACING.lg },
 });

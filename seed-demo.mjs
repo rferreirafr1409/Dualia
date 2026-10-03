@@ -116,17 +116,38 @@ const CONTACTS = [
   { pour: 'Tom', nom: 'Fatima Benali', relation: 'Nourrice', telephone: '06 42 18 77 30', priorite: 2 },
 ];
 
-// Dépenses réparties sur trois mois, 50/50 comme le prévoit l'article 7 du
-// jugement. Deux déjà remboursées, une en attente d'accord préalable.
+// Dépenses réparties sur trois mois, partagées par moitié comme le prévoit
+// l'article 7 du jugement. Deux déjà réglées, une en attente d'accord
+// préalable.
+//
+// ATTENTION — part_a et part_b sont des EUROS, pas des pourcentages.
+// La première version de ce jeu de données y avait mis 50 et 50 en croyant
+// écrire « 50 % / 50 % », comme dans regles_partage où ce sont bien des
+// pourcentages. Chaque dépense affichait donc une répartition de 50 € / 50 €,
+// y compris sur une facture d'orthodontie de 312,40 €, et le solde tombait
+// à 50,00 € — à trente centimes du vrai chiffre, assez proche pour passer
+// inaperçu jusqu'à ce qu'un avocat ouvre le détail.
+//
+// Les parts sont donc CALCULÉES, plus jamais saisies à la main, et sur le
+// montant diminué de ce que la mutuelle a remboursé : c'est ce que dit
+// types.ts, partA + partB valent montant − remboursementRecu.
+const auCentime = (n) => Math.round(n * 100) / 100;
+
+const moitieChacun = (d) => {
+  const base = auCentime(d.montant - (d.remboursement_recu ?? 0));
+  const part_a = auCentime(base / 2);
+  return { ...d, part_a, part_b: auCentime(base - part_a) };
+};
+
 const DEPENSES = [
-  { jours: -74, categorie: 'activites', montant: 168, description: 'Judo — licence et cotisation annuelle (Tom)', commercant: 'Judo Club de Créteil', part_a: 50, part_b: 50, rembourse: true, accord_prealable_confirme: true },
-  { jours: -71, categorie: 'activites', montant: 245, description: 'Danse classique — année (Léa)', commercant: 'Conservatoire de Créteil', part_a: 50, part_b: 50, rembourse: true, accord_prealable_confirme: true },
-  { jours: -52, categorie: 'sante', montant: 312.4, description: 'Orthodontie — 1re série de gouttières (Léa)', commercant: 'Cabinet Dr Lemoine', part_a: 50, part_b: 50, rembourse: false, remboursement_recu: 96.2 },
-  { jours: -38, categorie: 'ecole', montant: 89.5, description: 'Fournitures et manuels de rentrée', commercant: 'Librairie du Centre', part_a: 50, part_b: 50, rembourse: false },
-  { jours: -21, categorie: 'sante', montant: 47, description: 'Consultation ORL — dépassement non remboursé (Tom)', commercant: 'Dr Perrin', part_a: 50, part_b: 50, rembourse: false, remboursement_recu: 0 },
-  { jours: -12, categorie: 'ecole', montant: 138, description: 'Classe de découverte — acompte (Léa)', commercant: 'École Victor Hugo', part_a: 50, part_b: 50, rembourse: false, accord_prealable_confirme: false },
-  { jours: -5, categorie: 'vetements', montant: 64.9, description: 'Chaussures de sport (Tom)', commercant: 'Décathlon Créteil', part_a: 50, part_b: 50, rembourse: false },
-];
+  { jours: -74, categorie: 'activites', montant: 168, description: 'Judo — licence et cotisation annuelle (Tom)', commercant: 'Judo Club de Créteil', rembourse: true, accord_prealable_confirme: true },
+  { jours: -71, categorie: 'activites', montant: 245, description: 'Danse classique — année (Léa)', commercant: 'Conservatoire de Créteil', rembourse: true, accord_prealable_confirme: true },
+  { jours: -52, categorie: 'sante', montant: 312.4, description: 'Orthodontie — 1re série de gouttières (Léa)', commercant: 'Cabinet Dr Lemoine', rembourse: false, remboursement_recu: 96.2 },
+  { jours: -38, categorie: 'ecole', montant: 89.5, description: 'Fournitures et manuels de rentrée', commercant: 'Librairie du Centre', rembourse: false },
+  { jours: -21, categorie: 'sante', montant: 47, description: 'Consultation ORL — dépassement non remboursé (Tom)', commercant: 'Dr Perrin', rembourse: false, remboursement_recu: 0 },
+  { jours: -12, categorie: 'ecole', montant: 138, description: 'Classe de découverte — acompte (Léa)', commercant: 'École Victor Hugo', rembourse: false, accord_prealable_confirme: false },
+  { jours: -5, categorie: 'vetements', montant: 64.9, description: 'Chaussures de sport (Tom)', commercant: 'Décathlon Créteil', rembourse: false },
+].map(moitieChacun);
 
 // Un échange bref et civil : c'est le ton pour lequel Dualia existe, et ce
 // qu'un magistrat regardera en premier.
@@ -149,11 +170,14 @@ const DOCUMENTS = [
   { jours: -33, nom: 'Attestation de mutuelle — Harmonie', categorie: 'administratif', portee: 'famille', note: 'Valable jusqu\'au 31/12', certifie: false },
 ];
 
+// Le prénom de l'enfant n'entre PAS dans le titre : l'écran l'ajoute
+// lui-même. « Orthodontiste — Léa » s'affichait « Orthodontiste — Léa — Léa »
+// sur l'accueil.
 const EVENEMENTS = [
-  { jours: 2, heure: 17, minute: 30, titre: 'Orthodontiste — Léa', pour: 'Léa', de: 'A' },
+  { jours: 2, heure: 17, minute: 30, titre: 'Orthodontiste', pour: 'Léa', de: 'A' },
   { jours: 6, heure: 18, minute: 0, titre: 'Réunion parents-professeurs', pour: 'Léa', de: 'B' },
   { jours: 9, heure: 10, minute: 30, titre: 'Judo — tournoi départemental', pour: 'Tom', de: 'A' },
-  { jours: 15, heure: 9, minute: 0, titre: 'Rappel vaccin — Tom', pour: 'Tom', de: 'B' },
+  { jours: 15, heure: 9, minute: 0, titre: 'Rappel de vaccin', pour: 'Tom', de: 'B' },
 ];
 
 const JOURNAL = [
