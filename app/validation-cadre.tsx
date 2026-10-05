@@ -48,6 +48,113 @@ import type {
   VerdictGarde,
 } from '../types';
 import { retour } from '../lib/navigation';
+import type { VerdictVacances } from '../types';
+
+// Le verdict des vacances scolaires, dit honnêtement.
+//
+// `constants/i18n.ts` porte `verdictVacances`, qui écrit en toutes lettres
+// « (zone C, académie de Créteil) » dans les quatre langues. C'était exact
+// tant que les dates étaient codées en dur pour cette seule zone. Ça ne l'est
+// plus : la zone vient maintenant du jeu de données officiel, et elle dépend
+// du code postal du foyer. Cette clé mentirait à toute famille hors zone C.
+//
+// Et « 0 repère ajouté » ne disait rien de la raison. Un parent sans code
+// postal, un service de l'Éducation nationale en panne, et des repères déjà
+// posés produisaient le même zéro muet.
+const LIBELLES_VACANCES = {
+  fr: {
+    ok: (n: number, zone: string, academie: string) =>
+      `${n} repère${n > 1 ? 's' : ''} de vacances scolaires ajouté${n > 1 ? 's' : ''} — ${zone}, académie de ${academie}.`,
+    okSansZone: (n: number, academie: string) =>
+      `${n} repère${n > 1 ? 's' : ''} de vacances scolaires ajouté${n > 1 ? 's' : ''} — académie de ${academie}.`,
+    aucunNouveau: 'Vacances scolaires : les repères étaient déjà posés.',
+    aucunFoyer: "Vacances scolaires non ajoutées : aucun foyer n'est renseigné.",
+    codePostalAbsent: (foyer: string) =>
+      `Vacances scolaires non ajoutées : le foyer « ${foyer} » n'a pas de code postal.`,
+    horsFrance: (foyer: string, cp: string) =>
+      `Vacances scolaires non ajoutées : « ${foyer} » (${cp}) ne relève pas d'une académie française.`,
+    indisponible:
+      "Vacances scolaires non ajoutées : le calendrier officiel de l'Éducation nationale n'a pas répondu. À relancer plus tard.",
+    aucunePeriode: (academie: string) =>
+      `Vacances scolaires non ajoutées : aucune période publiée pour l'académie de ${academie}.`,
+    source: (source: string, le: string) => `${source} — relevé le ${le}`,
+  },
+  es: {
+    ok: (n: number, zone: string, academie: string) =>
+      `${n} marca${n > 1 ? 's' : ''} de vacaciones escolares añadida${n > 1 ? 's' : ''} — ${zone}, academia de ${academie}.`,
+    okSansZone: (n: number, academie: string) =>
+      `${n} marca${n > 1 ? 's' : ''} de vacaciones escolares añadida${n > 1 ? 's' : ''} — academia de ${academie}.`,
+    aucunNouveau: 'Vacaciones escolares: las marcas ya estaban puestas.',
+    aucunFoyer: 'Vacaciones escolares no añadidas: no hay ningún domicilio registrado.',
+    codePostalAbsent: (foyer: string) =>
+      `Vacaciones escolares no añadidas: el domicilio «${foyer}» no tiene código postal.`,
+    horsFrance: (foyer: string, cp: string) =>
+      `Vacaciones escolares no añadidas: «${foyer}» (${cp}) no depende de una academia francesa.`,
+    indisponible:
+      'Vacaciones escolares no añadidas: el calendario oficial francés no respondió. Vuelve a intentarlo más tarde.',
+    aucunePeriode: (academie: string) =>
+      `Vacaciones escolares no añadidas: ningún periodo publicado para la academia de ${academie}.`,
+    source: (source: string, le: string) => `${source} — consultado el ${le}`,
+  },
+  pt: {
+    ok: (n: number, zone: string, academie: string) =>
+      `${n} marca${n > 1 ? 's' : ''} de férias escolares adicionada${n > 1 ? 's' : ''} — ${zone}, academia de ${academie}.`,
+    okSansZone: (n: number, academie: string) =>
+      `${n} marca${n > 1 ? 's' : ''} de férias escolares adicionada${n > 1 ? 's' : ''} — academia de ${academie}.`,
+    aucunNouveau: 'Férias escolares: as marcas já estavam colocadas.',
+    aucunFoyer: 'Férias escolares não adicionadas: nenhum domicílio registado.',
+    codePostalAbsent: (foyer: string) =>
+      `Férias escolares não adicionadas: o domicílio «${foyer}» não tem código postal.`,
+    horsFrance: (foyer: string, cp: string) =>
+      `Férias escolares não adicionadas: «${foyer}» (${cp}) não depende de uma academia francesa.`,
+    indisponible:
+      'Férias escolares não adicionadas: o calendário oficial francês não respondeu. Tente mais tarde.',
+    aucunePeriode: (academie: string) =>
+      `Férias escolares não adicionadas: nenhum período publicado para a academia de ${academie}.`,
+    source: (source: string, le: string) => `${source} — consultado em ${le}`,
+  },
+  en: {
+    ok: (n: number, zone: string, academie: string) =>
+      `${n} school-holiday marker${n > 1 ? 's' : ''} added — ${zone}, ${academie} education authority.`,
+    okSansZone: (n: number, academie: string) =>
+      `${n} school-holiday marker${n > 1 ? 's' : ''} added — ${academie} education authority.`,
+    aucunNouveau: 'School holidays: the markers were already in place.',
+    aucunFoyer: 'School holidays not added: no household on record.',
+    codePostalAbsent: (foyer: string) =>
+      `School holidays not added: the household "${foyer}" has no postcode.`,
+    horsFrance: (foyer: string, cp: string) =>
+      `School holidays not added: "${foyer}" (${cp}) is not covered by a French education authority.`,
+    indisponible:
+      'School holidays not added: the official French calendar did not respond. Try again later.',
+    aucunePeriode: (academie: string) =>
+      `School holidays not added: no period published for the ${academie} education authority.`,
+    source: (source: string, le: string) => `${source} — retrieved on ${le}`,
+  },
+} as const;
+
+function phraseVacances(v: VerdictVacances, langue: 'fr' | 'es' | 'pt' | 'en'): string {
+  const l = LIBELLES_VACANCES[langue];
+  const academie = v.academie ?? '—';
+  if (v.genere > 0) {
+    return v.zone ? l.ok(v.genere, v.zone, academie) : l.okSansZone(v.genere, academie);
+  }
+  switch (v.motif) {
+    case 'aucun_foyer':
+      return l.aucunFoyer;
+    case 'code_postal_absent':
+      return l.codePostalAbsent(v.detail ?? '—');
+    case 'hors_france': {
+      const [foyer, cp] = String(v.detail ?? '').split(' — ');
+      return l.horsFrance(foyer || '—', cp || '—');
+    }
+    case 'service_indisponible':
+      return l.indisponible;
+    case 'aucune_periode':
+      return l.aucunePeriode(academie);
+    default:
+      return l.aucunNouveau;
+  }
+}
 
 export default function ValidationCadreScreen() {
   const router = useRouter();
@@ -604,7 +711,15 @@ export default function ValidationCadreScreen() {
         {verdict && (
           <View style={styles.verdictCard}>
             <Text style={styles.verdictTitre}>{t.verdictTitre}</Text>
-            <Text style={styles.verdictLigne}>{t.verdictVacances(verdict.vacances.genere)}</Text>
+            <Text style={styles.verdictLigne}>{phraseVacances(verdict.vacances, langue)}</Text>
+            {verdict.vacances.source && verdict.vacances.releveLe ? (
+              <Text style={styles.verdictSource}>
+                {LIBELLES_VACANCES[langue].source(
+                  verdict.vacances.source,
+                  new Date(verdict.vacances.releveLe).toLocaleDateString(localeDate)
+                )}
+              </Text>
+            ) : null}
           </View>
         )}
 
@@ -816,6 +931,9 @@ const styles = StyleSheet.create({
   },
   verdictTitre: { fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.vertProfond, marginBottom: 4 },
   verdictLigne: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.vert, lineHeight: 18 },
+  // La provenance des dates, sous le verdict. Même principe que l'indice
+  // INSEE : un chiffre affiché sans sa source ne se vérifie pas.
+  verdictSource: { fontFamily: FONTS.body, fontSize: 11, color: COLORS.ardoise, lineHeight: 16, marginTop: 4 },
 
   dejaValideBox: {
     flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(45,106,79,0.08)',

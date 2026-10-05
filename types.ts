@@ -58,7 +58,21 @@ export interface EvenementCalendrier {
   id: string;
   titre: string;
   date: string;
-  parentId: ParentRole;
+  /** Le parent concerné, ou RIEN.
+   *
+   *  Tous les événements n'appartiennent pas à un parent. Un repère de
+   *  vacances scolaires est un fait de calendrier, pas une attribution de
+   *  garde : qui a les enfants pendant les vacances, c'est le jugement qui le
+   *  dit, et lui seul.
+   *
+   *  Avant, `genererVacancesScolaires` posait chaque repère avec
+   *  `parentId: 'A'`. Sur l'écran, « Vacances de Noël » apparaissait donc
+   *  attribué au père — un magistrat y lit une attribution de garde, et si le
+   *  jugement dit autre chose, c'est l'écran qui a tort.
+   *
+   *  La colonne `evenements_calendrier.parent_id` est nullable en base : rien
+   *  à migrer, il n'y avait qu'à cesser d'inventer un propriétaire. */
+  parentId?: ParentRole;
   // Label d'affichage uniquement (prénom), calculé au moment de la
   // création — pas une source de vérité. Pour filtrer/relier de façon
   // fiable, utiliser enfantId.
@@ -268,10 +282,31 @@ export interface VerdictDatesSpeciales {
   sansParent: string[];
 }
 
+/** Ce qu'a produit la génération des vacances scolaires, et ce qui l'a
+ *  empêchée le cas échéant. Le compte seul ne suffisait pas : « 0 repère
+ *  ajouté » ne dit pas si la famille n'a pas de code postal, si le service de
+ *  l'Éducation nationale est tombé, ou si les repères étaient déjà posés. */
+export interface VerdictVacances {
+  genere: number;
+  /** Zone telle que le jeu de données officiel la donne — « Zone C ».
+   *  Jamais déduite par Dualia. */
+  zone?: string | null;
+  academie?: string | null;
+  source?: string;
+  releveLe?: string;
+  motif?:
+    | 'aucun_foyer'
+    | 'code_postal_absent'
+    | 'hors_france'
+    | 'service_indisponible'
+    | 'aucune_periode';
+  detail?: string;
+}
+
 export interface VerdictFinalisation {
   garde: VerdictGarde;
   datesSpeciales: VerdictDatesSpeciales;
-  vacances: { genere: number };
+  vacances: VerdictVacances;
 }
 
 export interface CadreFamilial {

@@ -9,8 +9,10 @@ import {
   CadreFamilial, ReglePartage, PropositionRepartition,
   Enfant, ContactUrgence, Moment, Tiers, AgendaScolaireItem,
   Foyer, ConfigFoyers, DocumentPortee, AccesTiersActif,
-  VerdictGarde, VerdictDatesSpeciales, VerdictFinalisation, RegimeGardeConfirme,
+  VerdictGarde, VerdictDatesSpeciales, VerdictFinalisation, VerdictVacances, RegimeGardeConfirme,
 } from '../types';
+import { entetesBackend } from '../lib/appelBackend';
+import { proposerAcademie } from '../lib/zoneScolaire';
 import { COLORS } from '../constants/theme';
 import { Langue } from '../constants/i18n';
 import { supabase, effacerSessionLocale } from '../constants/supabase';
@@ -52,18 +54,21 @@ const FETES_JUIVES: Record<string, Record<number, { debut: string; jours: number
   'souccoth': { 2026: { debut: '2026-09-26', jours: 7 }, 2027: { debut: '2027-10-16', jours: 7 }, 2028: { debut: '2028-10-05', jours: 7 } },
 };
 
-const VACANCES_ZONE_C: { nom: string; debut: string; fin: string }[] = [
-  { nom: 'Vacances de la Toussaint', debut: '2026-10-17', fin: '2026-11-02' },
-  { nom: 'Vacances de Noël', debut: '2026-12-19', fin: '2027-01-04' },
-  { nom: "Vacances d'Hiver", debut: '2027-02-06', fin: '2027-02-22' },
-  { nom: 'Vacances de Printemps', debut: '2027-04-03', fin: '2027-04-19' },
-  { nom: "Pont de l'Ascension", debut: '2027-05-05', fin: '2027-05-10' },
-  { nom: "Vacances d'Été", debut: '2027-07-03', fin: '2027-08-31' },
-  { nom: 'Vacances de la Toussaint', debut: '2027-10-23', fin: '2027-11-08' },
-  { nom: 'Vacances de Noël', debut: '2027-12-18', fin: '2028-01-03' },
-  { nom: "Vacances d'Hiver", debut: '2028-02-12', fin: '2028-02-28' },
-  { nom: 'Vacances de Printemps', debut: '2028-04-15', fin: '2028-05-02' },
-];
+// Les vacances scolaires étaient ici, écrites à la main : dix périodes, zone C
+// uniquement, qui s'arrêtaient en mai 2028.
+//
+// Trois défauts, et le troisième est le pire :
+//   - une seule zone sur trois, donc fausses pour deux familles sur trois ;
+//   - une fin de validité silencieuse — en mai 2028 le calendrier n'aurait
+//     plus rien affiché, sans que rien ne le signale ;
+//   - chaque repère était posé avec `parentId: 'A'`, si bien que « Vacances de
+//     Noël » apparaissait ATTRIBUÉ AU PÈRE. Un magistrat y lit une attribution
+//     de garde. Ce n'en était pas une.
+//
+// Les dates viennent désormais du jeu de données officiel de l'Éducation
+// nationale, par api/vacances-scolaires.js, et les repères n'appartiennent à
+// aucun parent. Voir genererVacancesScolaires plus bas.
+const BACKEND_URL = 'https://dualia-backend.vercel.app';
 
 // Repli utilisé tant que les vrais parents ne sont pas chargés depuis
 // Supabase (et si ce chargement échoue). Aucun nom fictif : un bêta-testeur
@@ -841,7 +846,7 @@ interface DualiaStore {
     anneeDebut: number,
     nombreAnnees: number
   ) => VerdictDatesSpeciales;
-  genererVacancesScolaires: () => { genere: number };
+  genererVacancesScolaires: () => Promise<VerdictVacances>;
   evenementsCalendrier: EvenementCalendrier[];
   // Rend VRAI si l'evenement a ete retenu, FAUX si sa date etait illisible et
   // qu'il a donc ete refuse. Les ecrans doivent tester cette reponse avant
@@ -1146,7 +1151,9 @@ export const useStore = create<DualiaStore>()(
       console.error('[Dualia] Événement de garde non synchronisé : aucune famille active.');
       return;
     }
-    const parentUuid = parents[ev.parentId]?.uuid;
+    // Un evenement sans parent est legitime : un repere de vacances scolaires
+        // n'appartient a personne. La colonne parent_id est nullable.
+        const parentUuid = ev.parentId ? parents[ev.parentId]?.uuid : undefined;
     supabase
       .from('evenements_garde')
       .insert(evenementGardeVersDB(ev, familleId, parentUuid))
@@ -1446,29 +1453,111 @@ export const useStore = create<DualiaStore>()(
     return { genere, ignorees: Array.from(ignoreesSet), sansParent: Array.from(sansParentSet) };
   },
 
-  genererVacancesScolaires: () => {
-    const { ajouterEvenementCalendrier } = get();
-    // Le total rendu etait la constante VACANCES_ZONE_C.length * 2, annoncee
-    // au parent sans aucun rapport avec ce qui avait reellement ete cree. On
-    // compte desormais les evenements retenus.
-    let genere = 0;
-    for (const periode of VACANCES_ZONE_C) {
-      if (ajouterEvenementCalendrier({
-        id: `vacances-debut-${Date.now()}-${periode.debut}`,
-        titre: `Début — ${periode.nom}`,
-        // depuisJourLocal : new Date('2026-10-17') vaut minuit UTC, donc
-        // 02:00 a Paris. Les vacances scolaires s'affichaient avec une heure.
-        date: depuisJourLocal(periode.debut).toISOString(),
-        parentId: 'A',
-      })) genere++;
-      if (ajouterEvenementCalendrier({
-        id: `vacances-fin-${Date.now()}-${periode.fin}`,
-        titre: `Reprise — ${periode.nom}`,
-        date: depuisJourLocal(periode.fin).toISOString(),
-        parentId: 'A',
-      })) genere++;
+  genererVacancesScolaires: async () => {
+    const { ajouterEvenementCalendrier, foyers, evenementsCalendrier } = get();
+
+    // 1 — De quelle académie relève le foyer des enfants ?
+    //
+    // Déduit du code postal, jamais demandé : c'est ce que voulait dire
+    // « quand un parent se connecte dans sa zone, tout est déjà inscrit ».
+    // Mais Dualia ne décide pas de la ZONE — voir lib/zoneScolaire.ts.
+    const proposition = proposerAcademie(foyers);
+    if (proposition.statut !== 'proposee') {
+      return {
+        genere: 0,
+        motif: proposition.statut,
+        detail:
+          proposition.statut === 'aucun_foyer'
+            ? undefined
+            : proposition.statut === 'code_postal_absent'
+            ? proposition.foyerNom
+            : `${proposition.foyerNom} — ${proposition.codePostal}`,
+      };
     }
-    return { genere };
+
+    // 2 — Les dates, au jeu de données officiel. Aucune date n'est écrite
+    //     dans Dualia : une table figée devient fausse sans prévenir.
+    let reponse: any;
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/vacances-scolaires`, {
+        method: 'POST',
+        headers: await entetesBackend(),
+        body: JSON.stringify({ academie: proposition.academie }),
+      });
+      reponse = await r.json();
+      if (!r.ok) throw new Error(reponse?.error || `HTTP ${r.status}`);
+    } catch (e: any) {
+      console.error('[Dualia] Calendrier scolaire indisponible :', e);
+      return {
+        genere: 0,
+        motif: 'service_indisponible',
+        academie: proposition.academie,
+        detail: e?.message,
+      };
+    }
+
+    const periodes: { nom: string; debut: string; fin: string }[] = Array.isArray(reponse?.periodes)
+      ? reponse.periodes
+      : [];
+    if (periodes.length === 0) {
+      return {
+        genere: 0,
+        motif: 'aucune_periode',
+        academie: proposition.academie,
+        detail: reponse?.avertissement,
+        source: reponse?.source,
+        releveLe: reponse?.releveLe,
+      };
+    }
+
+    // 3 — Pose des repères.
+    //
+    // La zone est reprise TELLE QUE les données officielles la donnent, et
+    // elle figure dans l'intitulé : un tiers qui lit le calendrier doit
+    // pouvoir savoir de quel calendrier scolaire il s'agit.
+    const zoneCourte = String(reponse?.zone ?? '').replace(/^zone\s*/i, '').trim();
+    const suffixe = zoneCourte ? ` (zone ${zoneCourte})` : '';
+
+    // Un parent qui revalide son cadre ne doit pas voir ses vacances en
+    // double. On compare sur l'intitulé et le jour, les seules choses qui
+    // comptent ici.
+    const dejaPose = new Set(
+      evenementsCalendrier.map((e) => `${e.titre}|${String(e.date).slice(0, 10)}`)
+    );
+
+    let genere = 0;
+    for (const periode of periodes) {
+      const bornes: { prefixe: string; jour: string }[] = [
+        { prefixe: 'Début', jour: periode.debut },
+        // `fin` est le jour de REPRISE, pas le dernier jour de vacances :
+        // c'est la convention du jeu de données, et celle que l'application
+        // utilisait déjà.
+        { prefixe: 'Reprise', jour: periode.fin },
+      ];
+      for (const borne of bornes) {
+        const titre = `${borne.prefixe} — ${periode.nom}${suffixe}`;
+        // depuisJourLocal : new Date('2026-10-17') vaut minuit UTC, donc
+        // 02:00 à Paris. Les vacances s'affichaient avec une heure.
+        const date = depuisJourLocal(borne.jour);
+        if (dejaPose.has(`${titre}|${borne.jour}`)) continue;
+        if (ajouterEvenementCalendrier({
+          id: `vacances-${borne.prefixe.toLowerCase()}-${borne.jour}-${Date.now()}`,
+          titre,
+          date: date.toISOString(),
+          // PAS DE parentId. Un repère de vacances n'appartient à personne :
+          // qui a les enfants pendant les vacances, c'est le jugement qui le
+          // dit. Avant, chaque repère était posé au nom du parent A.
+        })) genere++;
+      }
+    }
+
+    return {
+      genere,
+      zone: reponse?.zone ?? null,
+      academie: proposition.academie,
+      source: reponse?.source,
+      releveLe: reponse?.releveLe,
+    };
   },
       evenementsCalendrier: [],
       ajouterEvenementCalendrier: (evEntrant) => {
@@ -1507,7 +1596,9 @@ export const useStore = create<DualiaStore>()(
           console.error('[Dualia] Événement non synchronisé : aucune famille active.');
           return true;
         }
-        const parentUuid = parents[ev.parentId]?.uuid;
+        // Un evenement sans parent est legitime : un repere de vacances
+        // scolaires n'appartient a personne. parent_id est nullable en base.
+        const parentUuid = ev.parentId ? parents[ev.parentId]?.uuid : undefined;
         supabase
           .from('evenements_calendrier')
           .insert(evenementCalendrierVersDB(ev, familleId, parentUuid))
@@ -3006,7 +3097,7 @@ export const useStore = create<DualiaStore>()(
           cadre?.garde?.generation ??
           { statut: 'non_genere', motif: cadre?.garde ? 'non_tente' : 'aucune_garde' },
         datesSpeciales: { genere: 0, ignorees: [], sansParent: [] },
-        vacances: { genere: 0 },
+        vacances: { genere: 0, motif: 'aucune_periode' },
       };
     }
 
@@ -3019,7 +3110,7 @@ export const useStore = create<DualiaStore>()(
         ? genererDatesSpeciales(cadre.datesSpeciales, new Date().getFullYear(), 3)
         : { genere: 0, ignorees: [], sansParent: [] };
 
-    const vacances = genererVacancesScolaires();
+    const vacances = await genererVacancesScolaires();
 
     return { garde, datesSpeciales, vacances };
   },

@@ -544,7 +544,7 @@ export default function CalendrierScreen() {
                     <View
                       style={[
                         styles.modalPuce,
-                        { backgroundColor: parents[ev.parentId]?.couleur ?? OR },
+                        { backgroundColor: (ev.parentId ? parents[ev.parentId]?.couleur : undefined) ?? OR },
                       ]}
                     />
                     <Text style={styles.modalTexte}>
@@ -575,12 +575,17 @@ export default function CalendrierScreen() {
             <Text style={styles.videTxt}>{t.aucunEvenement}</Text>
           ) : (
             elementsSemaine.map((ev) => {
-              const parent = parents[ev.parentId];
+              // Un événement peut n'appartenir à AUCUN parent : un repère de
+              // vacances scolaires est un fait de calendrier, pas une
+              // attribution de garde. La carte se rend alors sans nom et avec
+              // la couleur neutre, plutôt que d'afficher le prénom d'un parent
+              // qui n'a rien demandé — ou de planter sur `parent.couleur`.
+              const parent = ev.parentId ? parents[ev.parentId] : undefined;
               return (
                 <View key={ev.id} style={styles.carteEv}>
-                  <View style={[styles.barreEv, { backgroundColor: parent.couleur }]} />
+                  <View style={[styles.barreEv, { backgroundColor: parent?.couleur ?? OR }]} />
                   <View style={styles.contenuEv}>
-                    <Text style={styles.evParent}>{parent.nom}</Text>
+                    {parent ? <Text style={styles.evParent}>{parent.nom}</Text> : null}
                     <Text style={styles.evDate}>
                       {format(ev.date, 'EEEE d MMM', { locale: dateLocale })}
                       {(() => {

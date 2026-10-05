@@ -413,7 +413,7 @@ export default function AccueilScreen() {
               evenementsSemaine.slice(0, 3).map((ev) => {
                 const d = parseISO(ev.date);
                 const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
-                const qui = ev.enfant || parents[ev.parentId]?.nom?.split(' ')[0] || '';
+                const qui = ev.enfant || (ev.parentId ? parents[ev.parentId]?.nom?.split(' ')[0] : '') || '';
                 // Le jour, en plus de l'heure. Cet encart couvre sept jours et
                 // n'affichait que l'heure : deux entraînements de football à
                 // deux dates différentes s'y lisaient comme un doublon, et un
@@ -425,7 +425,7 @@ export default function AccueilScreen() {
                       {jourCourt}{aUneHeure ? ` ${format(d, 'HH:mm')}` : ''}
                     </Text>
                     <View style={styles.timelineTexteWrap}>
-                      <View style={[styles.timelineDot, { backgroundColor: parents[ev.parentId]?.couleur ?? COLORS.vert }]} />
+                      <View style={[styles.timelineDot, { backgroundColor: (ev.parentId ? parents[ev.parentId]?.couleur : undefined) ?? COLORS.vert }]} />
                       <Text style={styles.timelineTexte} numberOfLines={1}>{ev.titre}{qui ? ` — ${qui}` : ''}</Text>
                     </View>
                   </View>
