@@ -40,6 +40,7 @@ const L = {
     aVerifier: 'Ce cadre n’est pas encore vérifié',
     aVerifierAction: 'Reprendre la vérification',
     voirPiece: 'Voir la pièce au coffre-fort',
+    reimporter: 'Remplacer par un nouveau document',
     bandeauTitre: 'Une décision encadre votre organisation ?',
     bandeauTexte:
       'Jugement, convention homologuée, ordonnance : importez-la et Dualia en relève la pension, la garde et la clause de réévaluation, avec la citation du document en regard de chaque valeur. Rien n’est publié — la pièce reste dans votre coffre-fort.',
@@ -66,6 +67,7 @@ const L = {
     aVerifier: 'Este marco aún no está verificado',
     aVerifierAction: 'Retomar la verificación',
     voirPiece: 'Ver el documento en la caja fuerte',
+    reimporter: 'Sustituir por un nuevo documento',
     bandeauTitre: '¿Una decisión enmarca vuestra organización?',
     bandeauTexte:
       'Sentencia, convenio homologado, auto: impórtalo y Dualia extrae la pensión, la custodia y la cláusula de revisión, con la cita del documento junto a cada valor. Nada se publica — el documento permanece en vuestra caja fuerte.',
@@ -92,6 +94,7 @@ const L = {
     aVerifier: 'Este enquadramento ainda não foi verificado',
     aVerifierAction: 'Retomar a verificação',
     voirPiece: 'Ver o documento no cofre',
+    reimporter: 'Substituir por um novo documento',
     bandeauTitre: 'Uma decisão enquadra a vossa organização?',
     bandeauTexte:
       'Sentença, acordo homologado, despacho: importe-o e a Dualia extrai a pensão, a guarda e a cláusula de atualização, com a citação do documento ao lado de cada valor. Nada é publicado — o documento fica no vosso cofre.',
@@ -118,6 +121,7 @@ const L = {
     aVerifier: 'This framework has not been checked yet',
     aVerifierAction: 'Resume checking',
     voirPiece: 'View the document in the vault',
+    reimporter: 'Replace with a new document',
     bandeauTitre: 'Does a decision frame your arrangements?',
     bandeauTexte:
       'Judgment, approved agreement, court order: import it and Dualia reads the support amount, the custody arrangement and the indexation clause, each shown beside the sentence it came from. Nothing is published — the document stays in your vault.',
@@ -376,6 +380,19 @@ export default function DecisionsScreen() {
                 onPress={() => router.push('/documents' as any)}
               >
                 <Text style={styles.fondatricePieceTexte}>{l.voirPiece}</Text>
+              </Pressable>
+              {/* Réimport.
+                  Il manquait, et son absence fermait toute porte : le bandeau
+                  d'import ne s'affiche que lorsqu'AUCUN cadre n'existe, et la
+                  carte de Documents ne fait plus qu'un renvoi ici. Un parent
+                  dont le jugement a été modifié par une nouvelle décision se
+                  retrouvait donc sans aucun moyen de la déposer.
+                  Discret, parce que c'est un geste rare — mais présent. */}
+              <Pressable
+                style={styles.fondatriceRemplacer}
+                onPress={() => setJugementModalVisible(true)}
+              >
+                <Text style={styles.fondatriceRemplacerTexte}>{l.reimporter}</Text>
               </Pressable>
             </View>
             <Text style={styles.sectionTitle}>{l.sectionAccords}</Text>
@@ -643,6 +660,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(45, 106, 79, 0.08)',
   },
   fondatricePieceTexte: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vert },
+  fondatriceRemplacer: { marginTop: SPACING.sm, paddingVertical: 7, alignItems: 'center' },
+  fondatriceRemplacerTexte: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, textDecorationLine: 'underline' },
 
   jugementBanner: {
     backgroundColor: COLORS.vertProfond, borderRadius: RADIUS.lg, padding: SPACING.lg, marginBottom: SPACING.lg,

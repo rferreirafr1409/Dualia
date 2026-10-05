@@ -46,6 +46,19 @@ import { fr, pt, es, enGB } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+
+// Le bouton de la carte « Cadre familial ».
+//
+// `constants/i18n.ts` le nomme « Importer un document », ce qui etait exact
+// tant que la carte ouvrait l'import. Elle renvoie desormais vers Decisions,
+// ou vit la decision : promettre un import et faire une navigation est
+// precisement le genre de petit mensonge d'interface qu'on traque ailleurs.
+const CTA_CADRE = {
+  fr: 'Ouvrir Décisions',
+  es: 'Abrir Decisiones',
+  pt: 'Abrir Decisões',
+  en: 'Open Decisions',
+} as const;
 import { useStore } from '../../store/useStore';
 import { aujourdHuiLocal, estInstantValide } from '../../lib/dates';
 import { DocumentItem, CategorieDocument, DocumentPortee } from '../../types';
@@ -761,7 +774,7 @@ export default function DocumentsScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.cadreTitre}>{t.cadreFamilialTitre}</Text>
                 <Text style={styles.cadreTexte}>{t.cadreFamilialTexte}</Text>
-                <Text style={styles.cadreCta}>{t.cadreFamilialCta} →</Text>
+                <Text style={styles.cadreCta}>{CTA_CADRE[langue]} →</Text>
               </View>
             </TouchableOpacity>
           </>
