@@ -59,6 +59,23 @@ const CTA_CADRE = {
   pt: 'Abrir Decisões',
   en: 'Open Decisions',
 } as const;
+
+// Et le texte de la carte, pour la meme raison.
+//
+// `constants/i18n.ts` dit « Importez un jugement, une convention ou un accord
+// parental… » — une promesse que cette page ne tient plus : l'import vit dans
+// Decisions. Le bouton disait « Ouvrir Decisions » pendant que la phrase
+// au-dessus disait « importez ici ». Les deux se contredisaient.
+//
+// La phrase explique maintenant le partage : la DECISION se depose dans
+// Decisions, la PIECE est conservee ici. C'est l'architecture choisie, dite
+// en une ligne a l'endroit ou la question se pose.
+const TEXTE_CADRE = {
+  fr: 'Le jugement ou la convention qui encadre votre organisation se dépose dans Décisions. La pièce, elle, est conservée ici.',
+  es: 'La sentencia o el convenio que enmarca vuestra organización se sube en Decisiones. El documento se conserva aquí.',
+  pt: 'A sentença ou o acordo que enquadra a vossa organização carrega-se em Decisões. O documento fica guardado aqui.',
+  en: 'The judgment or agreement that frames your arrangements is uploaded in Decisions. The document itself is kept here.',
+} as const;
 import { useStore } from '../../store/useStore';
 import { aujourdHuiLocal, estInstantValide } from '../../lib/dates';
 import { DocumentItem, CategorieDocument, DocumentPortee } from '../../types';
@@ -773,7 +790,7 @@ export default function DocumentsScreen() {
               <View style={styles.cadreAccent} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.cadreTitre}>{t.cadreFamilialTitre}</Text>
-                <Text style={styles.cadreTexte}>{t.cadreFamilialTexte}</Text>
+                <Text style={styles.cadreTexte}>{TEXTE_CADRE[langue]}</Text>
                 <Text style={styles.cadreCta}>{CTA_CADRE[langue]} →</Text>
               </View>
             </TouchableOpacity>
