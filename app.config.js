@@ -5,13 +5,22 @@
 // pre-production. L'environnement est choisi a la compilation par
 // EXPO_PUBLIC_ENV (voir constants/environnement.ts) ; toute valeur autre que
 // 'preprod' donne la production.
+//
+// Appli mobile (EAS Build, profils dans eas.json) : la pre-prod porte un
+// identifiant distinct (suffixe .preprod) et son propre nom, pour s'installer
+// a cote de l'appli de production sur le meme telephone sans l'ecraser.
+//
+// L'identifiant de production (fr.dualia.app) est DEFINITIF une fois l'appli
+// publiee sur l'App Store ou Google Play : ne jamais le modifier ensuite.
 
 const EST_PREPROD = process.env.EXPO_PUBLIC_ENV === 'preprod';
+const IDENTIFIANT = EST_PREPROD ? 'fr.dualia.app.preprod' : 'fr.dualia.app';
 
 module.exports = {
   expo: {
-    "name": "dualia-mvp",
-    "slug": "dualia-mvp",
+    "name": EST_PREPROD ? 'Dualia pré-prod' : 'Dualia',
+    "slug": "dualia",
+    "scheme": EST_PREPROD ? 'dualia-preprod' : 'dualia',
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -23,9 +32,16 @@ module.exports = {
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": IDENTIFIANT,
+      "infoPlist": {
+        // Dualia n'utilise que le chiffrement standard (HTTPS) : evite la
+        // question sur l'export de cryptographie a chaque envoi sur TestFlight.
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": IDENTIFIANT,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -41,7 +57,14 @@ module.exports = {
     },
     "plugins": [
       "expo-router",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Dualia accède à vos photos pour joindre un ticket, un justificatif ou un souvenir.",
+          "cameraPermission": "Dualia utilise l'appareil photo pour scanner un ticket ou un justificatif."
+        }
+      ]
     ]
   },
 };
