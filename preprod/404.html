@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script>
+      // GitHub Pages ne sait servir que index.html à la racine. Quand une
+      // page profonde (ex. /Dualia/rejoindre?token=xxx) est demandée
+      // directement, GitHub renvoie ce 404.html à la place. On mémorise le
+      // chemin exact demandé, puis on redirige vers index.html qui saura
+      // le restaurer une fois l'application JavaScript chargée.
+      //
+      // GitHub Pages sert le 404.html de la RACINE pour tout le site, pré-prod
+      // comprise : c'est toujours celui de la prod qui s'exécute. Un lien
+      // profond sous /Dualia/preprod/ doit donc repartir vers la pré-prod,
+      // sinon il atterrirait sur la prod avec un chemin qu'elle ne connaît pas.
+      var base = /^\/Dualia\/preprod(\/|$)/.test(location.pathname) ? '/Dualia/preprod/' : '/Dualia/';
+      sessionStorage.setItem('chemin_avant_404', location.pathname + location.search + location.hash);
+      location.replace(base);
+    </script>
+  </head>
+  <body></body>
+</html>
