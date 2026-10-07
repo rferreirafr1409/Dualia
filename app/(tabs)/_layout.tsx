@@ -4,7 +4,7 @@ import { Tabs, usePathname, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import type { BottomTabBarProps } from 'expo-router/js-tabs';
 import { COLORS, TYPOGRAPHY, FONTS } from '../../constants/theme';
 import { TRADUCTIONS } from '../../constants/i18n';
 import { useStore } from '../../store/useStore';

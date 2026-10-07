@@ -235,7 +235,7 @@ export default function RootLayout() {
   if (!sessionVerifiee || !policesPretes) {
     return (
       <SafeAreaProvider>
-        <StatusBar style="light" backgroundColor={COLORS.vertProfond} />
+        <StatusBar style="light" />
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.ivoire }}>
           <ActivityIndicator size="large" color={COLORS.vert} />
         </View>
@@ -246,7 +246,7 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" backgroundColor={COLORS.vertProfond} />
+      <StatusBar style="light" />
       {/* Pose une seule fois, au-dessus de tout : la surveillance ne doit pas
           repartir de zero a chaque changement d'ecran. Ne rend rien tant
           qu'aucune session n'est ouverte. */}
