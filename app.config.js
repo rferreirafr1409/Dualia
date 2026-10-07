@@ -20,6 +20,9 @@ module.exports = {
   expo: {
     "name": EST_PREPROD ? 'Dualia pré-prod' : 'Dualia',
     "slug": "dualia",
+    // Projet EAS (expo.dev, organisation r-digital-instore) qui compile
+    // l'appli mobile. Les deux environnements partagent ce projet.
+    "owner": "r-digital-instore",
     "scheme": EST_PREPROD ? 'dualia-preprod' : 'dualia',
     "version": "1.0.0",
     "orientation": "portrait",
@@ -54,6 +57,11 @@ module.exports = {
     },
     "experiments": {
       "baseUrl": EST_PREPROD ? '/Dualia/preprod' : '/Dualia'
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3b851b01-1806-483f-bcb5-21b9de9408c9"
+      }
     },
     "plugins": [
       "expo-router",
