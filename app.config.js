@@ -10,11 +10,11 @@
 // identifiant distinct (suffixe .preprod) et son propre nom, pour s'installer
 // a cote de l'appli de production sur le meme telephone sans l'ecraser.
 //
-// L'identifiant de production (fr.dualia.app) est DEFINITIF une fois l'appli
+// L'identifiant de production (app.dualia, domaine dualia.app inverse) est DEFINITIF une fois l'appli
 // publiee sur l'App Store ou Google Play : ne jamais le modifier ensuite.
 
 const EST_PREPROD = process.env.EXPO_PUBLIC_ENV === 'preprod';
-const IDENTIFIANT = EST_PREPROD ? 'fr.dualia.app.preprod' : 'fr.dualia.app';
+const IDENTIFIANT = EST_PREPROD ? 'app.dualia.preprod' : 'app.dualia';
 
 module.exports = {
   expo: {
