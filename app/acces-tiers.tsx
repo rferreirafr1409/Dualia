@@ -30,6 +30,7 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 import type { RoleTiers, Tiers } from '../types';
 import { retour } from '../lib/navigation';
+import { URL_APPLICATION } from '../constants/environnement';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -46,7 +47,7 @@ function baseDuLien(): string {
     const chemin = window.location.pathname.replace(/\/[^/]*$/, '');
     return `${window.location.origin}${chemin}`;
   }
-  return 'https://rferreirafr1409.github.io/Dualia';
+  return URL_APPLICATION;
 }
 
 function lienInvitation(token: string): string {

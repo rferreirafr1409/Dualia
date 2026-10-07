@@ -4,7 +4,8 @@
 //
 // GitHub Pages sert public/404.html pour toute page profonde, qui sauvegarde
 // le chemin complet (pathname + search + hash) dans sessionStorage sous
-// "chemin_avant_404", puis redirige vers /Dualia/. Le script ci-dessous,
+// "chemin_avant_404", puis redirige vers /Dualia/ (ou /Dualia/preprod/ pour
+// un lien de pre-prod). Le script ci-dessous,
 // qui s'exécute ici avant tout code Expo Router, restaure ce chemin dans
 // l'URL ET extrait immédiatement le access_token/refresh_token éventuel
 // pour les stocker à part, sous une clé dédiée et stable
@@ -17,6 +18,7 @@
 
 import { ScrollViewStyleReset } from 'expo-router/html';
 import { type PropsWithChildren } from 'react';
+import { CHEMIN_BASE } from '../constants/environnement';
 
 export default function Root({ children }: PropsWithChildren) {
   return (
@@ -40,7 +42,7 @@ export default function Root({ children }: PropsWithChildren) {
 
                   if (chemin) {
                     sessionStorage.removeItem('chemin_avant_404');
-                    if (location.pathname === '/Dualia/' || location.pathname === '/Dualia') {
+                    if (location.pathname === '${CHEMIN_BASE}/' || location.pathname === '${CHEMIN_BASE}') {
                       var indexHash = chemin.indexOf('#');
                       // Un rebond 404 resté en attente (navigation
                       // interrompue) ne doit pas detourner un vrai lien

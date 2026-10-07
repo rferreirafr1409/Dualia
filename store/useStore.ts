@@ -31,6 +31,7 @@ import {
   NOTES_MODELE,
   NOTE_JUGEMENT_WEEKEND,
 } from '../lib/gardeJugement';
+import { BACKEND_URL, SUFFIXE_STOCKAGE } from '../constants/environnement';
 
 const dernierDimancheDeMai = (annee: number): Date => {
   const d = new Date(annee, 4, 31);
@@ -68,7 +69,6 @@ const FETES_JUIVES: Record<string, Record<number, { debut: string; jours: number
 // Les dates viennent désormais du jeu de données officiel de l'Éducation
 // nationale, par api/vacances-scolaires.js, et les repères n'appartiennent à
 // aucun parent. Voir genererVacancesScolaires plus bas.
-const BACKEND_URL = 'https://dualia-backend.vercel.app';
 
 // Repli utilisé tant que les vrais parents ne sont pas chargés depuis
 // Supabase (et si ce chargement échoue). Aucun nom fictif : un bêta-testeur
@@ -3982,7 +3982,7 @@ export const useStore = create<DualiaStore>()(
   },
 }),
     {
-      name: 'dualia-storage',
+      name: `dualia-storage${SUFFIXE_STOCKAGE}`,
       storage: dualiaStorage,
       partialize: (state) => ({
         decisions: state.decisions,

@@ -38,8 +38,9 @@ import {
   libellesConditions, listerConditions, aDesConditions, basePartageable, depassePlafond,
 } from '../../lib/conditionsCadre';
 import { formatMontant as formatMontantBrut } from '../../lib/comptes';
+import { BACKEND_URL } from '../../constants/environnement';
 
-const BACKEND_URL = 'https://dualia-backend.vercel.app/api/scan-ticket';
+const URL_SCAN_TICKET = `${BACKEND_URL}/api/scan-ticket`;
 
 // Libellés de la carte « Pension », définis ici plutôt que dans le gros objet
 // de traductions de ce fichier : la carte est une addition, et la garder
@@ -598,7 +599,7 @@ function FinancesScreenInner() {
     setScanLoading(true);
 
     try {
-      const response = await fetchAvecRetry(BACKEND_URL, {
+      const response = await fetchAvecRetry(URL_SCAN_TICKET, {
         method: 'POST',
         headers: await entetesBackend(),
         body: JSON.stringify({ image: asset.base64, mediaType: asset.mimeType || 'image/jpeg' }),
@@ -644,7 +645,7 @@ function FinancesScreenInner() {
         setFormPhotoUri(dataUrl);
         setFormJustificatif({ base64, contentType: mediaType, nom: nomFichier });
 
-        const response = await fetchAvecRetry(BACKEND_URL, {
+        const response = await fetchAvecRetry(URL_SCAN_TICKET, {
           method: 'POST',
           headers: await entetesBackend(),
           body: JSON.stringify({ image: base64, mediaType }),

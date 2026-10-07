@@ -24,8 +24,8 @@ import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { entetesBackend } from '../lib/appelBackend';
 import { parserICS, type EvenementICS } from '../lib/icsParser';
+import { BACKEND_URL } from '../constants/environnement';
 
-const BACKEND_URL = 'https://dualia-backend.vercel.app';
 
 export interface CalendrierExterne {
   id: string;

@@ -14,8 +14,11 @@
 // a changer ici — au lieu de laisser derriere soi une reinitialisation de
 // mot de passe qui pointe encore vers l'ancienne adresse.
 
+import { URL_APPLICATION } from './environnement';
+
 // Sans barre oblique finale : elle est ajoutee par lienApplication().
-export const URL_BASE_APPLICATION = 'https://rferreirafr1409.github.io/Dualia';
+// Vient de constants/environnement.ts : en pre-prod, les liens ramenent en pre-prod.
+export const URL_BASE_APPLICATION = URL_APPLICATION;
 
 /**
  * Fabrique une URL absolue vers une page de l'application.

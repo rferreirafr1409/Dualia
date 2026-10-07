@@ -13,6 +13,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { URL_APPLICATION } from '../constants/environnement';
 
 export default function CreerEspaceLienScreen() {
   const router = useRouter();
@@ -34,7 +35,7 @@ export default function CreerEspaceLienScreen() {
   // volontairement PAS dans l'URL : c'est tout l'interet. Un lien transfere,
   // capture ou lu par-dessus l'epaule ne suffit plus.
   const afficher = (ligne: any) => {
-    setLienInvitation(`https://rferreirafr1409.github.io/Dualia/rejoindre?token=${ligne.token}`);
+    setLienInvitation(`${URL_APPLICATION}/rejoindre?token=${ligne.token}`);
     setCode(ligne.code ?? null);
   };
 

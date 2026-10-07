@@ -16,8 +16,7 @@ import { createClient } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-const SUPABASE_URL = 'https://fnnynyztyujxvpbakvpp.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_dtbV4IR77FAKU97gj_SXUg_G_X2vVEi';
+import { SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY } from './environnement';
 
 const estNavigateurReel = Platform.OS !== 'web' || typeof window !== 'undefined';
 

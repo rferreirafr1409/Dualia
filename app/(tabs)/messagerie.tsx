@@ -31,14 +31,15 @@ import { TRADUCTIONS } from '../../constants/i18n';
 import { choisirFichierDocument } from '../../lib/pickerFichierDocument';
 import { TAILLE_MAX_BASE64, estHeic, estUneImage, normaliserType, typeImageStocke } from '../../lib/typesFichier';
 import { ouvrirFichierStocke } from '../../lib/ouvrirFichierStocke';
+import { BACKEND_URL } from '../../constants/environnement';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 if (Platform.OS !== 'web') {
   ImagePicker = require('expo-image-picker');
 }
 
-const PARSE_MESSAGE_URL = 'https://dualia-backend.vercel.app/api/parse-message';
-const MODERATE_MESSAGE_URL = 'https://dualia-backend.vercel.app/api/moderate-message';
+const PARSE_MESSAGE_URL = `${BACKEND_URL}/api/parse-message`;
+const MODERATE_MESSAGE_URL = `${BACKEND_URL}/api/moderate-message`;
 
 const PHOTO_MAX_DIMENSION = 1800;
 const PHOTO_JPEG_QUALITY = 0.75;

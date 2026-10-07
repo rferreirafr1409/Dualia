@@ -8,6 +8,7 @@ import { useStore } from '../store/useStore';
 import { supabase } from '../constants/supabase';
 import GardeInactivite from '../components/GardeInactivite';
 import ErrorBoundary from '../components/ErrorBoundary';
+import BandeauEnvironnement from '../components/BandeauEnvironnement';
 import { useFonts } from 'expo-font';
 import {
   Fraunces_500Medium,
@@ -238,6 +239,7 @@ export default function RootLayout() {
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.ivoire }}>
           <ActivityIndicator size="large" color={COLORS.vert} />
         </View>
+        <BandeauEnvironnement />
       </SafeAreaProvider>
     );
   }
@@ -284,6 +286,8 @@ export default function RootLayout() {
         <Stack.Screen name="enfant/[id]" />
       </Stack>
       </ErrorBoundary>
+      {/* Apres la pile, pour passer au-dessus de tous les ecrans. */}
+      <BandeauEnvironnement />
     </SafeAreaProvider>
   );
 }

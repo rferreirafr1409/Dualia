@@ -68,6 +68,7 @@ import { useStore } from '../../store/useStore';
 import { entetesBackend } from '../../lib/appelBackend';
 import { supabase } from '../../constants/supabase';
 import { formatMontant } from '../../lib/comptes';
+import { BACKEND_URL } from '../../constants/environnement';
 
 const ACCENT = '#B5927C';
 
@@ -356,7 +357,7 @@ export default function CafScreen() {
     setRecuperationEnCours(true);
     setRecuperationErreur(null);
     try {
-      const reponse = await fetch('https://dualia-backend.vercel.app/api/insee-indice', {
+      const reponse = await fetch(`${BACKEND_URL}/api/insee-indice`, {
         headers: await entetesBackend(),
       });
       const data = await reponse.json();

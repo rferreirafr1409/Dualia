@@ -39,8 +39,8 @@ import { TRADUCTIONS } from '../constants/i18n';
 import { choisirFichierPDF } from '../lib/pickerFichierPDF';
 import { gardeDepuisExtraction, datesSpecialesDepuisExtraction } from '../lib/gardeJugement';
 import type { CadreFamilial, ReglePartage } from '../types';
+import { BACKEND_URL } from '../constants/environnement';
 
-const BACKEND_URL = 'https://dualia-backend.vercel.app';
 
 const COLORS = {
   ivoire: '#F8F6F2',

@@ -4,6 +4,7 @@ import { Redirect } from 'expo-router';
 import { Platform } from 'react-native';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../constants/theme';
+import { CHEMIN_BASE } from '../constants/environnement';
 
 type Decision =
   | { type: 'en_cours' }
@@ -41,7 +42,7 @@ export default function Index() {
       const chemin = window.sessionStorage.getItem('chemin_avant_404');
       if (chemin) {
         window.sessionStorage.removeItem('chemin_avant_404');
-        const cheminSansBase = chemin.replace(/^\/Dualia/, '') || '/';
+        const cheminSansBase = (chemin.startsWith(CHEMIN_BASE) ? chemin.slice(CHEMIN_BASE.length) : chemin) || '/';
         setDecision({ type: 'restaurer', chemin: cheminSansBase });
         return;
       }

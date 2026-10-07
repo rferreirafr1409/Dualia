@@ -35,10 +35,37 @@
 // confirmer le régime, voir le calendrier apparaître.
 
 import { createClient } from '@supabase/supabase-js';
+import fs from 'node:fs';
+
+// Environnement visé : comme pour l'application, EXPO_PUBLIC_ENV=preprod
+// vise la pré-prod, toute autre valeur la production.
+//
+//   $env:EXPO_PUBLIC_ENV = "preprod"; node seed-demo.mjs
+//
+// Les adresses ne sont pas recopiées ici : elles sont lues dans
+// constants/environnement.ts, seul endroit qui connaisse les deux
+// environnements. Node ne sait pas importer ce fichier TypeScript partout, on
+// y lit donc les deux chaînes de chaque constante (pré-prod d'abord, prod
+// ensuite, dans l'ordre du ternaire). Si le fichier change de forme, le
+// script s'arrête plutôt que de deviner.
+const EST_PREPROD = process.env.EXPO_PUBLIC_ENV === 'preprod';
+
+function valeurEnvironnement(nom) {
+  const source = fs.readFileSync(new URL('./constants/environnement.ts', import.meta.url), 'utf8');
+  const m = source.match(new RegExp(`export const ${nom} = EST_PREPROD\\s*\\?\\s*'([^']+)'\\s*:\\s*'([^']+)'`));
+  if (!m) {
+    console.error(`constants/environnement.ts : ${nom} introuvable. Arrêt.`);
+    process.exit(1);
+  }
+  return EST_PREPROD ? m[1] : m[2];
+}
 
 // Clés publiques, déjà présentes dans le bundle de l'application.
-const URL_SUPABASE = 'https://fnnynyztyujxvpbakvpp.supabase.co';
-const CLE_PUBLIABLE = 'sb_publishable_dtbV4IR77FAKU97gj_SXUg_G_X2vVEi';
+const URL_SUPABASE = valeurEnvironnement('SUPABASE_URL');
+const CLE_PUBLIABLE = valeurEnvironnement('SUPABASE_PUBLISHABLE_KEY');
+const URL_APPLICATION = EST_PREPROD
+  ? 'https://rferreirafr1409.github.io/Dualia/preprod/'
+  : 'https://rferreirafr1409.github.io/Dualia/';
 
 // Clé de création fixe : c'est elle qui rend ce script rejouable et qui
 // interdit qu'il touche un autre espace. Ne pas la changer.
@@ -730,7 +757,7 @@ async function principal() {
   console.log('\n  Volontairement laissés VIDES, ce sont eux la démonstration :');
   console.log('    · le cadre familial   → à créer en important le jugement fictif');
   console.log('    · le calendrier de garde → à générer en confirmant le régime\n');
-  console.log('  Connecte-toi sur https://rferreirafr1409.github.io/Dualia/ avec');
+  console.log(`  Connecte-toi sur ${URL_APPLICATION} avec`);
   console.log(`  ${EMAIL_JULIEN} et le mot de passe que tu viens d'utiliser.\n`);
 }
 
