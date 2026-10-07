@@ -415,7 +415,7 @@ export default function CafScreen() {
       : t.periodiciteAutre;
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
       <LinearGradient colors={['#9E7A64', ACCENT]} style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitre}>{t.titre}</Text>

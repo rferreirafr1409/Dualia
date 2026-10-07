@@ -210,7 +210,7 @@ export default function EspaceTiersScreen() {
   // franchement plutôt que d'afficher un écran vide sans explication.
   if (!acces) {
     return (
-      <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.screen} edges={['bottom']}>
         <View style={styles.centre}>
           <Ionicons name="lock-closed-outline" size={32} color={COLORS.ardoise} />
           <Text style={styles.titre}>{l.aucunAccesTitre}</Text>
@@ -308,7 +308,7 @@ export default function EspaceTiersScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.screen} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.screen} edges={['bottom']}>
       <View style={styles.entete}>
         <View style={{ flex: 1 }}>
           <Text style={styles.titre}>{l.bonjour(acces.nom)}</Text>

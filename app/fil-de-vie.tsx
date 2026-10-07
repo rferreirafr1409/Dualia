@@ -64,7 +64,7 @@ export default function FilDeVieScreen() {
     : '/partager-moment';
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
       <View style={styles.header}>
         <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.retourBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
