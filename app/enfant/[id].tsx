@@ -61,7 +61,7 @@ export default function FicheEnfantScreen() {
   // fiche — un clignotement qui dit l'inverse de ce qu'on veut dire.
   if (!enfant && chargementInitial) {
     return (
-      <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.conteneur} edges={['bottom']}>
         <View style={styles.introuvableBloc}>
           <ActivityIndicator size="large" color={COLORS.vert} />
         </View>
@@ -71,7 +71,7 @@ export default function FicheEnfantScreen() {
 
   if (!enfant) {
     return (
-      <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.conteneur} edges={['bottom']}>
         <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
@@ -95,7 +95,7 @@ export default function FicheEnfantScreen() {
   const age = enfant.dateNaissance ? differenceInYears(new Date(), parseISO(enfant.dateNaissance)) : null;
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
       <View style={styles.header}>
         <Pressable onPress={() => retour(router, '/(tabs)/famille')} style={styles.backBtn}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />

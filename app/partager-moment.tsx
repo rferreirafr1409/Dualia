@@ -77,7 +77,7 @@ export default function PartagerMomentScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
           <Pressable onPress={() => retour(router, '/(tabs)/fil-de-vie')} hitSlop={8}>

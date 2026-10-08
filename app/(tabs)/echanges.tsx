@@ -21,7 +21,7 @@ export default function EchangesScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
       <View style={styles.header}>
         <Text style={styles.headerTitre}>{t.titre}</Text>
         <Text style={styles.headerSous}>{t.sousTitre}</Text>

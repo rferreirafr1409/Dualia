@@ -968,7 +968,7 @@ function FinancesScreenInner() {
     );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={[]}>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
         {/* Action principale en haut à droite, comme Documents et Journal.
             Aucun bouton flottant : la bulle de retour BETA se positionne par

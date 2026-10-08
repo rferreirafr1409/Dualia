@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/theme';
 import { useStore } from '../store/useStore';
 import { supabase } from '../constants/supabase';
@@ -235,18 +235,20 @@ export default function RootLayout() {
   if (!sessionVerifiee || !policesPretes) {
     return (
       <SafeAreaProvider>
-        <StatusBar style="light" backgroundColor={COLORS.vertProfond} />
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.ivoire }}>
-          <ActivityIndicator size="large" color={COLORS.vert} />
-        </View>
-        <BandeauEnvironnement />
+        <StatusBar style="dark" />
+        <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: COLORS.ivoire }}>
+          <BandeauEnvironnement />
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator size="large" color={COLORS.vert} />
+          </View>
+        </SafeAreaView>
       </SafeAreaProvider>
     );
   }
 
   return (
     <SafeAreaProvider>
-      <StatusBar style="light" backgroundColor={COLORS.vertProfond} />
+      <StatusBar style="dark" />
       {/* Pose une seule fois, au-dessus de tout : la surveillance ne doit pas
           repartir de zero a chaque changement d'ecran. Ne rend rien tant
           qu'aucune session n'est ouverte. */}
@@ -255,6 +257,13 @@ export default function RootLayout() {
           quel ecran demontait tout l'arbre React : page blanche definitive,
           sans message et sans bouton. Cette frontiere n'existait que sur
           Finances. Elle couvre desormais toute l'application. */}
+      {/* Sur telephone, l'heure, la batterie et l'encoche occupent le haut de
+          l'ecran : on y pose la marge une seule fois, ici, pour tous les
+          ecrans. Sur le web la marge vaut 0. Les ecrans ne gerent donc plus
+          que le bas (barre de geste). Le bandeau PRE-PROD prend sa place
+          dans le flux, sous cette marge, au lieu de recouvrir les titres. */}
+      <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: COLORS.ivoire }}>
+      <BandeauEnvironnement />
       <ErrorBoundary>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
@@ -286,8 +295,7 @@ export default function RootLayout() {
         <Stack.Screen name="enfant/[id]" />
       </Stack>
       </ErrorBoundary>
-      {/* Apres la pile, pour passer au-dessus de tous les ecrans. */}
-      <BandeauEnvironnement />
+      </SafeAreaView>
     </SafeAreaProvider>
   );
 }

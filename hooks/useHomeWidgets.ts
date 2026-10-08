@@ -22,7 +22,7 @@
 //   const { configComplete, toggleVisibilite, reordonner, chargement } = useHomeWidgets();
 
 import { useState, useCallback } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { WIDGETS_CATALOGUE, CONFIG_WIDGETS_PAR_DEFAUT, type WidgetId } from '../constants/widgetsCatalog';

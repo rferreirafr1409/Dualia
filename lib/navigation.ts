@@ -13,7 +13,9 @@
 // securite-compte.tsx portait deja ce contournement, seul de toute
 // l'application. On le pose ici pour tous.
 
-import type { Router } from 'expo-router';
+import type { useRouter } from 'expo-router';
+
+type Router = ReturnType<typeof useRouter>;
 
 export function retour(router: Router, repli: string) {
   if (router.canGoBack()) {

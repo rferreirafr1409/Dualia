@@ -28,7 +28,7 @@ export default function SemaineActivitesScreen() {
   const joursSemaine = eachDayOfInterval({ start: debutSemaine, end: finSemaine });
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
       <View style={styles.header}>
         <Pressable onPress={() => retour(router, '/(tabs)/accueil')} style={styles.retourBtn} hitSlop={8}>
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />

@@ -674,7 +674,7 @@ export default function DocumentsScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.conteneur} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.conteneur} edges={['bottom']}>
       {/* En-tête : titre à gauche, action principale à droite. */}
       <View style={styles.header}>
         {modeContextuel ? (
