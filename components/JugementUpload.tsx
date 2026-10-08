@@ -40,6 +40,7 @@ import { choisirFichierPDF } from '../lib/pickerFichierPDF';
 import { gardeDepuisExtraction, datesSpecialesDepuisExtraction } from '../lib/gardeJugement';
 import type { CadreFamilial, ReglePartage } from '../types';
 import { BACKEND_URL } from '../constants/environnement';
+import InformationIA from './InformationIA';
 
 
 const COLORS = {
@@ -455,6 +456,8 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
     <View style={styles.container}>
       <Text style={styles.titre}>{t.jugementImportTitre}</Text>
       <Text style={styles.sousTitre}>{t.jugementImportSousTitre}</Text>
+      {/* Le document part vers une IA : le dire avant (DUA-099). */}
+      <InformationIA contexte="jugement" />
 
       {statut === 'idle' && (
         <TouchableOpacity style={styles.bouton} onPress={choisirEtTraiterPdf}>

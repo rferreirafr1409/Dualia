@@ -74,9 +74,10 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    titre: '9. Analyse automatisée des documents (IA)',
+    titre: '9. Fonctions assistées par une intelligence artificielle',
     paragraphes: [
-      "Dualia propose deux fonctionnalités d'extraction automatisée assistée par IA : sur les documents juridiques importés, pour une pré-lecture des clauses de garde, pensions et dates spéciales ; et sur les tickets de caisse photographiés, pour en extraire le montant, le commerçant et la date.",
+      "Dualia confie certaines analyses à un modèle d'intelligence artificielle fourni par Anthropic (Anthropic Ireland Ltd, traitement en Europe). Trois fonctions sont concernées : la messagerie, où chaque message envoyé peut recevoir une proposition de formulation plus apaisée, et où les messages affichés (les vôtres comme ceux de votre co-parent) sont analysés pour repérer dates, rendez-vous et dépenses ; les documents juridiques importés, pour une pré-lecture des clauses de garde, pensions et dates spéciales ; et les tickets de caisse photographiés, pour en extraire le montant, le commerçant et la date.",
+      "Les données transmises ne sont utilisées que pour produire la réponse attendue ; elles ne servent pas à entraîner un modèle et ne sont pas conservées par le fournisseur au-delà du traitement. Vous en êtes informé dans l'application avant le premier usage de chacune de ces fonctions.",
       "Ces fonctionnalités proposent des informations, elles ne les inventent ni ne les certifient ; le document original reste la seule référence faisant foi ; elles ne prennent aucune décision à votre place ; et font l'objet d'une validation par vous avant intégration dans votre dossier familial.",
     ],
   },

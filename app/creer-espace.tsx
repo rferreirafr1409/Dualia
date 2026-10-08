@@ -700,6 +700,14 @@ export default function CreerEspaceScreen() {
         <Pressable onPress={() => router.push('/connexion' as any)}>
           <Text style={styles.lienTexteSecondaire}>J'ai déjà un compte</Text>
         </Pressable>
+
+        {/* Apple exige que la politique de confidentialité soit accessible
+            avant la création du compte (DUA-098). */}
+        <Pressable onPress={() => router.push('/confidentialite' as any)}>
+          <Text style={styles.lienDiscret}>
+            En créant un compte, vous acceptez notre politique de confidentialité. La lire.
+          </Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -707,6 +715,7 @@ export default function CreerEspaceScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.ivoire },
+  lienDiscret: { marginTop: 18, fontSize: 12, color: COLORS.ardoise, textAlign: 'center', textDecorationLine: 'underline', lineHeight: 17 },
   centreEcran: {
     flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.ivoire,
   },

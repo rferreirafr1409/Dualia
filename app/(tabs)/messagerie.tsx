@@ -32,6 +32,7 @@ import { choisirFichierDocument } from '../../lib/pickerFichierDocument';
 import { TAILLE_MAX_BASE64, estHeic, estUneImage, normaliserType, typeImageStocke } from '../../lib/typesFichier';
 import { ouvrirFichierStocke } from '../../lib/ouvrirFichierStocke';
 import { BACKEND_URL } from '../../constants/environnement';
+import InformationIA from '../../components/InformationIA';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 if (Platform.OS !== 'web') {
@@ -660,12 +661,12 @@ export default function MessagerieScreen() {
           <View style={styles.moderationCard}>
             <Text style={styles.moderationLabel}>
               {langue === 'pt'
-                ? 'Talvez seja melhor com um tom mais calmo :'
+                ? 'Sugestão da IA, talvez com um tom mais calmo:'
                 : langue === 'en'
-                ? 'Perhaps calmer this way:'
+                ? 'AI suggestion, perhaps calmer this way:'
                 : langue === 'es'
-                ? 'Quizás mejor con un tono más calmado:'
-                : 'Peut-être plus apaisé ainsi :'}
+                ? 'Sugerencia de la IA, quizás con un tono más calmado:'
+                : 'Suggestion de l’IA, peut-être plus apaisé ainsi :'}
             </Text>
             <Text style={styles.moderationTexte}>{alerte.reformulation}</Text>
             <View style={styles.suggestionBtns}>
@@ -694,6 +695,10 @@ export default function MessagerieScreen() {
             </View>
           </View>
         ) : null}
+
+        {/* Information sur l'IA (DUA-099) : affichée jusqu'à ce que le parent
+            ait dit « J'ai compris », une fois par appareil. */}
+        <InformationIA contexte="messagerie" cle="messagerie" />
 
         {/* Pièce en attente : visible au-dessus de la zone de saisie, et
             retirable avant l'envoi. Rien n'est téléversé tant que le message

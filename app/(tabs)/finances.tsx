@@ -39,6 +39,7 @@ import {
 } from '../../lib/conditionsCadre';
 import { formatMontant as formatMontantBrut } from '../../lib/comptes';
 import { BACKEND_URL } from '../../constants/environnement';
+import InformationIA from '../../components/InformationIA';
 
 const URL_SCAN_TICKET = `${BACKEND_URL}/api/scan-ticket`;
 
@@ -1119,6 +1120,8 @@ function FinancesScreenInner() {
                   <Text style={styles.scanBtnTexte}>{t.choisirPhoto}</Text>
                 </Pressable>
               </View>
+              {/* Le ticket part vers une IA : le dire avant (DUA-099). */}
+              <InformationIA contexte="ticket" />
 
               {renderPieceJointeForm()}
 

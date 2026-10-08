@@ -12,6 +12,9 @@ import { TRADUCTIONS } from '../../constants/i18n';
 import JugementUpload from '../../components/JugementUpload';
 import { formatMontant } from '../../lib/comptes';
 
+// Voir DUA-065 : l'export PDF n'existe pas encore.
+const EXPORT_PDF_DISPONIBLE = false;
+
 // Libellés portés par l'écran, dans les quatre langues.
 //
 // Pourquoi ici et pas dans constants/i18n.ts : le bloc `decisions` y est
@@ -470,7 +473,11 @@ export default function DecisionsScreen() {
                 <Text style={styles.authorText}>{author}</Text>
               </View>
 
-              {canExport ? (
+              {/* Le bouton « Exporter en PDF » n'affichait qu'un « bientôt
+                  disponible ». Apple refuse les fonctions annoncées mais
+                  absentes (DUA-101) : il reviendra avec l'export réel
+                  (DUA-065). */}
+              {canExport && EXPORT_PDF_DISPONIBLE ? (
                 <Pressable
                   style={styles.exportBtn}
                   onPress={() => alerter(t.exportTitre, t.exportMsg)}

@@ -613,10 +613,9 @@ export default function CafScreen() {
           </View>
         ) : null}
 
-        <View style={styles.carteSobre}>
-          <Text style={styles.carteTitreSobre}>{t.pasEncoreTitre}</Text>
-          <Text style={styles.carteTexte}>{t.pasEncoreTexte}</Text>
-        </View>
+        {/* La carte « Pas encore disponible » (calcul des aides) est retirée :
+            Apple refuse les fonctions annoncées mais absentes (DUA-101). Les
+            libellés pasEncore* restent pour le jour où le calcul existera. */}
 
         <View style={{ height: 40 }} />
       </ScrollView>

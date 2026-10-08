@@ -37,10 +37,19 @@ function parentDuJour(date: Date, evs: { dateDebut: string; dateFin: string; par
 // Libellés de l'entrée « Mon compte ». Gardés ici plutôt que dans i18n.ts
 // pour ne pas alourdir un fichier de 2 700 lignes avec deux chaînes.
 const LIBELLES_COMPTE: Record<'fr' | 'pt' | 'es' | 'en', { titre: string; desc: string }> = {
-  fr: { titre: 'Mon compte', desc: 'Double authentification et déconnexion' },
-  pt: { titre: 'A minha conta', desc: 'Dupla autenticação e terminar sessão' },
-  es: { titre: 'Mi cuenta', desc: 'Doble autenticación y cerrar sesión' },
-  en: { titre: 'My account', desc: 'Two-factor authentication and sign out' },
+  fr: { titre: 'Mon compte', desc: 'Double authentification, déconnexion, suppression du compte' },
+  pt: { titre: 'A minha conta', desc: 'Dupla autenticação, terminar sessão, eliminar a conta' },
+  es: { titre: 'Mi cuenta', desc: 'Doble autenticación, cerrar sesión, eliminar la cuenta' },
+  en: { titre: 'My account', desc: 'Two-factor authentication, sign out, delete account' },
+};
+
+// Confidentialité & sécurité : les deux écrans existaient sans aucun lien
+// depuis l'app. Apple exige que la politique soit lisible dedans (DUA-098).
+const LIBELLES_CONFIDENTIALITE: Record<'fr' | 'pt' | 'es' | 'en', { titre: string; desc: string }> = {
+  fr: { titre: 'Confidentialité & sécurité', desc: 'Vos données, où elles sont et comment elles sont protégées' },
+  pt: { titre: 'Privacidade e segurança', desc: 'Os seus dados, onde estão e como são protegidos' },
+  es: { titre: 'Privacidad y seguridad', desc: 'Tus datos, dónde están y cómo se protegen' },
+  en: { titre: 'Privacy & security', desc: 'Your data, where it lives and how it is protected' },
 };
 
 export default function FamilleScreen() {
@@ -85,6 +94,14 @@ export default function FamilleScreen() {
       titre: LIBELLES_COMPTE[langue].titre,
       desc: LIBELLES_COMPTE[langue].desc,
       route: '/securite-compte',
+    },
+    {
+      icone: 'shield-outline',
+      couleur: COLORS.vert,
+      fond: '#EEF4F1',
+      titre: LIBELLES_CONFIDENTIALITE[langue].titre,
+      desc: LIBELLES_CONFIDENTIALITE[langue].desc,
+      route: '/securite',
     },
   ];
 
