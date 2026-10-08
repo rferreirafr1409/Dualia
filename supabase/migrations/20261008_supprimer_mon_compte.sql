@@ -22,9 +22,8 @@
 --     identites, sessions et facteurs de double authentification.
 --
 -- Les fichiers (photos, documents) des espaces supprimes sont retires par
--- l'application AVANT l'appel, via l'API de stockage : une suppression dans
--- storage.objects depuis SQL ne retire pas le fichier physique. Les lignes
--- restantes sont tout de meme nettoyees ici, par securite.
+-- l'application AVANT l'appel, via l'API de stockage : Supabase interdit
+-- toute suppression directe dans storage.objects depuis SQL.
 --
 -- Les fonctions existantes comptent les parents (creer_invitation,
 -- repondre_demande, mon_invitation_en_cours) : on supprime donc la fiche du
@@ -78,9 +77,11 @@ begin
       delete from invitations          where famille_id = v_p.famille_id;
       delete from enfants              where famille_id = v_p.famille_id;
       delete from parents              where famille_id = v_p.famille_id;
-      delete from storage.objects
-       where bucket_id in ('documents-familiaux', 'enfants-photos', 'journal-photos', 'moments-photos')
-         and (storage.foldername(name))[1] = v_p.famille_id::text;
+      -- Les fichiers ont ete retires par l'application avant l'appel. Pas de
+      -- menage ici : Supabase refuse toute suppression directe dans
+      -- storage.objects (« Direct deletion from storage tables is not
+      -- allowed »), et c'est cette ligne qui faisait echouer la premiere
+      -- version sur l'iPhone.
       -- Le reste (foyers, tiers, moments, agenda, echeances, transmission...)
       -- suit en cascade.
       delete from familles where id = v_p.famille_id;
