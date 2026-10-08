@@ -13,6 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import { supprimerMonCompte } from '../lib/suppressionCompte';
 
 // Sur le web, Alert.alert (React Native) ne s'affiche pas — on utilise
 // window.alert/confirm à la place. Sur mobile, on garde Alert.alert natif.
@@ -91,6 +92,47 @@ export default function SecuriteCompte() {
     } finally {
       setDeconnexionEnCours(false);
     }
+  };
+
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
+
+  // Suppression du compte (DUA-089). Apple l'exige de toute application qui
+  // permet de creer un compte, et le RGPD de toute facon. Deux confirmations
+  // : la premiere dit ce qui va se passer, la seconde est le dernier mot, car
+  // rien de tout cela ne se rattrape.
+  const supprimerCompte = async () => {
+    const premiere = await demanderConfirmation(
+      'Supprimer votre compte',
+      "Votre compte sera supprimé définitivement. Si votre co-parent est encore dans l'espace familial, il garde l'historique partagé (dépenses, messages, décisions) ; ce que vous y avez écrit n'aura plus d'auteur. Si vous êtes seul dans l'espace, tout l'espace est supprimé, enfants, documents et photos compris.",
+      'Continuer'
+    );
+    if (!premiere) return;
+    const seconde = await demanderConfirmation(
+      'Dernière confirmation',
+      "Cette action est irréversible. Voulez-vous vraiment supprimer votre compte Dualia ?",
+      'Supprimer mon compte'
+    );
+    if (!seconde) return;
+
+    setSuppressionEnCours(true);
+    try {
+      await supprimerMonCompte();
+    } catch (e) {
+      console.error('[Dualia] Suppression de compte impossible :', e);
+      setSuppressionEnCours(false);
+      notifier(
+        'Suppression impossible',
+        "Votre compte n'a pas été supprimé. Vérifiez votre connexion et réessayez ; si le problème persiste, écrivez-nous."
+      );
+      return;
+    }
+    // Le compte n'existe plus : la fermeture de session cote serveur echouera
+    // forcement, et c'est sans importance. Ce qui compte est d'effacer les
+    // donnees de cet appareil.
+    await seDeconnecterDuStore('local');
+    setSuppressionEnCours(false);
+    notifier('Compte supprimé', 'Votre compte Dualia a été supprimé.');
+    router.replace('/connexion' as any);
   };
 
   const [chargement, setChargement] = useState(true);
@@ -316,6 +358,28 @@ export default function SecuriteCompte() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* Suppression du compte (DUA-089) : exigee par Apple pour toute
+          application qui permet d'en creer un. */}
+      <View style={[styles.carte, styles.carteDanger]}>
+        <Text style={styles.carteTitre}>Supprimer mon compte</Text>
+        <Text style={styles.carteTexte}>
+          Supprime définitivement votre compte Dualia. Votre co-parent, s'il est encore dans
+          l'espace familial, garde l'historique partagé. Si vous êtes seul, tout l'espace est
+          supprimé.
+        </Text>
+        <TouchableOpacity
+          style={styles.boutonDanger}
+          onPress={supprimerCompte}
+          disabled={suppressionEnCours || deconnexionEnCours}
+        >
+          {suppressionEnCours ? (
+            <ActivityIndicator color={COLORS.blanc} />
+          ) : (
+            <Text style={styles.boutonDangerTexte}>Supprimer mon compte</Text>
+          )}
+        </TouchableOpacity>
+      </View>
     </ScrollView>
   );
 }
@@ -354,6 +418,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   boutonSecondaireTexte: { color: COLORS.rouge, fontWeight: '600', fontSize: 14 },
+  carteDanger: { borderColor: COLORS.rouge, borderWidth: 1 },
+  boutonDanger: {
+    backgroundColor: COLORS.rouge,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  boutonDangerTexte: { color: COLORS.blanc, fontWeight: '700', fontSize: 14 },
   boutonAnnuler: { alignItems: 'center', marginTop: 12 },
   boutonAnnulerTexte: { color: COLORS.ardoise, fontSize: 14 },
   secretBox: {

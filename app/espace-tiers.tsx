@@ -13,11 +13,12 @@
 // le deviner.
 
 import React, { useEffect, useRef } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Platform, Linking, AppState } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Platform, Linking, AppState, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { supabase } from '../constants/supabase';
+import { supabase, effacerSessionLocale } from '../constants/supabase';
+import { supprimerMonCompte } from '../lib/suppressionCompte';
 import { useStore } from '../store/useStore';
 import { depuisJourLocal } from '../lib/dates';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
@@ -41,6 +42,13 @@ type Libelles = {
   aucunAccesTitre: string;
   aucunAccesTexte: string;
   seDeconnecter: string;
+  supprimerCompte: string;
+  supprimerCompteConfirmation: string;
+  supprimerCompteDerniere: string;
+  supprimerCompteEchec: string;
+  supprimerCompteFait: string;
+  confirmer: string;
+  annuler: string;
   locale: string;
 };
 
@@ -65,6 +73,13 @@ const LIBELLES: Record<string, Libelles> = {
     aucunAccesTexte:
       'Votre accès a été retiré, ou ce compte n’a pas encore été rattaché à un accès. Demandez un nouveau lien au parent concerné.',
     seDeconnecter: 'Se déconnecter',
+    supprimerCompte: "Supprimer mon compte",
+    supprimerCompteConfirmation: "Votre compte et vos accès partagés seront supprimés définitivement. Cette action est irréversible.",
+    supprimerCompteDerniere: "Dernière confirmation : supprimer votre compte Dualia ?",
+    supprimerCompteEchec: "Votre compte n'a pas été supprimé. Vérifiez votre connexion et réessayez.",
+    supprimerCompteFait: "Votre compte Dualia a été supprimé.",
+    confirmer: "Supprimer",
+    annuler: "Annuler",
     locale: 'fr-FR',
   },
   pt: {
@@ -87,6 +102,13 @@ const LIBELLES: Record<string, Libelles> = {
     aucunAccesTexte:
       'O seu acesso foi retirado, ou esta conta ainda não foi associada a um acesso. Peça uma nova ligação ao progenitor em causa.',
     seDeconnecter: 'Terminar sessão',
+    supprimerCompte: "Eliminar a minha conta",
+    supprimerCompteConfirmation: "A sua conta e os seus acessos partilhados serão eliminados definitivamente. Esta ação é irreversível.",
+    supprimerCompteDerniere: "Última confirmação: eliminar a sua conta Dualia?",
+    supprimerCompteEchec: "A sua conta não foi eliminada. Verifique a ligação e tente novamente.",
+    supprimerCompteFait: "A sua conta Dualia foi eliminada.",
+    confirmer: "Eliminar",
+    annuler: "Cancelar",
     locale: 'pt-PT',
   },
   es: {
@@ -109,6 +131,13 @@ const LIBELLES: Record<string, Libelles> = {
     aucunAccesTexte:
       'Tu acceso ha sido retirado, o esta cuenta aún no se ha vinculado a un acceso. Pide un nuevo enlace al progenitor correspondiente.',
     seDeconnecter: 'Cerrar sesión',
+    supprimerCompte: "Eliminar mi cuenta",
+    supprimerCompteConfirmation: "Tu cuenta y tus accesos compartidos se eliminarán definitivamente. Esta acción es irreversible.",
+    supprimerCompteDerniere: "Última confirmación: ¿eliminar tu cuenta Dualia?",
+    supprimerCompteEchec: "Tu cuenta no se ha eliminado. Comprueba la conexión y vuelve a intentarlo.",
+    supprimerCompteFait: "Tu cuenta Dualia se ha eliminado.",
+    confirmer: "Eliminar",
+    annuler: "Cancelar",
     locale: 'es-ES',
   },
   en: {
@@ -131,6 +160,13 @@ const LIBELLES: Record<string, Libelles> = {
     aucunAccesTexte:
       'Your access has been withdrawn, or this account is not linked to an access yet. Ask the relevant parent for a new link.',
     seDeconnecter: 'Sign out',
+    supprimerCompte: "Delete my account",
+    supprimerCompteConfirmation: "Your account and your shared accesses will be permanently deleted. This cannot be undone.",
+    supprimerCompteDerniere: "Last confirmation: delete your Dualia account?",
+    supprimerCompteEchec: "Your account was not deleted. Check your connection and try again.",
+    supprimerCompteFait: "Your Dualia account has been deleted.",
+    confirmer: "Delete",
+    annuler: "Cancel",
     locale: 'en-GB',
   },
 };
@@ -188,6 +224,40 @@ export default function EspaceTiersScreen() {
     });
     return () => abonnement.remove();
   }, []);
+
+  // Suppression du compte (DUA-089) : Apple l'exige pour tout compte, y
+  // compris un acces tiers. Alert.alert n'existe pas sur le web, d'ou le
+  // detour par window.confirm.
+  const confirmer = (message: string): Promise<boolean> =>
+    new Promise((resolve) => {
+      if (Platform.OS === 'web') {
+        resolve(window.confirm(message));
+        return;
+      }
+      Alert.alert(l.supprimerCompte, message, [
+        { text: l.annuler, style: 'cancel', onPress: () => resolve(false) },
+        { text: l.confirmer, style: 'destructive', onPress: () => resolve(true) },
+      ]);
+    });
+
+  const supprimerCompte = async () => {
+    if (!(await confirmer(l.supprimerCompteConfirmation))) return;
+    if (!(await confirmer(l.supprimerCompteDerniere))) return;
+    try {
+      await supprimerMonCompte();
+    } catch (e) {
+      console.error('[Dualia] Suppression de compte impossible :', e);
+      if (Platform.OS === 'web') window.alert(l.supprimerCompteEchec);
+      else Alert.alert(l.supprimerCompte, l.supprimerCompteEchec);
+      return;
+    }
+    purgerDonneesFamiliales();
+    useStore.setState({ accesTiers: null });
+    await effacerSessionLocale();
+    if (Platform.OS === 'web') window.alert(l.supprimerCompteFait);
+    else Alert.alert(l.supprimerCompte, l.supprimerCompteFait);
+    router.replace('/connexion' as any);
+  };
 
   const seDeconnecter = async () => {
     await supabase.auth.signOut();
@@ -356,6 +426,10 @@ export default function EspaceTiersScreen() {
           acces.enfants.map(renderEnfant)
         )}
 
+        <Pressable onPress={supprimerCompte} style={styles.supprimerCompte} hitSlop={8}>
+          <Text style={styles.supprimerCompteTexte}>{l.supprimerCompte}</Text>
+        </Pressable>
+
         <View style={{ height: SPACING.xxxl }} />
       </ScrollView>
     </SafeAreaView>
@@ -373,6 +447,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl, paddingTop: SPACING.lg, paddingBottom: SPACING.md,
   },
   deconnexionBtn: { padding: SPACING.xs },
+  supprimerCompte: { alignSelf: 'center', marginTop: SPACING.xl, padding: SPACING.sm },
+  supprimerCompteTexte: { fontFamily: FONTS.body, fontSize: 13, color: COLORS.erreur, textDecorationLine: 'underline' },
   titre: { fontFamily: FONTS.display, fontSize: 22, color: COLORS.vertProfond, textAlign: 'center' },
   sousTitre: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, marginTop: 3 },
   contenu: { paddingHorizontal: SPACING.xl, paddingBottom: SPACING.xl },
