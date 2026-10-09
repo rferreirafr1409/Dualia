@@ -361,17 +361,27 @@ export default function TabLayout() {
     return <TabsInterieur isDesktop={false} />;
   }
 
-  const fenetreHeight = Math.min(height - 48, 920);
-  const fenetreWidth = Math.min(width - 64, 1560);
+  // Sur grand ecran, l'application vit dans une fenetre contenue et centree,
+  // pas etiree d'un bord a l'autre : la lecture reste celle d'une app mobile
+  // soignee, avec deux colonnes de contenu au plus. Le plateau derriere
+  // garde une teinte visiblement plus sombre que la fenetre pour que le
+  // cadre se voie, meme sur un ecran tres large.
+  const fenetreHeight = Math.min(height - 80, 860);
+  const fenetreWidth = Math.min(width - 120, 1280);
 
   return (
-    <View style={styles.stage}>
+    <LinearGradient
+      colors={[COLORS.ivoireFonce, '#DAD4C7']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={styles.stage}
+    >
       <View style={styles.stageRow}>
         <View style={[styles.fenetre, { height: fenetreHeight, width: fenetreWidth }]}>
           <TabsInterieur isDesktop />
         </View>
       </View>
-    </View>
+    </LinearGradient>
   );
 }
 
@@ -394,11 +404,11 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.16,
-    shadowRadius: 50,
+    borderColor: 'rgba(28,43,37,0.10)',
+    shadowColor: COLORS.vertProfond,
+    shadowOffset: { width: 0, height: 24 },
+    shadowOpacity: 0.22,
+    shadowRadius: 60,
     elevation: 20,
   },
 
