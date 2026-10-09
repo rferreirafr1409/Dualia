@@ -56,6 +56,7 @@ const LARGEUR_MAX_CONTENU = 900;
 // "Transmission" apparaît. 2 jours : assez tôt pour préparer le sac, assez
 // tard pour que la carte reste un signal et non un meuble.
 const JOURS_AVANT_TRANSMISSION = 2;
+const SAUGE_LISIBLE = '#4E635D';
 // Ordre alphabétique : ne privilégie aucune langue et reste stable
 // quand de nouvelles s'ajoutent.
 const LANGUES_DISPONIBLES = ['en', 'es', 'fr', 'pt'] as const;
@@ -291,7 +292,9 @@ export default function AccueilScreen() {
   function widgetEstPertinent(widgetId: WidgetId): boolean {
     switch (widgetId) {
       case 'finances':
-        return Math.abs(soldeFamille.solde) >= 0.005;
+        // Le solde permanent reste dans le module Finances ; ici seulement
+        // quand un remboursement est en attente.
+        return depenses.some((d) => !d.rembourse) && Math.abs(soldeFamille.solde) >= 0.005;
       case 'souvenir_recent':
         return !!souvenir || !!dernierMoment;
       case 'a_traiter':
@@ -446,6 +449,7 @@ export default function AccueilScreen() {
         return (
           <View key={widgetId} style={[styles.card, styles.banniereWrap]}>
             <MemoryAccordionRow
+              variante="nu"
               isExpanded={false}
               onToggle={() =>
                 dernierMoment ? router.push('/fil-de-vie' as any) : router.push('/partager-moment' as any)
@@ -716,7 +720,7 @@ export default function AccueilScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.ivoire },
+  screen: { flex: 1, backgroundColor: COLORS.blanc },
   chargementWrap: { alignItems: 'center', justifyContent: 'center' },
 
   topbar: {
@@ -783,7 +787,7 @@ const styles = StyleSheet.create({
   dateAujourdhui: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, textTransform: 'capitalize' },
   promesseMeta: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, marginTop: 2 },
 
-  kidsRow: { flexDirection: 'row', gap: SPACING.xl, marginBottom: SPACING.xl },
+  kidsRow: { flexDirection: 'row', gap: SPACING.xl, marginBottom: SPACING.lg },
   kidsRowMobile: { gap: SPACING.md, marginBottom: SPACING.lg, flexWrap: 'wrap' },
   kidItem: { alignItems: 'center', width: 60 },
   kidFace: {
@@ -803,24 +807,20 @@ const styles = StyleSheet.create({
   kidNom: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.vertProfond, textAlign: 'center' },
   kidAge: { fontFamily: FONTS.body, fontSize: 10, color: COLORS.ardoise, textAlign: 'center' },
 
-  cardsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
+  cardsRow: { flexDirection: 'row', gap: SPACING.xxl, marginBottom: SPACING.xs },
+  // Direction artistique figée pour la BETA (RICARDO, 9 oct. 2026) : pas de
+  // boîte autour de chaque information. Les « cartes » sont des sections
+  // nues sur fond blanc, séparées par l'espace et la typographie.
   card: {
     flex: 1,
-    backgroundColor: COLORS.blanc,
-    borderWidth: 0,
-    borderRadius: 20,
-    padding: SPACING.md,
-    minHeight: 160,
-    shadowColor: '#173f32',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.09,
-    shadowRadius: 22,
-    elevation: 3,
+    paddingVertical: SPACING.md,
+    minHeight: 120,
   },
-
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  // Sauge un cran plus foncé que COLORS.ardoise : les intitulés et les
+  // descriptions restaient trop pâles sur certains écrans.
   cardTitre: {
-    fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise,
+    fontFamily: FONTS.bodySemibold, fontSize: 12, color: SAUGE_LISIBLE,
     textTransform: 'uppercase', letterSpacing: 0.7,
   },
   cardStrong: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.texte, marginBottom: 6 },
@@ -839,7 +839,7 @@ const styles = StyleSheet.create({
   cardRowTexte: { flex: 1, fontFamily: FONTS.body, fontSize: 12, color: COLORS.texte },
   cardRowChevron: { fontFamily: FONTS.body, fontSize: 14, color: COLORS.ardoise },
 
-  muted: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise },
+  muted: { fontFamily: FONTS.body, fontSize: 12, color: SAUGE_LISIBLE },
   mutedLien: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.vert, marginTop: 6 },
   amount: { fontFamily: FONTS.displaySemibold, fontSize: 24, color: COLORS.vertProfond, marginVertical: 4 },
 
