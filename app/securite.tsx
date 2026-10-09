@@ -100,6 +100,11 @@ export default function SecuriteScreen() {
           </Text>
           <Ionicons name="chevron-forward" size={16} color={COLORS.ardoise} />
         </Pressable>
+        <Pressable style={styles.confidentialiteLien} onPress={() => router.push('/cgu' as any)}>
+          <Ionicons name="reader-outline" size={18} color={COLORS.vert} />
+          <Text style={styles.confidentialiteLienTexte}>Lire les conditions d'utilisation</Text>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.ardoise} />
+        </Pressable>
 
         <Text style={styles.contact}>
           Une question de sécurité ? Écrivez à securite@dualia.app — on répond, pas de formulaire

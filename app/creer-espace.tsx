@@ -31,6 +31,7 @@ import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Alert, Platform,
 } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
@@ -161,6 +162,9 @@ export default function CreerEspaceScreen() {
   const [prenom, setPrenom] = useState('');
   const [email, setEmail] = useState('');
   const [motDePasse, setMotDePasse] = useState('');
+  // CGU et politique acceptées explicitement (DUA-105) : la case est
+  // obligatoire, et la date d'acceptation part dans les métadonnées du compte.
+  const [conditionsAcceptees, setConditionsAcceptees] = useState(false);
   const [chargement, setChargement] = useState(false);
   const [renvoye, setRenvoye] = useState(false);
   // Lecture sans effet de bord (voir lireJetonsEmail). Un jeton qui n'est pas
@@ -386,6 +390,10 @@ export default function CreerEspaceScreen() {
       alertCompat('Mot de passe trop faible', probleme);
       return;
     }
+    if (!conditionsAcceptees) {
+      alertCompat('Conditions à accepter', "Coche la case pour accepter les conditions d'utilisation et la politique de confidentialité.");
+      return;
+    }
 
     setChargement(true);
     fabricationEnCours.current = true;
@@ -396,7 +404,10 @@ export default function CreerEspaceScreen() {
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email.trim(),
         password: motDePasse,
-        options: { emailRedirectTo: lienApplication('creer-espace') },
+        options: {
+          emailRedirectTo: lienApplication('creer-espace'),
+          data: { cgu_acceptees_at: new Date().toISOString() },
+        },
       });
 
       if (authError) throw authError;
@@ -685,7 +696,31 @@ export default function CreerEspaceScreen() {
           {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
         </Text>
 
-        <Pressable style={styles.boutonPrincipal} onPress={creerEspace} disabled={chargement}>
+        {/* Apple et le RGPD attendent une acceptation explicite (DUA-105). */}
+        <Pressable style={styles.ligneConditions} onPress={() => setConditionsAcceptees((v) => !v)}>
+          <Ionicons
+            name={conditionsAcceptees ? 'checkbox' : 'square-outline'}
+            size={22}
+            color={conditionsAcceptees ? COLORS.vert : COLORS.ardoise}
+          />
+          <Text style={styles.texteConditions}>
+            J'ai lu et j'accepte les{' '}
+            <Text style={styles.lienConditions} onPress={() => router.push('/cgu' as any)}>
+              conditions d'utilisation
+            </Text>
+            {' '}et la{' '}
+            <Text style={styles.lienConditions} onPress={() => router.push('/confidentialite' as any)}>
+              politique de confidentialité
+            </Text>
+            .
+          </Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.boutonPrincipal, !conditionsAcceptees && styles.boutonInactif]}
+          onPress={creerEspace}
+          disabled={chargement}
+        >
           {chargement ? (
             <ActivityIndicator color={COLORS.blanc} />
           ) : (
@@ -701,13 +736,6 @@ export default function CreerEspaceScreen() {
           <Text style={styles.lienTexteSecondaire}>J'ai déjà un compte</Text>
         </Pressable>
 
-        {/* Apple exige que la politique de confidentialité soit accessible
-            avant la création du compte (DUA-098). */}
-        <Pressable onPress={() => router.push('/confidentialite' as any)}>
-          <Text style={styles.lienDiscret}>
-            En créant un compte, vous acceptez notre politique de confidentialité. La lire.
-          </Text>
-        </Pressable>
       </View>
     </View>
   );
@@ -715,7 +743,10 @@ export default function CreerEspaceScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.ivoire },
-  lienDiscret: { marginTop: 18, fontSize: 12, color: COLORS.ardoise, textAlign: 'center', textDecorationLine: 'underline', lineHeight: 17 },
+  ligneConditions: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: SPACING.xl },
+  texteConditions: { flex: 1, fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, lineHeight: 18 },
+  lienConditions: { color: COLORS.vert, fontFamily: FONTS.bodySemibold, textDecorationLine: 'underline' },
+  boutonInactif: { opacity: 0.55 },
   centreEcran: {
     flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.ivoire,
   },
@@ -736,7 +767,7 @@ const styles = StyleSheet.create({
   },
   boutonPrincipal: {
     backgroundColor: COLORS.vert, borderRadius: RADIUS.md, paddingVertical: 14, alignItems: 'center',
-    marginTop: SPACING.xl,
+    marginTop: SPACING.lg,
   },
   boutonPrincipalTexte: { fontFamily: FONTS.bodySemibold, fontSize: 15, color: COLORS.blanc },
   lienTexteSecondaire: {
