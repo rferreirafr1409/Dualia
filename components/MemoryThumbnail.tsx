@@ -30,6 +30,8 @@ export default function MemoryThumbnail({ photoUrl, emoji, size = 56 }: MemoryTh
 }
 
 const styles = StyleSheet.create({
-  image: { backgroundColor: COLORS.ivoireFonce },
+  // Pas de fond derrière la photo : il dessinait un liseré clair autour
+  // de la vignette dès que l'image ne couvrait pas tout le carré.
+  image: { backgroundColor: 'transparent' },
   emojiWrap: { backgroundColor: 'rgba(201,168,76,0.14)', alignItems: 'center', justifyContent: 'center' },
 });
