@@ -720,7 +720,7 @@ export default function AccueilScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: COLORS.blanc },
+  screen: { flex: 1, backgroundColor: COLORS.ivoire },
   chargementWrap: { alignItems: 'center', justifyContent: 'center' },
 
   topbar: {
@@ -807,14 +807,23 @@ const styles = StyleSheet.create({
   kidNom: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.vertProfond, textAlign: 'center' },
   kidAge: { fontFamily: FONTS.body, fontSize: 10, color: COLORS.ardoise, textAlign: 'center' },
 
-  cardsRow: { flexDirection: 'row', gap: SPACING.xxl, marginBottom: SPACING.xs },
-  // Direction artistique figée pour la BETA (RICARDO, 9 oct. 2026) : pas de
-  // boîte autour de chaque information. Les « cartes » sont des sections
-  // nues sur fond blanc, séparées par l'espace et la typographie.
+  cardsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
+  // Cartes blanches, toutes de la même taille dans la grille. Le liseré
+  // discret garantit que la carte se voit même quand le fond derrière est
+  // rendu blanc par le navigateur, l'ombre seule ne suffisant pas.
   card: {
     flex: 1,
-    paddingVertical: SPACING.md,
-    minHeight: 120,
+    backgroundColor: COLORS.blanc,
+    borderWidth: 1,
+    borderColor: 'rgba(28,43,37,0.08)',
+    borderRadius: 20,
+    padding: SPACING.md,
+    minHeight: 160,
+    shadowColor: '#173f32',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.09,
+    shadowRadius: 22,
+    elevation: 3,
   },
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   // Sauge un cran plus foncé que COLORS.ardoise : les intitulés et les
