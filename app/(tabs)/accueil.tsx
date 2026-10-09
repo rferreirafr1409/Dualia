@@ -15,14 +15,12 @@
 // de vie. Même objet, même forme partout dans l'app, et l'accueil gagne
 // environ 80 px par rapport à la carte photo qu'il remplace.
 //
-// Pertinence des cartes (voir widgetEstPertinent) : une carte ne s'affiche
-// que quand elle a quelque chose à dire, pour que l'essentiel tienne sans
-// faire défiler. « Aujourd'hui », « Leur semaine », « Finances »,
-// « À traiter » et « À anticiper » disparaissent quand ils sont vides ;
-// « Transmission » n'obéit pas au vide mais à la date : elle sort à J-2 du
-// prochain échange. Affichée en permanence, la check-list devient du décor
-// et on ne la voit plus le jour où elle compte. Le souvenir reste toujours
-// là pour que la page ne soit jamais nue. Les widgets masqués restent listés
+// Pertinence des cartes (voir widgetEstPertinent) : deux repères fixes,
+// « Aujourd'hui » et « Leur semaine », pour que la page garde la même forme
+// d'un jour à l'autre ; les autres cartes ne s'affichent que quand elles
+// ont quelque chose à dire. « Transmission » sort à J-2 du prochain
+// échange ; le souvenir n'apparaît que s'il en existe un vrai dans le
+// Journal. Aucun contenu de remplissage. Les widgets masqués restent listés
 // dans /personnaliser-home.
 
 import React, { useMemo, useState } from 'react';
@@ -280,20 +278,22 @@ export default function AccueilScreen() {
     );
   }, [prochainPassage]);
 
-  // Une carte qui annonce qu'elle n'a rien à annoncer n'a pas sa place sur
-  // l'accueil : seules les cartes qui ont quelque chose à dire s'affichent.
-  // « Transmission » n'obéit pas au vide mais à la date : elle sort à J-2
-  // du prochain échange. Le souvenir reste toujours là, pour que la page ne
-  // soit jamais nue. Les cartes masquées restent listées dans
-  // /personnaliser-home.
+  // Deux repères fixes, le reste à la demande.
+  //
+  // « Aujourd'hui » et « Leur semaine » restent toujours là : un parent doit
+  // retrouver la page dans la même forme d'un jour à l'autre, et savoir en
+  // cinq secondes s'il a quelque chose à faire. Les autres cartes ne
+  // s'affichent que quand elles ont quelque chose à dire. « Transmission »
+  // n'obéit pas au vide mais à la date : elle sort à J-2 du prochain
+  // échange. Le souvenir n'apparaît que s'il en existe un vrai dans le
+  // Journal : aucun contenu de remplissage n'est injecté pour embellir la
+  // page. Les cartes masquées restent listées dans /personnaliser-home.
   function widgetEstPertinent(widgetId: WidgetId): boolean {
     switch (widgetId) {
-      case 'aujourdhui':
-        return !!gardeAujourdhuiTexte || evenementsAujourdhui.length > 0;
-      case 'leur_semaine':
-        return evenementsSemaine.length > 0 || evenements.length > 0;
       case 'finances':
-        return depenses.length > 0;
+        return Math.abs(soldeFamille.solde) >= 0.005;
+      case 'souvenir_recent':
+        return !!souvenir || !!dernierMoment;
       case 'a_traiter':
         return nbATraiter > 0;
       case 'a_anticiper':
@@ -541,10 +541,13 @@ export default function AccueilScreen() {
     }
   }
 
-  // Filet de sécurité : si le filtrage ne laisse rien, on montre le souvenir
-  // plutôt qu'un accueil blanc ou qu'une rangée de cartes vides.
+  // Filet de sécurité : si le filtrage ne laisse rien (un parent qui aurait
+  // masqué les deux repères fixes), on les réaffiche plutôt qu'un accueil
+  // blanc. Une carte seule sur sa rangée prend toute la largeur (flex: 1),
+  // donc la grille se referme d'elle-même quand une carte disparaît.
   const widgetsPertinents = widgetsVisibles.filter(widgetEstPertinent);
-  const widgetsAffiches: WidgetId[] = widgetsPertinents.length > 0 ? widgetsPertinents : ['souvenir_recent'];
+  const widgetsAffiches: WidgetId[] =
+    widgetsPertinents.length > 0 ? widgetsPertinents : ['aujourdhui', 'leur_semaine'];
 
   const rangeesWidgets = grouper(widgetsAffiches, isMobile ? 1 : 2);
 
