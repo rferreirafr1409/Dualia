@@ -114,6 +114,7 @@ type LibellesJustificatif = {
   cadreSansRegle: string;
   montantIncoherent: string;
   ajustementLecture: string;
+  ecartLecture: (total: string, lignes: string) => string;
   remiseRepartie: string;
   montantIllisible: string;
   cadreParCategorie: string;
@@ -147,6 +148,7 @@ const LIBELLES: Record<string, LibellesJustificatif> = {
     cadreSansRegle: 'Aucune règle pour cette catégorie — partage 50/50',
     montantIncoherent: 'Le total lu sur le ticket est nul ou négatif. Corrigez les lignes avant d’enregistrer.',
     ajustementLecture: 'Ajustement (écart de lecture)',
+    ecartLecture: (total, lignes) => `Le ticket indique ${total}, les lignes lues totalisent ${lignes}. La différence est ajoutée en « Autre » pour que le montant enregistré soit celui du ticket.`,
     remiseRepartie: 'Remise répartie',
     montantIllisible: 'Montant illisible. Écrivez-le avec deux décimales, par exemple 1234,56 ou 12,50.',
     cadreParCategorie: 'Selon le cadre familial (par catégorie)',
@@ -178,6 +180,7 @@ const LIBELLES: Record<string, LibellesJustificatif> = {
     cadreSansRegle: 'Sem regra para esta categoria — divisão 50/50',
     montantIncoherent: 'O total lido no recibo é nulo ou negativo. Corrija as linhas antes de guardar.',
     ajustementLecture: 'Ajuste (diferença de leitura)',
+    ecartLecture: (total, lignes) => `O recibo indica ${total}, as linhas lidas somam ${lignes}. A diferença é adicionada em «Outro» para que o valor registado seja o do recibo.`,
     remiseRepartie: 'Desconto distribuído',
     montantIllisible: 'Montante ilegível. Escreva-o com duas decimais, por exemplo 1234,56 ou 12,50.',
     cadreParCategorie: 'Segundo o quadro familiar (por categoria)',
@@ -209,6 +212,7 @@ const LIBELLES: Record<string, LibellesJustificatif> = {
     cadreSansRegle: 'Sin regla para esta categoría — reparto 50/50',
     montantIncoherent: 'El total leído en el ticket es nulo o negativo. Corrige las líneas antes de guardar.',
     ajustementLecture: 'Ajuste (diferencia de lectura)',
+    ecartLecture: (total, lignes) => `El ticket indica ${total}, las líneas leídas suman ${lignes}. La diferencia se añade en «Otro» para que el importe registrado sea el del ticket.`,
     remiseRepartie: 'Descuento repartido',
     montantIllisible: 'Importe ilegible. Escríbelo con dos decimales, por ejemplo 1234,56 o 12,50.',
     cadreParCategorie: 'Según el marco familiar (por categoría)',
@@ -240,6 +244,7 @@ const LIBELLES: Record<string, LibellesJustificatif> = {
     cadreSansRegle: 'No rule for this category — split 50/50',
     montantIncoherent: 'The total read from the receipt is zero or negative. Fix the lines before saving.',
     ajustementLecture: 'Adjustment (reading discrepancy)',
+    ecartLecture: (total, lignes) => `The receipt shows ${total}, the lines read add up to ${lignes}. The difference is added under “Other” so the recorded amount matches the receipt.`,
     remiseRepartie: 'Discount applied',
     montantIllisible: 'Amount unreadable. Write it with two decimals, for example 1234.56 or 12.50.',
     cadreParCategorie: 'Per your family framework (by category)',
@@ -852,7 +857,7 @@ function FinancesScreenInner() {
           conditions?.accordPrealable === true ? formAccordObtenu === true : undefined,
       };
 
-      ajouterDepense(nouvelle);
+      await ajouterDepense(nouvelle);
       setModalVisible(false);
     } catch (err: any) {
       console.error('[Dualia] Échec enregistrement de la dépense :', err);
@@ -889,7 +894,9 @@ function FinancesScreenInner() {
       const piece = formJustificatif ? await televerserPieceJointe(formJustificatif) : null;
       const expireLe = piece ? dateExpirationJustificatif() : undefined;
 
-      entrees.forEach(([cat, montantCat], index) => {
+      // En sequence et attendues : un echec d'insertion doit etre vu ici, pas
+      // seulement dans la console (DUA-085).
+      for (const [index, [cat, montantCat]] of entrees.entries()) {
         // Si le mode "selon votre cadre familial" est actif globalement et
         // qu'une règle validée existe pour CETTE catégorie précise, on
         // l'applique ; sinon on retombe sur 50/50 pour ce groupe-là plutôt
@@ -930,8 +937,8 @@ function FinancesScreenInner() {
               ? formAccordObtenu === true
               : undefined,
         };
-        ajouterDepense(nouvelle);
-      });
+        await ajouterDepense(nouvelle);
+      }
 
       setScanRecapVisible(false);
       setModalVisible(false);
@@ -1412,6 +1419,20 @@ function FinancesScreenInner() {
                       <Text style={styles.recapTotalLabel}>{t.recapTotal}</Text>
                       <Text style={styles.recapTotalMontant}>{formatMontant(total)}</Text>
                     </View>
+                    {/* DUA-083 : quand la lecture n'a pas retrouve toutes les
+                        lignes, l'ecart est ajoute en « Autre » (reconcilierLignes)
+                        et on le dit, au lieu de laisser croire que les lignes
+                        font le total. */}
+                    {(() => {
+                      const ajustement = scanLignes.find((lg) => lg.libelle === l.ajustementLecture);
+                      if (!ajustement) return null;
+                      const sommeLignes = centimes(total - ajustement.montant);
+                      return (
+                        <Text style={styles.recapEcart}>
+                          {l.ecartLecture(formatMontant(total), formatMontant(sommeLignes))}
+                        </Text>
+                      );
+                    })()}
                   </>
                 );
               })()}
@@ -1924,6 +1945,7 @@ const styles = StyleSheet.create({
   recapLigneRegle: { fontFamily: FONTS.body, fontSize: 10.5, color: COLORS.vert, marginTop: 1 },
   recapLigneMontant: { fontFamily: FONTS.bodySemibold, fontSize: 14, color: COLORS.vertProfond },
   recapTotalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, marginTop: 8, borderTopWidth: 1.5, borderTopColor: COLORS.vertProfond },
+  recapEcart: { fontFamily: FONTS.body, fontSize: 12, color: COLORS.ardoise, lineHeight: 17, marginTop: SPACING.sm },
   recapTotalLabel: { fontFamily: FONTS.displaySemibold, fontSize: 15, color: COLORS.vertProfond },
   recapTotalMontant: { fontFamily: FONTS.displaySemibold, fontSize: 15, color: COLORS.vert },
   submitBtnTexte: { fontFamily: FONTS.bodySemibold, fontSize: 15, color: COLORS.blanc },

@@ -896,7 +896,7 @@ interface DualiaStore {
   supprimerJournal: (id: string) => void;
   likerEntree: (id: string) => void;
   ajouterRecitCroise: (id: string, texte: string) => void;
-  ajouterDepense: (dep: Depense) => void;
+  ajouterDepense: (dep: Depense) => Promise<void>;
   reglerDepense: (id: string) => void;
   // Televerse un fichier une seule fois et rend son chemin : le recapitulatif
   // d'un ticket peut creer trois depenses, qui partagent alors le meme
@@ -1717,6 +1717,15 @@ export const useStore = create<DualiaStore>()(
           messages: state.messages.map((msg) =>
             msg === m || msg.id === m.id ? { ...msg, id: data.id } : msg
           ),
+          // DUA-087 : le message vient d'etre analyse sous son id provisoire ;
+          // sans ce report, le nouvel id passait pour un message inconnu et
+          // repartait vers parse-message une seconde fois.
+          messagesAnalyses: state.messagesAnalyses.includes(m.id)
+            ? [...state.messagesAnalyses, data.id]
+            : state.messagesAnalyses,
+          suggestionsMessages: state.suggestionsMessages[m.id]
+            ? { ...state.suggestionsMessages, [data.id]: state.suggestionsMessages[m.id] }
+            : state.suggestionsMessages,
         }));
       });
   },
@@ -2265,31 +2274,34 @@ export const useStore = create<DualiaStore>()(
       });
   },
 
-  ajouterDepense: (dep) => {
+  ajouterDepense: async (dep) => {
     set((state) => ({ depenses: [dep, ...state.depenses] }));
 
     const { familleId, parents } = get();
     if (!familleId) {
       console.error('[Dualia] Dépense non synchronisée : aucune famille active.');
-      return;
+      throw new Error('famille_absente');
     }
     const auteurUuid = parents[dep.auteurId]?.uuid;
-    supabase
+    const { data, error } = await supabase
       .from('depenses')
       .insert(depenseVersDB(dep, familleId, auteurUuid))
       .select()
-      .single()
-      .then(({ data, error }) => {
-        if (error || !data) {
-          console.error('[Dualia] Échec synchronisation dépense :', error);
-          return;
-        }
-        set((state) => ({
-          depenses: state.depenses.map((d) =>
-            d === dep || d.id === dep.id ? { ...d, id: data.id } : d
-          ),
-        }));
-      });
+      .single();
+    if (error || !data) {
+      // DUA-085 : un ticket valide puis absent de la base, sans un mot. La
+      // depense restait affichee localement jusqu'au prochain rechargement, le
+      // parent croyait l'avoir enregistree. On la retire et on remonte l'erreur
+      // a l'ecran, qui la montre et garde le recapitulatif ouvert.
+      console.error('[Dualia] Échec synchronisation dépense :', error);
+      set((state) => ({ depenses: state.depenses.filter((d) => d !== dep && d.id !== dep.id) }));
+      throw error ?? new Error('insertion_depense');
+    }
+    set((state) => ({
+      depenses: state.depenses.map((d) =>
+        d === dep || d.id === dep.id ? { ...d, id: data.id } : d
+      ),
+    }));
   },
 
   televerserPieceJointe: async ({ base64, contentType, nom }) => {
