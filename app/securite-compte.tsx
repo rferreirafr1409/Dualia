@@ -380,6 +380,10 @@ export default function SecuriteCompte() {
           )}
         </TouchableOpacity>
       </View>
+
+      <TouchableOpacity onPress={() => router.push('/confidentialite' as any)} style={styles.lienPolitique}>
+        <Text style={styles.lienPolitiqueTexte}>Lire notre politique de confidentialité</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
@@ -419,6 +423,8 @@ const styles = StyleSheet.create({
   },
   boutonSecondaireTexte: { color: COLORS.rouge, fontWeight: '600', fontSize: 14 },
   carteDanger: { borderColor: COLORS.rouge, borderWidth: 1 },
+  lienPolitique: { alignSelf: 'center', paddingVertical: 12, marginBottom: 24 },
+  lienPolitiqueTexte: { fontSize: 13, color: COLORS.ardoise, textDecorationLine: 'underline' },
   boutonDanger: {
     backgroundColor: COLORS.rouge,
     paddingVertical: 12,

@@ -138,6 +138,12 @@ export default function ConnexionScreen() {
         <Pressable onPress={() => router.push('/creer-espace' as any)}>
           <Text style={styles.lienTexteSecondaire}>Je n'ai pas encore de compte</Text>
         </Pressable>
+
+        {/* La politique de confidentialité existait sans qu'aucun écran n'y
+            mène. Apple exige qu'elle soit lisible dans l'app (DUA-098). */}
+        <Pressable onPress={() => router.push('/confidentialite' as any)}>
+          <Text style={styles.lienDiscret}>Confidentialité et protection des données</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -167,6 +173,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xl,
   },
   boutonPrincipalTexte: { fontFamily: FONTS.bodySemibold, fontSize: 15, color: COLORS.blanc },
+  lienDiscret: { marginTop: 18, fontSize: 12, color: COLORS.ardoise, textAlign: 'center', textDecorationLine: 'underline' },
   lienTexteSecondaire: {
     fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vert, textAlign: 'center', marginTop: SPACING.lg,
   },

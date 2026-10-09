@@ -34,7 +34,9 @@ module.exports = {
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true,
+      // iPad desactive pour la beta : l'app est en portrait seul, et Apple
+      // exige toutes les orientations sur iPad (DUA-106).
+      "supportsTablet": false,
       "bundleIdentifier": IDENTIFIANT,
       "infoPlist": {
         // Dualia n'utilise que le chiffrement standard (HTTPS) : evite la
@@ -67,8 +69,12 @@ module.exports = {
       [
         "expo-image-picker",
         {
-          "photosPermission": "Dualia accède à vos photos pour joindre un ticket, un justificatif ou un souvenir.",
-          "cameraPermission": "Dualia utilise l'appareil photo pour scanner un ticket ou un justificatif."
+          "photosPermission": "Dualia accède à vos photos pour joindre un ticket, un justificatif, un document, une photo de votre enfant ou un souvenir.",
+          "cameraPermission": "Dualia utilise l'appareil photo pour scanner un ticket ou un justificatif.",
+          // Le micro n'est jamais utilise : sans cette ligne, le plugin
+          // injecte une demande d'autorisation en anglais, qu'Apple refuse
+          // (DUA-100).
+          "microphonePermission": false
         }
       ]
     ]
