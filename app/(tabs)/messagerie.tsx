@@ -33,6 +33,8 @@ import { TAILLE_MAX_BASE64, estHeic, estUneImage, normaliserType, typeImageStock
 import { ouvrirFichierStocke } from '../../lib/ouvrirFichierStocke';
 import { BACKEND_URL } from '../../constants/environnement';
 import InformationIA from '../../components/InformationIA';
+import { signalerMessage } from '../../lib/signalements';
+import { confirmer, alerter } from '../../lib/dialogue';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 if (Platform.OS !== 'web') {
@@ -41,6 +43,51 @@ if (Platform.OS !== 'web') {
 
 const PARSE_MESSAGE_URL = `${BACKEND_URL}/api/parse-message`;
 const MODERATE_MESSAGE_URL = `${BACKEND_URL}/api/moderate-message`;
+
+// Signalement d'un message (DUA-102). Textes dans les quatre langues de
+// l'app, hors TRADUCTIONS pour ne pas gonfler le fichier i18n d'un seul écran.
+const LIBELLES_SIGNALEMENT = {
+  fr: {
+    bouton: 'Signaler',
+    titre: 'Signaler ce message',
+    texte: "Ce message sera transmis à l'équipe Dualia pour examen. L'autre parent n'en sera pas informé.",
+    confirmer: 'Signaler',
+    annuler: 'Annuler',
+    merci: 'Message signalé',
+    merciTexte: "Merci. L'équipe Dualia va l'examiner.",
+    erreur: "Le signalement n'a pas pu être envoyé. Réessayez dans un instant.",
+  },
+  pt: {
+    bouton: 'Denunciar',
+    titre: 'Denunciar esta mensagem',
+    texte: 'Esta mensagem será enviada à equipa Dualia para análise. O outro progenitor não será informado.',
+    confirmer: 'Denunciar',
+    annuler: 'Cancelar',
+    merci: 'Mensagem denunciada',
+    merciTexte: 'Obrigado. A equipa Dualia vai analisá-la.',
+    erreur: 'Não foi possível enviar a denúncia. Tente novamente daqui a pouco.',
+  },
+  es: {
+    bouton: 'Denunciar',
+    titre: 'Denunciar este mensaje',
+    texte: 'Este mensaje se enviará al equipo de Dualia para su revisión. El otro progenitor no será informado.',
+    confirmer: 'Denunciar',
+    annuler: 'Cancelar',
+    merci: 'Mensaje denunciado',
+    merciTexte: 'Gracias. El equipo de Dualia lo revisará.',
+    erreur: 'No se pudo enviar la denuncia. Inténtalo de nuevo en un momento.',
+  },
+  en: {
+    bouton: 'Report',
+    titre: 'Report this message',
+    texte: 'This message will be sent to the Dualia team for review. The other parent will not be told.',
+    confirmer: 'Report',
+    annuler: 'Cancel',
+    merci: 'Message reported',
+    merciTexte: 'Thank you. The Dualia team will review it.',
+    erreur: 'The report could not be sent. Please try again shortly.',
+  },
+} as const;
 
 const PHOTO_MAX_DIMENSION = 1800;
 const PHOTO_JPEG_QUALITY = 0.75;
@@ -218,6 +265,26 @@ export default function MessagerieScreen() {
   const t = TRADUCTIONS[langue].messagerie;
   const l = LIBELLES[langue] ?? LIBELLES.fr;
   const ajouterMessage = useStore((s) => s.ajouterMessage);
+  const familleId = useStore((s) => s.familleId);
+  const parents = useStore((s) => s.parents);
+  const ls = LIBELLES_SIGNALEMENT[langue] ?? LIBELLES_SIGNALEMENT.fr;
+  const [signalementEnCours, setSignalementEnCours] = React.useState<string | null>(null);
+
+  const signaler = async (msg: { id: string; contenu: string }) => {
+    const moi = parents[parentActif]?.uuid;
+    if (!familleId || !moi) return;
+    const ok = await confirmer(ls.titre, ls.texte, ls.confirmer, ls.annuler, true);
+    if (!ok) return;
+    setSignalementEnCours(msg.id);
+    try {
+      await signalerMessage({ familleId, messageId: msg.id, signaleParUuid: moi, motif: 'inapproprie', extrait: msg.contenu });
+      alerter(ls.merci, ls.merciTexte);
+    } catch {
+      alerter(ls.erreur);
+    } finally {
+      setSignalementEnCours(null);
+    }
+  };
   const televerserPieceJointe = useStore((s) => s.televerserPieceJointe);
   const [texteEnvoi, setTexteEnvoi] = React.useState('');
   // ---- Modération à l'envoi (filtre + reformulation IA) ----
@@ -643,13 +710,23 @@ export default function MessagerieScreen() {
                   </View>
                                 ) : null}
                               {msg.contenu.trim() ? (
-                                <Pressable
-                    style={[styles.formaliserBtn, fromMe && styles.formaliserBtnMe]}
-                    onPress={() => formaliser(msg.contenu)}
-                  >
-                    <ExportIcon size={11} color={COLORS.vert} strokeWidth={2} />
-                    <Text style={styles.formaliserText}>{t.formaliser}</Text>
-                  </Pressable>
+                                <View style={[styles.actionsBulle, fromMe && styles.actionsBulleMe]}>
+                                  <Pressable style={styles.formaliserBtn} onPress={() => formaliser(msg.contenu)}>
+                                    <ExportIcon size={11} color={COLORS.vert} strokeWidth={2} />
+                                    <Text style={styles.formaliserText}>{t.formaliser}</Text>
+                                  </Pressable>
+                                  {/* Signaler un message reçu (DUA-102) : jamais le sien. */}
+                                  {!fromMe ? (
+                                    <Pressable
+                                      style={styles.signalerBtn}
+                                      onPress={() => signaler(msg)}
+                                      disabled={signalementEnCours === msg.id}
+                                    >
+                                      <Ionicons name="flag-outline" size={11} color={COLORS.ardoise} />
+                                      <Text style={styles.signalerText}>{ls.bouton}</Text>
+                                    </Pressable>
+                                  ) : null}
+                                </View>
                               ) : null}
                 </View>
               </View>
@@ -832,6 +909,10 @@ const styles = StyleSheet.create({
   formaliserBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, paddingHorizontal: 4,
   },
+  actionsBulle: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, alignSelf: 'flex-start' },
+  actionsBulleMe: { alignSelf: 'flex-end' },
+  signalerBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, paddingHorizontal: 4 },
+  signalerText: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.ardoise },
   formaliserBtnMe: { alignSelf: 'flex-end' },
   formaliserText: { fontFamily: FONTS.bodySemibold, fontSize: 10.5, color: COLORS.vert },
   suggestionCard: { backgroundColor: COLORS.ivoire, borderWidth: 1, borderColor: COLORS.vert, borderRadius: 10, padding: 10, marginTop: 6, marginBottom: 8 },

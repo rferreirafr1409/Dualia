@@ -282,6 +282,7 @@ export default function RootLayout() {
         <Stack.Screen name="securite" />
         <Stack.Screen name="securite-compte" />
         <Stack.Screen name="confidentialite" />
+        <Stack.Screen name="cgu" />
         <Stack.Screen name="acces-tiers" />
         <Stack.Screen name="agenda-scolaire" />
         <Stack.Screen name="calendriers-externes" />

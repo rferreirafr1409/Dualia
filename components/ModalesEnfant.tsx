@@ -16,7 +16,7 @@
 // partager exactement le meme formulaire : Famille pour creer un enfant, la
 // fiche pour le modifier.
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
   TextInput, KeyboardAvoidingView, Platform, Image,
@@ -29,6 +29,7 @@ import { jourLocal } from '../lib/dates';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 import DatePickerField from './DatePickerField';
+import { lireConsentementSante, enregistrerConsentementSante } from '../lib/consentementSante';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 try {
@@ -93,6 +94,21 @@ export function ModaleEnfant({
   const [form, setForm] = useState(() => (enfant ? formulaireDepuis(enfant) : formulaireVide()));
   const [envoi, setEnvoi] = useState(false);
   const [ouvertPour, setOuvertPour] = useState<string | null>(null);
+  // Consentement explicite aux donnees de sante (DUA-103) : demande une fois
+  // par parent, a la premiere saisie d'un champ sante. `null` = pas encore lu.
+  const [consentementDonne, setConsentementDonne] = useState<boolean | null>(null);
+  const [consentementCoche, setConsentementCoche] = useState(false);
+  useEffect(() => {
+    if (!visible || consentementDonne !== null) return;
+    let actif = true;
+    lireConsentementSante().then((ok) => { if (actif) setConsentementDonne(ok); });
+    return () => { actif = false; };
+  }, [visible, consentementDonne]);
+
+  const saisitDesDonneesSante =
+    !!(form.medecinTraitant.trim() || form.medecinTelephone.trim() || form.allergies.trim() || form.groupeSanguin.trim() || form.mutuelle.trim());
+  const consentementRequis = saisitDesDonneesSante && consentementDonne !== true;
+  const consentementBloque = consentementRequis && !consentementCoche;
 
   // Re-initialisation a l'ouverture, sans useEffect : on compare l'identite
   // de ce qui est edite a celle du dernier remplissage.
@@ -113,9 +129,13 @@ export function ModaleEnfant({
   };
 
   const soumettre = async () => {
-    if (!form.prenom.trim()) return;
+    if (!form.prenom.trim() || consentementBloque) return;
     setEnvoi(true);
     try {
+      if (consentementRequis) {
+        await enregistrerConsentementSante();
+        setConsentementDonne(true);
+      }
       // A la MODIFICATION, un champ vide doit partir comme chaine vide et non
       // comme `undefined` : le store n'envoie a la base que les cles
       // presentes, donc `undefined` signifiait « ne touche pas » et le
@@ -263,14 +283,29 @@ export function ModaleEnfant({
             placeholderTextColor={COLORS.ardoise}
           />
 
+          {consentementRequis ? (
+            <View style={styles.consentement}>
+              <Text style={styles.consentementTitre}>{t.consentementSanteTitre}</Text>
+              <Text style={styles.consentementTexte}>{t.consentementSanteTexte}</Text>
+              <TouchableOpacity style={styles.consentementLigne} onPress={() => setConsentementCoche((v) => !v)}>
+                <Ionicons
+                  name={consentementCoche ? 'checkbox' : 'square-outline'}
+                  size={22}
+                  color={consentementCoche ? COLORS.vert : COLORS.ardoise}
+                />
+                <Text style={styles.consentementCase}>{t.consentementSanteCase}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           <View style={styles.actions}>
             <TouchableOpacity style={styles.btnAnnuler} onPress={onFermer}>
               <Text style={styles.btnAnnulerTxt}>{t.annuler}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.btnValider, (!form.prenom.trim() || envoi) && styles.btnDisabled]}
+              style={[styles.btnValider, (!form.prenom.trim() || envoi || consentementBloque) && styles.btnDisabled]}
               onPress={soumettre}
-              disabled={!form.prenom.trim() || envoi}
+              disabled={!form.prenom.trim() || envoi || consentementBloque}
             >
               <Text style={styles.btnValiderTxt}>{enfant ? t.enregistrer : t.ajouter}</Text>
             </TouchableOpacity>
@@ -430,6 +465,13 @@ const styles = StyleSheet.create({
   groupeChoixActif: { backgroundColor: COLORS.terracotta, borderColor: COLORS.terracotta },
   groupeChoixTxt: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.semibold, color: COLORS.texte },
   groupeChoixTxtActif: { color: COLORS.blanc },
+  consentement: {
+    backgroundColor: '#F4F1EA', borderRadius: RADIUS.md, padding: SPACING.md, marginBottom: SPACING.md,
+  },
+  consentementTitre: { fontSize: TYPOGRAPHY.sm, fontWeight: TYPOGRAPHY.semibold, color: COLORS.vertProfond, marginBottom: 4 },
+  consentementTexte: { fontSize: TYPOGRAPHY.xs, color: COLORS.ardoise, lineHeight: 17, marginBottom: SPACING.sm },
+  consentementLigne: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  consentementCase: { flex: 1, fontSize: TYPOGRAPHY.xs, color: COLORS.vertProfond, lineHeight: 17 },
   actions: { flexDirection: 'row', gap: SPACING.md, marginTop: SPACING.xs },
   btnAnnuler: {
     flex: 1, padding: SPACING.lg, borderRadius: RADIUS.md,
