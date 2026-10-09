@@ -14,7 +14,9 @@
 import React from 'react';
 import {
   View, Text, ScrollView, Pressable, StyleSheet, TextInput, Platform, Alert, ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -258,6 +260,11 @@ function formatTime(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
 
 export default function MessagerieScreen() {
   const router = useRouter();
+  // Hauteur de la barre d'onglets (app/(tabs)/_layout.tsx : 60 + marge
+  // basse) : sans ce decalage, le clavier de l'iPhone recouvrait la zone de
+  // saisie et on ecrivait a l'aveugle.
+  const insets = useSafeAreaInsets();
+  const HAUTEUR_BARRE_ONGLETS = 60 + insets.bottom;
   const messages = useStore((s) => s.messages);
   const parentActif = useStore((s) => s.parentActif);
   const setDraft = useStore((s) => s.setNouvelleDecisionDraft);
@@ -612,7 +619,11 @@ export default function MessagerieScreen() {
   let lastDay = '';
 
   return (
-    <View style={styles.screen}>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? HAUTEUR_BARRE_ONGLETS : 0}
+    >
       <View style={styles.topbar}>
         <Text style={styles.title}>{t.titre}</Text>
         <Text style={styles.subtitle}>{t.sousTitre}</Text>
@@ -864,7 +875,7 @@ export default function MessagerieScreen() {
             )}
           </Pressable>
         </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
