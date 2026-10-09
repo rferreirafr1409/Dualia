@@ -12,10 +12,10 @@ import AjoutRapideModal from '../../components/AjoutRapideModal';
 import RetourBetaBouton from '../../components/RetourBetaBouton';
 import { BrandMark } from '../../components/icons';
 import ErrorBoundary from '../../components/ErrorBoundary';
+import { SEUIL_GRAND_ECRAN } from '../../components/CadreWeb';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-const DESKTOP_BREAKPOINT = 1100;
 const SIDEBAR_WIDTH = 208;
 
 const TAB_LABELS: Record<string, { fr: string; pt: string; es: string; en: string }> = {
@@ -354,64 +354,14 @@ function TabsInterieur({ isDesktop }: { isDesktop: boolean }) {
 }
 
 export default function TabLayout() {
-  const { width, height } = useWindowDimensions();
-  const isDesktop = width >= DESKTOP_BREAKPOINT;
-
-  if (!isDesktop) {
-    return <TabsInterieur isDesktop={false} />;
-  }
-
-  // Sur grand ecran, l'application vit dans une fenetre contenue et centree,
-  // pas etiree d'un bord a l'autre : la lecture reste celle d'une app mobile
-  // soignee, avec deux colonnes de contenu au plus. Le plateau derriere
-  // garde une teinte visiblement plus sombre que la fenetre pour que le
-  // cadre se voie, meme sur un ecran tres large.
-  const fenetreHeight = Math.min(height - 80, 860);
-  const fenetreWidth = Math.min(width - 120, 1280);
-
-  return (
-    <LinearGradient
-      colors={[COLORS.ivoireFonce, '#DAD4C7']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.stage}
-    >
-      <View style={styles.stageRow}>
-        <View style={[styles.fenetre, { height: fenetreHeight, width: fenetreWidth }]}>
-          <TabsInterieur isDesktop />
-        </View>
-      </View>
-    </LinearGradient>
-  );
+  const { width } = useWindowDimensions();
+  // Le cadre centre des grands ecrans est pose a la racine (CadreWeb) ;
+  // ici on ne decide plus que de la barre laterale.
+  const isDesktop = width >= SEUIL_GRAND_ECRAN;
+  return <TabsInterieur isDesktop={isDesktop} />;
 }
 
 const styles = StyleSheet.create({
-  stage: {
-    flex: 1,
-    backgroundColor: COLORS.ivoireFonce,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  stageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  fenetre: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.ivoire,
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(28,43,37,0.10)',
-    shadowColor: COLORS.vertProfond,
-    shadowOffset: { width: 0, height: 24 },
-    shadowOpacity: 0.22,
-    shadowRadius: 60,
-    elevation: 20,
-  },
-
   sidebar: {
     width: SIDEBAR_WIDTH,
     backgroundColor: COLORS.vertProfond,
