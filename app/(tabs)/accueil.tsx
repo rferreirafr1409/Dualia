@@ -444,7 +444,7 @@ export default function AccueilScreen() {
         // au lieu d'ouvrir l'accordéon. Le fil de vie est le bon endroit
         // pour lire un souvenir en entier, pas l'accueil.
         return (
-          <View key={widgetId} style={styles.banniereWrap}>
+          <View key={widgetId} style={[styles.card, styles.banniereWrap]}>
             <MemoryAccordionRow
               isExpanded={false}
               onToggle={() =>
@@ -810,7 +810,7 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     borderRadius: 20,
     padding: SPACING.md,
-    minHeight: 142,
+    minHeight: 160,
     shadowColor: '#173f32',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.09,
@@ -864,7 +864,10 @@ const styles = StyleSheet.create({
   // ce conteneur ne fait que lui donner la largeur de colonne de la grille
   // et le centrer verticalement quand il partage sa rangée avec une carte
   // plus haute.
-  banniereWrap: { flex: 1, justifyContent: 'center' },
+  // Le souvenir prend la même boîte blanche que les autres cartes, pour que
+  // tous les cadres de la grille aient la même taille ; le bandeau est centré
+  // verticalement dedans.
+  banniereWrap: { justifyContent: 'center' },
 
   docrow: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 7,
