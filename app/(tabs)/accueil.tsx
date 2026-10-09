@@ -1,4 +1,4 @@
-﻿// app/(tabs)/accueil.tsx
+// app/(tabs)/accueil.tsx
 //
 // Le "cockpit familial" — grille de cartes personnalisable (Aujourd'hui /
 // À traiter / Finances / Leur semaine / Un souvenir récent / Documents
@@ -15,19 +15,15 @@
 // de vie. Même objet, même forme partout dans l'app, et l'accueil gagne
 // environ 80 px par rapport à la carte photo qu'il remplace.
 //
-// Pertinence des cartes (voir widgetEstPertinent) : trois widgets ne
-// s'affichent que quand ils ont quelque chose à dire, pour que l'essentiel
-// tienne sans faire défiler.
-//   - "À traiter" et "À anticiper" disparaissent quand ils sont vides ;
-//     une carte qui annonce qu'elle n'a rien à annoncer coûte 140 px.
-//   - "Transmission" n'obéit pas au vide mais à la date : elle sort à J-2
-//     du prochain échange. Affichée en permanence, la check-list devient
-//     du décor et on ne la voit plus le jour où elle compte.
-// Exception volontaire : tant que le foyer n'est pas en service (aucun
-// enfant ou aucun planning de garde), rien n'est masqué — sinon un compte
-// neuf ouvre Dualia sur une page presque vide, et son propriétaire ne
-// découvre jamais ces fonctions. Les widgets masqués restent listés dans
-// /personnaliser-home.
+// Pertinence des cartes (voir widgetEstPertinent) : une carte ne s'affiche
+// que quand elle a quelque chose à dire, pour que l'essentiel tienne sans
+// faire défiler. « Aujourd'hui », « Leur semaine », « Finances »,
+// « À traiter » et « À anticiper » disparaissent quand ils sont vides ;
+// « Transmission » n'obéit pas au vide mais à la date : elle sort à J-2 du
+// prochain échange. Affichée en permanence, la check-list devient du décor
+// et on ne la voit plus le jour où elle compte. Le souvenir reste toujours
+// là pour que la page ne soit jamais nue. Les widgets masqués restent listés
+// dans /personnaliser-home.
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Image, TextInput, useWindowDimensions, Modal, ActivityIndicator } from 'react-native';
@@ -284,14 +280,20 @@ export default function AccueilScreen() {
     );
   }, [prochainPassage]);
 
-  // Un foyer est "en service" dès qu'il a des enfants ET un planning de
-  // garde. Avant cela, on n'applique aucun masquage : un espace tout neuf
-  // doit montrer ses cartes, même vides, sinon il n'y a rien à découvrir.
-  const foyerEnService = enfants.length > 0 && evenements.length > 0;
-
+  // Une carte qui annonce qu'elle n'a rien à annoncer n'a pas sa place sur
+  // l'accueil : seules les cartes qui ont quelque chose à dire s'affichent.
+  // « Transmission » n'obéit pas au vide mais à la date : elle sort à J-2
+  // du prochain échange. Le souvenir reste toujours là, pour que la page ne
+  // soit jamais nue. Les cartes masquées restent listées dans
+  // /personnaliser-home.
   function widgetEstPertinent(widgetId: WidgetId): boolean {
-    if (!foyerEnService) return true;
     switch (widgetId) {
+      case 'aujourdhui':
+        return !!gardeAujourdhuiTexte || evenementsAujourdhui.length > 0;
+      case 'leur_semaine':
+        return evenementsSemaine.length > 0 || evenements.length > 0;
+      case 'finances':
+        return depenses.length > 0;
       case 'a_traiter':
         return nbATraiter > 0;
       case 'a_anticiper':
@@ -539,11 +541,10 @@ export default function AccueilScreen() {
     }
   }
 
-  // Filet de sécurité : si le filtrage ne laisse rien (un parent qui
-  // n'aurait gardé que des cartes contextuelles), on réaffiche la sélection
-  // complète plutôt qu'un accueil blanc.
+  // Filet de sécurité : si le filtrage ne laisse rien, on montre le souvenir
+  // plutôt qu'un accueil blanc ou qu'une rangée de cartes vides.
   const widgetsPertinents = widgetsVisibles.filter(widgetEstPertinent);
-  const widgetsAffiches = widgetsPertinents.length > 0 ? widgetsPertinents : widgetsVisibles;
+  const widgetsAffiches: WidgetId[] = widgetsPertinents.length > 0 ? widgetsPertinents : ['souvenir_recent'];
 
   const rangeesWidgets = grouper(widgetsAffiches, isMobile ? 1 : 2);
 
