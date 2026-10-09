@@ -91,6 +91,16 @@ const LIBELLES_SIGNALEMENT = {
   },
 } as const;
 
+// DUA-087 : 39 appels a parse-message pour 3 messages reels. Deux causes
+// cote application : le meme message analyse sous son id provisoire puis sous
+// son id definitif (corrige dans le magasin), et des re-analyses a chaque
+// ouverture quand la liste persistee n'etait pas encore rechargee. Ce jeu en
+// memoire ne depend pas de la persistance : un id qui y figure n'est plus
+// jamais renvoye pendant la vie de l'application. Et un message vieux de plus
+// de sept jours n'a plus rien a proposer a l'agenda.
+const analysesLancees = new Set<string>();
+const AGE_MAX_ANALYSE_MS = 7 * 24 * 60 * 60 * 1000;
+
 const PHOTO_MAX_DIMENSION = 1800;
 const PHOTO_JPEG_QUALITY = 0.75;
 
@@ -529,8 +539,11 @@ export default function MessagerieScreen() {
 
   React.useEffect(() => {
     messages.forEach((msg) => {
-      if (messagesAnalyses.includes(msg.id)) return;
+      if (messagesAnalyses.includes(msg.id) || analysesLancees.has(msg.id)) return;
+      analysesLancees.add(msg.id);
       marquerMessageAnalyse(msg.id);
+      const age = Date.now() - new Date(msg.dateEnvoi).getTime();
+      if (!Number.isFinite(age) || age > AGE_MAX_ANALYSE_MS) return;
       // Un message réduit à sa pièce jointe n'a pas de texte à analyser :
       // l'envoyer au détecteur d'événements ne ferait qu'un aller-retour
       // réseau pour rien.
