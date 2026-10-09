@@ -51,7 +51,7 @@ const POINTS: Point[] = [
     icone: 'sparkles-outline',
     titre: "L'IA, encadrée strictement",
     texte:
-      "L'extraction assistée par IA (documents, tickets de dépenses) est confiée à Anthropic Ireland, Limited. Vos données ne servent jamais à entraîner leurs modèles — c'est un engagement contractuel, pas une intention. Traitement encadré par un accord de sous-traitance intégrant les clauses contractuelles types européennes.",
+      "Les fonctions assistées par IA (messagerie apaisée, lecture des tickets, import du jugement) sont confiées à Anthropic Ireland, Limited. Vos données ne servent jamais à entraîner leurs modèles — c'est un engagement contractuel, pas une intention. Traitement encadré par un accord de sous-traitance intégrant les clauses contractuelles types européennes.",
   },
   {
     icone: 'close-circle-outline',
