@@ -13,6 +13,15 @@
         "buildType": "apk"
       }
     },
+    "beta": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_ENV": "prod"
+      },
+      "android": {
+        "buildType": "apk"
+      }
+    },
     "production": {
       "autoIncrement": true,
       "env": {
