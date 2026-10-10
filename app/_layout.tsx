@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { View, ActivityIndicator } from 'react-native';
+import { cheminInvitationEnAttente } from '../lib/invitationEnAttente';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -214,6 +215,16 @@ export default function RootLayout() {
 
     const ecranCourant = segments[0] ?? '';
     if (ECRANS_SANS_REDIRECTION.includes(ecranCourant)) return;
+
+    if (rattachement === 'jamais_rattache') {
+      // Un lien d'invitation en attente sur l'appareil passe avant la
+      // creation d'un espace : voir lib/invitationEnAttente.ts.
+      let vivant = true;
+      cheminInvitationEnAttente().then((cheminInvitation) => {
+        if (vivant) router.replace((cheminInvitation ?? destination) as any);
+      });
+      return () => { vivant = false; };
+    }
 
     router.replace(destination as any);
   }, [chargementInitial, sessionActive, rattachement, segments]);

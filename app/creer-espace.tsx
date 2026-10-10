@@ -627,6 +627,10 @@ export default function CreerEspaceScreen() {
             Votre compte est bien confirmé, mais votre espace familial n'a pas encore été créé.
             Indiquez votre prénom : c'est la dernière étape.
           </Text>
+          <Text style={styles.aide}>
+            Vous rejoignez l'espace d'un autre parent ? N'allez pas plus loin : ouvrez le lien
+            d'invitation qu'il vous a envoyé, votre place est là-bas.
+          </Text>
           {emailConnecte ? (
             <Text style={styles.aide}>Compte connecté : {emailConnecte}</Text>
           ) : null}
