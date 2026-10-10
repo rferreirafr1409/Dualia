@@ -181,6 +181,26 @@ export default function RejoindreScreen() {
       }
 
       if (!session) {
+        // D'abord la connexion : un compte deja confirme (co-parent revenu
+        // par le lien de l'e-mail, ou qui recommence) doit entrer avec son
+        // mot de passe. Avant, on tentait l'inscription en premier ; pour
+        // une adresse deja confirmee, Supabase repond alors SANS erreur et
+        // sans session (anti-enumeration) et n'envoie aucun e-mail : l'ecran
+        // promettait un message qui n'arrivait jamais (10 octobre 2026).
+        const { data: connexion, error: erreurConnexion } =
+          await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password: motDePasse,
+          });
+        if (!erreurConnexion && connexion.session) {
+          session = connexion.session;
+        } else if (erreurConnexion && !/invalid login credentials/i.test(erreurConnexion.message ?? '')) {
+          // Adresse non confirmee, trop d'essais... : on le dit tel quel.
+          throw erreurConnexion;
+        }
+      }
+
+      if (!session) {
         // emailRedirectTo ramene sur CE lien d'invitation, jeton compris.
         // Sans lui, Supabase renvoie vers la « Site URL » du projet : le
         // jeton disparaissait de l'URL, et la personne devait retrouver le
@@ -191,20 +211,24 @@ export default function RejoindreScreen() {
           options: { emailRedirectTo: lienApplication('rejoindre', { token }) },
         });
 
+        // Compte existant mais mot de passe faux : soit une erreur explicite,
+        // soit (confirmation d'e-mail activee) un utilisateur factice sans
+        // identite et sans session. Dans les deux cas, pas d'e-mail envoye.
         const dejaInscrit =
-          erreurInscription &&
-          /already registered|already been registered|user already exists/i.test(
-            erreurInscription.message ?? ''
-          );
+          (erreurInscription &&
+            /already registered|already been registered|user already exists/i.test(
+              erreurInscription.message ?? ''
+            )) ||
+          (!erreurInscription &&
+            !inscription.session &&
+            (inscription.user?.identities?.length ?? 0) === 0);
 
         if (dejaInscrit) {
-          const { data: connexion, error: erreurConnexion } =
-            await supabase.auth.signInWithPassword({
-              email: email.trim(),
-              password: motDePasse,
-            });
-          if (erreurConnexion) throw erreurConnexion;
-          session = connexion.session;
+          setRefus(
+            "Un compte existe déjà avec cette adresse, mais le mot de passe ne correspond pas. Réessayez, ou passez par « Mot de passe oublié » sur l'écran de connexion."
+          );
+          setChargement(false);
+          return;
         } else if (erreurInscription) {
           throw erreurInscription;
         } else if (!inscription.session) {
