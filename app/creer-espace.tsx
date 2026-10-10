@@ -524,6 +524,12 @@ export default function CreerEspaceScreen() {
             Un e-mail vient d'être envoyé à {email.trim()}. Ouvrez-le et cliquez sur le lien : votre
             espace familial se crée juste après — il ne vous restera qu'à confirmer votre prénom.
           </Text>
+          {Platform.OS !== 'web' && (
+            <Text style={styles.sousTitre}>
+              Le lien s'ouvre dans votre navigateur. Une fois votre adresse confirmée, revenez dans
+              l'application Dualia et connectez-vous avec votre e-mail et votre mot de passe.
+            </Text>
+          )}
           <Text style={styles.aide}>
             L'e-mail met parfois quelques minutes à arriver, et se range volontiers dans les
             indésirables.

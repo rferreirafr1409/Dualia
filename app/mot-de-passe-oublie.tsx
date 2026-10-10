@@ -70,6 +70,12 @@ export default function MotDePasseOublieScreen() {
             Si un compte existe avec l'adresse {email.trim()}, un lien pour choisir un nouveau mot de
             passe vient de lui être envoyé. Pensez à vérifier vos courriers indésirables.
           </Text>
+          {Platform.OS !== 'web' && (
+            <Text style={styles.sousTitre}>
+              Le lien s'ouvre dans votre navigateur : choisissez-y votre nouveau mot de passe, puis
+              revenez dans l'application Dualia pour vous connecter.
+            </Text>
+          )}
 
           <Pressable style={styles.boutonSecondaire} onPress={() => router.replace('/connexion' as any)}>
             <Text style={styles.boutonSecondaireTexte}>Retour à la connexion</Text>

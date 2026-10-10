@@ -198,7 +198,9 @@ export default function RejoindreScreen() {
         } else if (!inscription.session) {
           alertCompat(
             'Confirmez votre adresse',
-            "Un e-mail vient de vous être envoyé. Cliquez sur le lien qu'il contient : il vous ramènera sur cette page. Il vous restera à ressaisir le code et votre mot de passe, puis votre demande sera déposée."
+            Platform.OS === 'web'
+              ? "Un e-mail vient de vous être envoyé. Cliquez sur le lien qu'il contient : il vous ramènera sur cette page. Il vous restera à ressaisir le code et votre mot de passe, puis votre demande sera déposée."
+              : "Un e-mail vient de vous être envoyé. Cliquez sur le lien qu'il contient : il s'ouvre dans votre navigateur et confirme votre adresse. Revenez ensuite dans l'application Dualia, ressaisissez le code et votre mot de passe, puis votre demande sera déposée."
           );
           setChargement(false);
           return;
