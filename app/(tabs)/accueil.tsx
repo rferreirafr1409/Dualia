@@ -815,7 +815,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.blanc,
     borderWidth: 1,
-    borderColor: 'rgba(28,43,37,0.08)',
+    borderColor: 'rgba(107,127,122,0.35)',
     borderRadius: 20,
     padding: SPACING.md,
     minHeight: 160,
