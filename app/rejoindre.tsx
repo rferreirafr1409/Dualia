@@ -168,6 +168,18 @@ export default function RejoindreScreen() {
       const { data: dejaConnecte } = await supabase.auth.getSession();
       let session = dejaConnecte.session;
 
+      // Une session d'un AUTRE compte traine souvent dans ce navigateur : le
+      // parent qui invite vient de creer son espace sur ce meme telephone,
+      // puis tend l'appareil au co-parent. Avant ce garde-fou, l'adresse
+      // saisie etait ignoree et la demande partait au nom du parent connecte,
+      // qui lisait « Ce compte appartient deja a un espace familial » (vu le
+      // 10 octobre 2026 chez un couple testeur). On repart de l'adresse saisie.
+      const emailSaisi = email.trim().toLowerCase();
+      if (session && (session.user.email ?? '').toLowerCase() !== emailSaisi) {
+        await supabase.auth.signOut();
+        session = null;
+      }
+
       if (!session) {
         // emailRedirectTo ramene sur CE lien d'invitation, jeton compris.
         // Sans lui, Supabase renvoie vers la « Site URL » du projet : le
