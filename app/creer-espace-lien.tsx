@@ -14,6 +14,7 @@ import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { URL_APPLICATION } from '../constants/environnement';
+import { confirmer } from '../lib/dialogue';
 
 export default function CreerEspaceLienScreen() {
   const router = useRouter();
@@ -62,6 +63,24 @@ export default function CreerEspaceLienScreen() {
     afficher(ligne);
     setChargement(false);
   }, [familleId]);
+
+  // Regenerer ANNULE le lien et le code deja transmis. Le 10 octobre 2026,
+  // un parent a appuye ici huit secondes apres avoir dicte son code : le
+  // co-parent, arrive par le premier lien, lisait « Ce lien a ete annule »
+  // sans comprendre. On previent, et on ne fait rien sans accord.
+  const regenererAvecConfirmation = React.useCallback(async () => {
+    if (lienInvitation) {
+      const ok = await confirmer(
+        'Remplacer le lien actuel ?',
+        "Le lien et le code que vous avez déjà envoyés ne fonctionneront plus. L'autre parent devra utiliser les nouveaux.",
+        'Remplacer',
+        'Garder le lien actuel',
+        true
+      );
+      if (!ok) return;
+    }
+    await genererLien();
+  }, [lienInvitation, genererLien]);
 
   // A l'affichage, on RELIT le lien en cours. On n'en cree un que s'il n'y
   // en a aucun de valide.
@@ -170,7 +189,7 @@ export default function CreerEspaceLienScreen() {
         ) : null}
 
         {!espaceComplet ? (
-          <Pressable style={styles.boutonSecondaire} onPress={genererLien}>
+          <Pressable style={styles.boutonSecondaire} onPress={regenererAvecConfirmation}>
             <Text style={styles.boutonSecondaireTexte}>Générer un nouveau lien et un nouveau code</Text>
           </Pressable>
         ) : null}

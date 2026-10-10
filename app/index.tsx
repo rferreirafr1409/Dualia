@@ -5,11 +5,31 @@ import { Platform } from 'react-native';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../constants/theme';
 import { CHEMIN_BASE } from '../constants/environnement';
+import { cheminInvitationEnAttente } from '../lib/invitationEnAttente';
 
 type Decision =
   | { type: 'en_cours' }
   | { type: 'restaurer'; chemin: string }
   | { type: 'suivre_session' };
+
+// Compte sans famille : s'il a un lien d'invitation en attente sur cet
+// appareil, c'est la qu'il va, pas vers la creation d'un espace a lui.
+function RedirectionSansFamille() {
+  const [chemin, setChemin] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    let vivant = true;
+    cheminInvitationEnAttente().then((c) => { if (vivant) setChemin(c); });
+    return () => { vivant = false; };
+  }, []);
+  if (chemin === undefined) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.ivoire }}>
+        <ActivityIndicator size="large" color={COLORS.vert} />
+      </View>
+    );
+  }
+  return <Redirect href={(chemin ?? '/creer-espace') as any} />;
+}
 
 export default function Index() {
   const [decision, setDecision] = useState<Decision>({ type: 'en_cours' });
@@ -74,7 +94,7 @@ export default function Index() {
   // La garde du layout couvre le meme cas ; ici on evite en plus le passage
   // par un accueil vide quand la reponse est deja connue.
   if (rattachement === 'jamais_rattache') {
-    return <Redirect href="/creer-espace" />;
+    return <RedirectionSansFamille />;
   }
 
   // Un acces tiers retire n'est pas un compte neuf : on ne propose pas de

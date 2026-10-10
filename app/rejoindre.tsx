@@ -20,6 +20,11 @@ import { useStore } from '../store/useStore';
 import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
+import {
+  lireInvitationEnAttente,
+  memoriserInvitationEnAttente,
+  oublierInvitationEnAttente,
+} from '../lib/invitationEnAttente';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -48,6 +53,38 @@ export default function RejoindreScreen() {
   const [refus, setRefus] = useState<string | null>(null);
 
   const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse) : null;
+
+  // Adresse du compte deja connecte sur cet appareil, s'il y en a un. Quand
+  // elle correspond a l'adresse saisie, le mot de passe n'a plus rien a
+  // prouver : on ne le redemande pas. C'est le cas d'un co-parent revenu
+  // par le lien de l'e-mail de confirmation, ou passe par l'ecran de
+  // connexion avant de rouvrir le lien.
+  const [emailSession, setEmailSession] = useState<string | null>(null);
+  useEffect(() => {
+    let vivant = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (vivant) setEmailSession(data.session?.user.email?.toLowerCase() ?? null);
+    });
+    return () => { vivant = false; };
+  }, []);
+  const sessionCorrespond =
+    !!emailSession && emailSession === email.trim().toLowerCase();
+
+  // Ce qui a deja ete saisi pour ce lien revient tout seul : le detour par
+  // l'e-mail de confirmation ne doit pas effacer le formulaire.
+  useEffect(() => {
+    if (!token) return;
+    let vivant = true;
+    lireInvitationEnAttente().then((memo) => {
+      if (!vivant) return;
+      if (memo && memo.token === token) {
+        if (memo.prenom) setPrenom((p) => p || memo.prenom!);
+        if (memo.email) setEmail((e) => e || memo.email!);
+      }
+      memoriserInvitationEnAttente({ token });
+    });
+    return () => { vivant = false; };
+  }, [token]);
 
   useEffect(() => {
     if (!token) {
@@ -103,6 +140,7 @@ export default function RejoindreScreen() {
       if (data === 'acceptee') {
         // Le rattachement vient d'avoir lieu cote serveur : on recharge tout
         // plutot que de deviner l'etat.
+        oublierInvitationEnAttente();
         await useStore.getState().initialiserSession();
         router.replace('/(tabs)/accueil');
       } else if (data === 'refusee') {
@@ -148,10 +186,16 @@ export default function RejoindreScreen() {
       alertCompat('Code manquant', 'Saisis le code à 6 chiffres transmis séparément du lien.');
       return;
     }
-    const probleme = validerMotDePasse(motDePasse);
-    if (probleme) {
-      alertCompat('Mot de passe trop faible', probleme);
-      return;
+    if (!sessionCorrespond) {
+      const probleme = validerMotDePasse(motDePasse);
+      if (probleme) {
+        alertCompat('Mot de passe trop faible', probleme);
+        return;
+      }
+    }
+
+    if (token) {
+      memoriserInvitationEnAttente({ token, prenom: prenom.trim(), email: email.trim() });
     }
 
     setChargement(true);
@@ -168,6 +212,38 @@ export default function RejoindreScreen() {
       const { data: dejaConnecte } = await supabase.auth.getSession();
       let session = dejaConnecte.session;
 
+      // Une session d'un AUTRE compte traine souvent dans ce navigateur : le
+      // parent qui invite vient de creer son espace sur ce meme telephone,
+      // puis tend l'appareil au co-parent. Avant ce garde-fou, l'adresse
+      // saisie etait ignoree et la demande partait au nom du parent connecte,
+      // qui lisait « Ce compte appartient deja a un espace familial » (vu le
+      // 10 octobre 2026 chez un couple testeur). On repart de l'adresse saisie.
+      const emailSaisi = email.trim().toLowerCase();
+      if (session && (session.user.email ?? '').toLowerCase() !== emailSaisi) {
+        await supabase.auth.signOut();
+        session = null;
+      }
+
+      if (!session) {
+        // D'abord la connexion : un compte deja confirme (co-parent revenu
+        // par le lien de l'e-mail, ou qui recommence) doit entrer avec son
+        // mot de passe. Avant, on tentait l'inscription en premier ; pour
+        // une adresse deja confirmee, Supabase repond alors SANS erreur et
+        // sans session (anti-enumeration) et n'envoie aucun e-mail : l'ecran
+        // promettait un message qui n'arrivait jamais (10 octobre 2026).
+        const { data: connexion, error: erreurConnexion } =
+          await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password: motDePasse,
+          });
+        if (!erreurConnexion && connexion.session) {
+          session = connexion.session;
+        } else if (erreurConnexion && !/invalid login credentials/i.test(erreurConnexion.message ?? '')) {
+          // Adresse non confirmee, trop d'essais... : on le dit tel quel.
+          throw erreurConnexion;
+        }
+      }
+
       if (!session) {
         // emailRedirectTo ramene sur CE lien d'invitation, jeton compris.
         // Sans lui, Supabase renvoie vers la « Site URL » du projet : le
@@ -179,20 +255,24 @@ export default function RejoindreScreen() {
           options: { emailRedirectTo: lienApplication('rejoindre', { token }) },
         });
 
+        // Compte existant mais mot de passe faux : soit une erreur explicite,
+        // soit (confirmation d'e-mail activee) un utilisateur factice sans
+        // identite et sans session. Dans les deux cas, pas d'e-mail envoye.
         const dejaInscrit =
-          erreurInscription &&
-          /already registered|already been registered|user already exists/i.test(
-            erreurInscription.message ?? ''
-          );
+          (erreurInscription &&
+            /already registered|already been registered|user already exists/i.test(
+              erreurInscription.message ?? ''
+            )) ||
+          (!erreurInscription &&
+            !inscription.session &&
+            (inscription.user?.identities?.length ?? 0) === 0);
 
         if (dejaInscrit) {
-          const { data: connexion, error: erreurConnexion } =
-            await supabase.auth.signInWithPassword({
-              email: email.trim(),
-              password: motDePasse,
-            });
-          if (erreurConnexion) throw erreurConnexion;
-          session = connexion.session;
+          setRefus(
+            "Un compte existe déjà avec cette adresse, mais le mot de passe ne correspond pas. Réessayez, ou passez par « Mot de passe oublié » sur l'écran de connexion."
+          );
+          setChargement(false);
+          return;
         } else if (erreurInscription) {
           throw erreurInscription;
         } else if (!inscription.session) {
@@ -232,6 +312,7 @@ export default function RejoindreScreen() {
 
       setRefus(null);
       setEnAttente(true);
+      oublierInvitationEnAttente();
     } catch (err: any) {
       alertCompat('Erreur', traduireErreurAuth(err?.message));
     } finally {
@@ -291,7 +372,9 @@ export default function RejoindreScreen() {
       <View style={styles.contentCentre}>
         <Text style={styles.titre}>Rejoindre l'espace de {nomInvitant}</Text>
         <Text style={styles.sousTitre}>
-          Créez votre compte. {nomInvitant} validera ensuite votre arrivée.
+          {sessionCorrespond
+            ? `Vous êtes connecté. Saisissez le code reçu : ${nomInvitant} validera ensuite votre arrivée.`
+            : `Créez votre compte. ${nomInvitant} validera ensuite votre arrivée.`}
         </Text>
 
         {refus ? <Text style={styles.refus}>{refus}</Text> : null}
@@ -331,18 +414,24 @@ export default function RejoindreScreen() {
           maxLength={7}
         />
 
-        <Text style={styles.label}>Mot de passe</Text>
-        <TextInput
-          style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
-          value={motDePasse}
-          onChangeText={setMotDePasse}
-          placeholder={AIDE_MOT_DE_PASSE}
-          placeholderTextColor={COLORS.ardoise}
-          secureTextEntry
-        />
-        <Text style={[styles.aide, !!erreurMotDePasse && styles.aideErreur]}>
-          {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
-        </Text>
+        {sessionCorrespond ? (
+          <Text style={styles.aide}>Compte connecté : {emailSession}. Pas besoin de mot de passe.</Text>
+        ) : (
+          <>
+            <Text style={styles.label}>Mot de passe</Text>
+            <TextInput
+              style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
+              value={motDePasse}
+              onChangeText={setMotDePasse}
+              placeholder={AIDE_MOT_DE_PASSE}
+              placeholderTextColor={COLORS.ardoise}
+              secureTextEntry
+            />
+            <Text style={[styles.aide, !!erreurMotDePasse && styles.aideErreur]}>
+              {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
+            </Text>
+          </>
+        )}
 
         <Pressable style={styles.boutonPrincipal} onPress={rejoindre} disabled={chargement}>
           {chargement ? (
