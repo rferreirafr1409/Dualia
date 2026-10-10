@@ -1,4 +1,4 @@
-﻿// app/(tabs)/accueil.tsx
+// app/(tabs)/accueil.tsx
 //
 // Le "cockpit familial" — grille de cartes personnalisable (Aujourd'hui /
 // À traiter / Finances / Leur semaine / Un souvenir récent / Documents
@@ -15,19 +15,13 @@
 // de vie. Même objet, même forme partout dans l'app, et l'accueil gagne
 // environ 80 px par rapport à la carte photo qu'il remplace.
 //
-// Pertinence des cartes (voir widgetEstPertinent) : trois widgets ne
-// s'affichent que quand ils ont quelque chose à dire, pour que l'essentiel
-// tienne sans faire défiler.
-//   - "À traiter" et "À anticiper" disparaissent quand ils sont vides ;
-//     une carte qui annonce qu'elle n'a rien à annoncer coûte 140 px.
-//   - "Transmission" n'obéit pas au vide mais à la date : elle sort à J-2
-//     du prochain échange. Affichée en permanence, la check-list devient
-//     du décor et on ne la voit plus le jour où elle compte.
-// Exception volontaire : tant que le foyer n'est pas en service (aucun
-// enfant ou aucun planning de garde), rien n'est masqué — sinon un compte
-// neuf ouvre Dualia sur une page presque vide, et son propriétaire ne
-// découvre jamais ces fonctions. Les widgets masqués restent listés dans
-// /personnaliser-home.
+// Pertinence des cartes (voir widgetEstPertinent) : deux repères fixes,
+// « Aujourd'hui » et « Leur semaine », pour que la page garde la même forme
+// d'un jour à l'autre ; les autres cartes ne s'affichent que quand elles
+// ont quelque chose à dire. « Transmission » sort à J-2 du prochain
+// échange ; le souvenir n'apparaît que s'il en existe un vrai dans le
+// Journal. Aucun contenu de remplissage. Les widgets masqués restent listés
+// dans /personnaliser-home.
 
 import React, { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Image, TextInput, useWindowDimensions, Modal, ActivityIndicator } from 'react-native';
@@ -62,6 +56,7 @@ const LARGEUR_MAX_CONTENU = 900;
 // "Transmission" apparaît. 2 jours : assez tôt pour préparer le sac, assez
 // tard pour que la carte reste un signal et non un meuble.
 const JOURS_AVANT_TRANSMISSION = 2;
+const SAUGE_LISIBLE = '#4E635D';
 // Ordre alphabétique : ne privilégie aucune langue et reste stable
 // quand de nouvelles s'ajoutent.
 const LANGUES_DISPONIBLES = ['en', 'es', 'fr', 'pt'] as const;
@@ -284,14 +279,24 @@ export default function AccueilScreen() {
     );
   }, [prochainPassage]);
 
-  // Un foyer est "en service" dès qu'il a des enfants ET un planning de
-  // garde. Avant cela, on n'applique aucun masquage : un espace tout neuf
-  // doit montrer ses cartes, même vides, sinon il n'y a rien à découvrir.
-  const foyerEnService = enfants.length > 0 && evenements.length > 0;
-
+  // Deux repères fixes, le reste à la demande.
+  //
+  // « Aujourd'hui » et « Leur semaine » restent toujours là : un parent doit
+  // retrouver la page dans la même forme d'un jour à l'autre, et savoir en
+  // cinq secondes s'il a quelque chose à faire. Les autres cartes ne
+  // s'affichent que quand elles ont quelque chose à dire. « Transmission »
+  // n'obéit pas au vide mais à la date : elle sort à J-2 du prochain
+  // échange. Le souvenir n'apparaît que s'il en existe un vrai dans le
+  // Journal : aucun contenu de remplissage n'est injecté pour embellir la
+  // page. Les cartes masquées restent listées dans /personnaliser-home.
   function widgetEstPertinent(widgetId: WidgetId): boolean {
-    if (!foyerEnService) return true;
     switch (widgetId) {
+      case 'finances':
+        // Le solde permanent reste dans le module Finances ; ici seulement
+        // quand un remboursement est en attente.
+        return depenses.some((d) => !d.rembourse) && Math.abs(soldeFamille.solde) >= 0.005;
+      case 'souvenir_recent':
+        return !!souvenir || !!dernierMoment;
       case 'a_traiter':
         return nbATraiter > 0;
       case 'a_anticiper':
@@ -442,8 +447,9 @@ export default function AccueilScreen() {
         // au lieu d'ouvrir l'accordéon. Le fil de vie est le bon endroit
         // pour lire un souvenir en entier, pas l'accueil.
         return (
-          <View key={widgetId} style={styles.banniereWrap}>
+          <View key={widgetId} style={[styles.card, styles.banniereWrap]}>
             <MemoryAccordionRow
+              variante="nu"
               isExpanded={false}
               onToggle={() =>
                 dernierMoment ? router.push('/fil-de-vie' as any) : router.push('/partager-moment' as any)
@@ -539,11 +545,13 @@ export default function AccueilScreen() {
     }
   }
 
-  // Filet de sécurité : si le filtrage ne laisse rien (un parent qui
-  // n'aurait gardé que des cartes contextuelles), on réaffiche la sélection
-  // complète plutôt qu'un accueil blanc.
+  // Filet de sécurité : si le filtrage ne laisse rien (un parent qui aurait
+  // masqué les deux repères fixes), on les réaffiche plutôt qu'un accueil
+  // blanc. Une carte seule sur sa rangée prend toute la largeur (flex: 1),
+  // donc la grille se referme d'elle-même quand une carte disparaît.
   const widgetsPertinents = widgetsVisibles.filter(widgetEstPertinent);
-  const widgetsAffiches = widgetsPertinents.length > 0 ? widgetsPertinents : widgetsVisibles;
+  const widgetsAffiches: WidgetId[] =
+    widgetsPertinents.length > 0 ? widgetsPertinents : ['aujourdhui', 'leur_semaine'];
 
   const rangeesWidgets = grouper(widgetsAffiches, isMobile ? 1 : 2);
 
@@ -779,7 +787,7 @@ const styles = StyleSheet.create({
   dateAujourdhui: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, textTransform: 'capitalize' },
   promesseMeta: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, marginTop: 2 },
 
-  kidsRow: { flexDirection: 'row', gap: SPACING.xl, marginBottom: SPACING.xl },
+  kidsRow: { flexDirection: 'row', gap: SPACING.xl, marginBottom: SPACING.lg },
   kidsRowMobile: { gap: SPACING.md, marginBottom: SPACING.lg, flexWrap: 'wrap' },
   kidItem: { alignItems: 'center', width: 60 },
   kidFace: {
@@ -800,23 +808,28 @@ const styles = StyleSheet.create({
   kidAge: { fontFamily: FONTS.body, fontSize: 10, color: COLORS.ardoise, textAlign: 'center' },
 
   cardsRow: { flexDirection: 'row', gap: SPACING.sm, marginBottom: SPACING.sm },
+  // Cartes blanches, toutes de la même taille dans la grille. Le liseré
+  // discret garantit que la carte se voit même quand le fond derrière est
+  // rendu blanc par le navigateur, l'ombre seule ne suffisant pas.
   card: {
     flex: 1,
     backgroundColor: COLORS.blanc,
-    borderWidth: 0,
+    borderWidth: 1,
+    borderColor: 'rgba(107,127,122,0.35)',
     borderRadius: 20,
     padding: SPACING.md,
-    minHeight: 142,
+    minHeight: 160,
     shadowColor: '#173f32',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.09,
     shadowRadius: 22,
     elevation: 3,
   },
-
   cardTitleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  // Sauge un cran plus foncé que COLORS.ardoise : les intitulés et les
+  // descriptions restaient trop pâles sur certains écrans.
   cardTitre: {
-    fontFamily: FONTS.bodySemibold, fontSize: 12, color: COLORS.ardoise,
+    fontFamily: FONTS.bodySemibold, fontSize: 12, color: SAUGE_LISIBLE,
     textTransform: 'uppercase', letterSpacing: 0.7,
   },
   cardStrong: { fontFamily: FONTS.bodySemibold, fontSize: 13.5, color: COLORS.texte, marginBottom: 6 },
@@ -835,7 +848,7 @@ const styles = StyleSheet.create({
   cardRowTexte: { flex: 1, fontFamily: FONTS.body, fontSize: 12, color: COLORS.texte },
   cardRowChevron: { fontFamily: FONTS.body, fontSize: 14, color: COLORS.ardoise },
 
-  muted: { fontFamily: FONTS.body, fontSize: 11.5, color: COLORS.ardoise },
+  muted: { fontFamily: FONTS.body, fontSize: 12, color: SAUGE_LISIBLE },
   mutedLien: { fontFamily: FONTS.bodySemibold, fontSize: 11.5, color: COLORS.vert, marginTop: 6 },
   amount: { fontFamily: FONTS.displaySemibold, fontSize: 24, color: COLORS.vertProfond, marginVertical: 4 },
 
@@ -860,7 +873,10 @@ const styles = StyleSheet.create({
   // ce conteneur ne fait que lui donner la largeur de colonne de la grille
   // et le centrer verticalement quand il partage sa rangée avec une carte
   // plus haute.
-  banniereWrap: { flex: 1, justifyContent: 'center' },
+  // Le souvenir prend la même boîte blanche que les autres cartes, pour que
+  // tous les cadres de la grille aient la même taille ; le bandeau est centré
+  // verticalement dedans.
+  banniereWrap: { justifyContent: 'center' },
 
   docrow: {
     flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, paddingVertical: 7,

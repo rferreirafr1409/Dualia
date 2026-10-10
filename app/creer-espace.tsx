@@ -756,7 +756,9 @@ const styles = StyleSheet.create({
   centreEcran: {
     flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.ivoire,
   },
-  contentCentre: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACING.xl },
+  // Colonne de formulaire : pleine largeur sur telephone, bornee et centree
+  // sur grand ecran, pour ne pas etirer les champs d'un bord a l'autre.
+  contentCentre: { flex: 1, justifyContent: 'center', paddingHorizontal: SPACING.xl, width: '100%', maxWidth: 560, alignSelf: 'center' },
   titre: { fontFamily: FONTS.display, fontSize: 24, color: COLORS.vertProfond, marginBottom: SPACING.sm },
   sousTitre: { fontFamily: FONTS.body, fontSize: 13.5, color: COLORS.ardoise, lineHeight: 19, marginBottom: SPACING.xl },
   label: { fontFamily: FONTS.bodySemibold, fontSize: 12.5, color: COLORS.vertProfond, marginBottom: 6, marginTop: SPACING.md },

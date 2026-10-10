@@ -12,10 +12,10 @@ import AjoutRapideModal from '../../components/AjoutRapideModal';
 import RetourBetaBouton from '../../components/RetourBetaBouton';
 import { BrandMark } from '../../components/icons';
 import ErrorBoundary from '../../components/ErrorBoundary';
+import { SEUIL_GRAND_ECRAN } from '../../components/CadreWeb';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
-const DESKTOP_BREAKPOINT = 1100;
 const SIDEBAR_WIDTH = 208;
 
 const TAB_LABELS: Record<string, { fr: string; pt: string; es: string; en: string }> = {
@@ -354,54 +354,14 @@ function TabsInterieur({ isDesktop }: { isDesktop: boolean }) {
 }
 
 export default function TabLayout() {
-  const { width, height } = useWindowDimensions();
-  const isDesktop = width >= DESKTOP_BREAKPOINT;
-
-  if (!isDesktop) {
-    return <TabsInterieur isDesktop={false} />;
-  }
-
-  const fenetreHeight = Math.min(height - 48, 920);
-  const fenetreWidth = Math.min(width - 64, 1560);
-
-  return (
-    <View style={styles.stage}>
-      <View style={styles.stageRow}>
-        <View style={[styles.fenetre, { height: fenetreHeight, width: fenetreWidth }]}>
-          <TabsInterieur isDesktop />
-        </View>
-      </View>
-    </View>
-  );
+  const { width } = useWindowDimensions();
+  // Le cadre centre des grands ecrans est pose a la racine (CadreWeb) ;
+  // ici on ne decide plus que de la barre laterale.
+  const isDesktop = width >= SEUIL_GRAND_ECRAN;
+  return <TabsInterieur isDesktop={isDesktop} />;
 }
 
 const styles = StyleSheet.create({
-  stage: {
-    flex: 1,
-    backgroundColor: COLORS.ivoireFonce,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  stageRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  fenetre: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.ivoire,
-    borderRadius: 24,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.16,
-    shadowRadius: 50,
-    elevation: 20,
-  },
-
   sidebar: {
     width: SIDEBAR_WIDTH,
     backgroundColor: COLORS.vertProfond,

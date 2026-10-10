@@ -9,6 +9,7 @@ import { supabase } from '../constants/supabase';
 import GardeInactivite from '../components/GardeInactivite';
 import ErrorBoundary from '../components/ErrorBoundary';
 import BandeauEnvironnement from '../components/BandeauEnvironnement';
+import CadreWeb from '../components/CadreWeb';
 import { useFonts } from 'expo-font';
 import {
   Fraunces_500Medium,
@@ -264,6 +265,7 @@ export default function RootLayout() {
           dans le flux, sous cette marge, au lieu de recouvrir les titres. */}
       <SafeAreaView edges={['top']} style={{ flex: 1, backgroundColor: COLORS.ivoire }}>
       <BandeauEnvironnement />
+      <CadreWeb>
       <ErrorBoundary>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
@@ -296,6 +298,7 @@ export default function RootLayout() {
         <Stack.Screen name="enfant/[id]" />
       </Stack>
       </ErrorBoundary>
+      </CadreWeb>
       </SafeAreaView>
     </SafeAreaProvider>
   );

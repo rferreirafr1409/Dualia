@@ -21,18 +21,23 @@ interface MemoryAccordionRowProps {
   extrait?: string;
   enfantLabel?: string;
   children: ReactNode;
+  // 'carte' (défaut) : boîte blanche bordée, comme dans le Journal.
+  // 'nu' : sans boîte ni trait, vignette plus grande, titre sur deux lignes —
+  // pour l'accueil, où la hiérarchie typographique suffit.
+  variante?: 'carte' | 'nu';
 }
 
 export default function MemoryAccordionRow({
-  isExpanded, onToggle, photoUrl, emoji, titre, meta, extrait, enfantLabel, children,
+  isExpanded, onToggle, photoUrl, emoji, titre, meta, extrait, enfantLabel, children, variante = 'carte',
 }: MemoryAccordionRowProps) {
+  const nu = variante === 'nu';
   return (
-    <View style={styles.card}>
-      <Pressable style={styles.header} onPress={onToggle}>
-        <MemoryThumbnail photoUrl={photoUrl} emoji={emoji} size={56} />
+    <View style={nu ? styles.nu : styles.card}>
+      <Pressable style={[styles.header, nu && styles.headerNu]} onPress={onToggle}>
+        <MemoryThumbnail photoUrl={photoUrl} emoji={emoji} size={nu ? 84 : 56} />
         <View style={styles.headerTexte}>
           <View style={styles.headerLigne}>
-            <Text style={styles.titre} numberOfLines={1}>{titre}</Text>
+            <Text style={styles.titre} numberOfLines={nu ? 2 : 1}>{titre}</Text>
             {enfantLabel ? (
               <View style={styles.enfantPill}>
                 <Text style={styles.enfantPillTxt}>{enfantLabel}</Text>
@@ -56,7 +61,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.blanc, borderWidth: 1, borderColor: COLORS.bordure,
     borderRadius: RADIUS.lg, marginTop: SPACING.sm, overflow: 'hidden',
   },
+  nu: { marginTop: SPACING.sm },
   header: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, padding: SPACING.sm },
+  headerNu: { paddingHorizontal: 0, gap: SPACING.md },
   headerTexte: { flex: 1 },
   headerLigne: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
   titre: { fontFamily: FONTS.bodySemibold, fontSize: 14.5, color: COLORS.vertProfond, flexShrink: 1 },
