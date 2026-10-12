@@ -4,7 +4,7 @@
 //
 // GitHub Pages sert public/404.html pour toute page profonde, qui sauvegarde
 // le chemin complet (pathname + search + hash) dans sessionStorage sous
-// "chemin_avant_404", puis redirige vers /Dualia/ (ou /Dualia/preprod/ pour
+// "chemin_avant_404", puis redirige vers / (ou /preprod/ pour
 // un lien de pre-prod). Le script ci-dessous,
 // qui s'exécute ici avant tout code Expo Router, restaure ce chemin dans
 // l'URL ET extrait immédiatement le access_token/refresh_token éventuel

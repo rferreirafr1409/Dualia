@@ -41,7 +41,7 @@ function alertCompat(titre: string, message?: string) {
 }
 
 // Base du lien d'invitation. En web on la déduit de l'adresse courante, ce qui
-// marche aussi bien en local qu'une fois déployé sous /Dualia/.
+// marche aussi bien en local qu'une fois déployé sur app.dualia.app.
 function baseDuLien(): string {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     const chemin = window.location.pathname.replace(/\/[^/]*$/, '');

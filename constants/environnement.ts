@@ -40,15 +40,18 @@ export const SUPABASE_PUBLISHABLE_KEY = EST_PREPROD
   : 'sb_publishable_dtbV4IR77FAKU97gj_SXUg_G_X2vVEi';
 
 // Chemin sous lequel GitHub Pages sert l'application (experiments.baseUrl de
-// app.config.js), sans barre finale.
-export const CHEMIN_BASE = EST_PREPROD ? '/Dualia/preprod' : '/Dualia';
+// app.config.js), sans barre finale : la prod est a la racine du domaine
+// app.dualia.app, la pre-prod dans le dossier /preprod.
+export const CHEMIN_BASE = EST_PREPROD ? '/preprod' : '';
 
 // Adresse publique de l'application, sans barre finale. Les e-mails Supabase
 // (confirmation, mot de passe oublie) et les liens d'invitation y ramenent :
 // en pre-prod, ils doivent ramener en pre-prod.
-export const URL_APPLICATION = `https://rferreirafr1409.github.io${CHEMIN_BASE}`;
+// L'ancienne adresse https://rferreirafr1409.github.io/Dualia est redirigee
+// par GitHub Pages vers app.dualia.app : les liens deja envoyes restent valides.
+export const URL_APPLICATION = `https://app.dualia.app${CHEMIN_BASE}`;
 
-// Prod et pre-prod partagent la meme origine (rferreirafr1409.github.io), donc
+// Prod et pre-prod partagent la meme origine (app.dualia.app), donc
 // le meme localStorage. Sans suffixe, le cache local de la pre-prod ecraserait
 // celui de la prod dans le meme navigateur. La prod garde ses cles d'origine.
 export const SUFFIXE_STOCKAGE = EST_PREPROD ? '-preprod' : '';

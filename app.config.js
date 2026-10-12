@@ -1,8 +1,9 @@
 // app.config.js
 //
 // Remplace app.json, a l'identique sauf experiments.baseUrl : l'application
-// est servie sous /Dualia en production et sous /Dualia/preprod en
-// pre-production. L'environnement est choisi a la compilation par
+// est servie a la racine de https://app.dualia.app en production et sous
+// https://app.dualia.app/preprod en pre-production (domaine personnalise de
+// GitHub Pages, fichier public/CNAME). L'environnement est choisi a la compilation par
 // EXPO_PUBLIC_ENV (voir constants/environnement.ts) ; toute valeur autre que
 // 'preprod' donne la production.
 //
@@ -56,7 +57,7 @@ module.exports = {
       "output": "static"
     },
     "experiments": {
-      "baseUrl": EST_PREPROD ? '/Dualia/preprod' : '/Dualia'
+      "baseUrl": EST_PREPROD ? '/preprod' : ''
     },
     "extra": {
       "eas": {
