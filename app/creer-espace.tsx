@@ -706,6 +706,23 @@ export default function CreerEspaceScreen() {
           {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
         </Text>
 
+        {/* DUA-125 : au moment de donner un e-mail et un mot de passe, un
+            parent veut savoir ou vont les informations sur ses enfants, ses
+            messages et ses finances. Trois phrases, avant la case a cocher. */}
+        <View style={styles.encartDonnees}>
+          <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.vert} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.encartDonneesTitre}>Vos données restent entre vous</Text>
+            <Text style={styles.encartDonneesTexte}>
+              Enfants, messages et finances ne sont visibles que par les deux parents de l'espace, et par les
+              personnes que vous invitez. Elles sont hébergées en Union européenne, jamais vendues ni partagées.{' '}
+              <Text style={styles.lienConditions} onPress={() => router.push('/confidentialite' as any)}>
+                En savoir plus
+              </Text>
+            </Text>
+          </View>
+        </View>
+
         {/* Apple et le RGPD attendent une acceptation explicite (DUA-105). */}
         <Pressable style={styles.ligneConditions} onPress={() => setConditionsAcceptees((v) => !v)}>
           <Ionicons
@@ -753,6 +770,12 @@ export default function CreerEspaceScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: COLORS.ivoire },
+  encartDonnees: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: SPACING.xl,
+    padding: SPACING.md, borderRadius: RADIUS.md, backgroundColor: '#EEF4F1',
+  },
+  encartDonneesTitre: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vertProfond, marginBottom: 3 },
+  encartDonneesTexte: { fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, lineHeight: 18 },
   ligneConditions: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: SPACING.xl },
   texteConditions: { flex: 1, fontFamily: FONTS.body, fontSize: 12.5, color: COLORS.ardoise, lineHeight: 18 },
   lienConditions: { color: COLORS.vert, fontFamily: FONTS.bodySemibold, textDecorationLine: 'underline' },

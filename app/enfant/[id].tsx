@@ -104,8 +104,11 @@ export default function FicheEnfantScreen() {
             trois fois moins d'informations que celui-ci. Ils sont a leur
             place : sur la fiche de l'enfant concerne. */}
         <View style={styles.actionsEntete}>
-          <Pressable onPress={() => setModaleEnfant(true)} style={styles.actionBtn}>
-            <Ionicons name="create-outline" size={20} color={COLORS.vert} />
+          {/* DUA-132 : le crayon seul n'etait pas compris comme « modifier »
+              (retour du neveu de RICARDO). Le mot est ecrit a cote. */}
+          <Pressable onPress={() => setModaleEnfant(true)} style={styles.modifierBtn}>
+            <Ionicons name="create-outline" size={18} color={COLORS.vert} />
+            <Text style={styles.modifierTxt}>{tEnfants.modalTitreEdition}</Text>
           </Pressable>
           <Pressable
             style={styles.actionBtn}
@@ -300,6 +303,12 @@ export default function FicheEnfantScreen() {
 const styles = StyleSheet.create({
   actionsEntete: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },
   actionBtn: { padding: SPACING.xs },
+  modifierBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingVertical: 6, paddingHorizontal: 12, borderRadius: RADIUS.md,
+    borderWidth: 1, borderColor: COLORS.vert, backgroundColor: '#EEF4F1',
+  },
+  modifierTxt: { fontFamily: FONTS.bodySemibold, fontSize: 13, color: COLORS.vert },
   introuvableBloc: {
     flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl,
   },
