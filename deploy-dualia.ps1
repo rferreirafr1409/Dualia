@@ -1,8 +1,12 @@
 # deploy-dualia.ps1
 # Script complet : export web + patchs necessaires + deploiement sur GitHub Pages
 # Usage : depuis C:\Users\rferr\dualia-mvp
-#   .\deploy-dualia.ps1                 -> production  (https://rferreirafr1409.github.io/Dualia/)
-#   .\deploy-dualia.ps1 -Cible preprod  -> pre-prod    (https://rferreirafr1409.github.io/Dualia/preprod/)
+#   .\deploy-dualia.ps1                 -> production  (https://app.dualia.app/)
+#   .\deploy-dualia.ps1 -Cible preprod  -> pre-prod    (https://app.dualia.app/preprod/)
+#
+# Le domaine app.dualia.app est declare par le fichier CNAME a la racine de
+# gh-pages (copie depuis public/CNAME par l'export web). Ne jamais le supprimer :
+# sans lui, GitHub Pages retombe sur rferreirafr1409.github.io/Dualia/.
 #
 # La branche gh-pages porte les deux environnements : la prod a la racine, la
 # pre-prod dans le dossier preprod/. Chaque cible ne remplace QUE sa partie ;
@@ -15,9 +19,9 @@ $ErrorActionPreference = "Stop"
 
 $depot = "https://github.com/rferreirafr1409/Dualia.git"
 if ($Cible -eq "preprod") {
-    $urlCible = "https://rferreirafr1409.github.io/Dualia/preprod/"
+    $urlCible = "https://app.dualia.app/preprod/"
 } else {
-    $urlCible = "https://rferreirafr1409.github.io/Dualia/"
+    $urlCible = "https://app.dualia.app/"
 }
 
 # La prod ne part que de main : deployer en prod depuis la branche preprod
@@ -103,6 +107,8 @@ if ($Cible -eq "prod") {
         Remove-Item -LiteralPath $dossierPreprod -Recurse -Force
     }
     Copy-Item -LiteralPath $dist -Destination $dossierPreprod -Recurse -Force
+    # Le CNAME ne vaut qu'a la racine : un doublon dans preprod/ est inutile.
+    Remove-Item -LiteralPath (Join-Path $dossierPreprod "CNAME") -Force -ErrorAction SilentlyContinue
 }
 
 Push-Location $tmp

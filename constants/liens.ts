@@ -7,7 +7,7 @@
 // dans Supabase -> Authentication -> URL Configuration -> Redirect URLs,
 // sinon Supabase IGNORE l'adresse demandee et redirige vers la « Site URL »
 // du projet — silencieusement, sans erreur. Une entree avec joker
-// (https://.../Dualia/**) couvre toutes les pages d'un coup.
+// (https://app.dualia.app/**) couvre toutes les pages d'un coup.
 //
 // Cette base etait recopiee a la main dans les ecrans qui en avaient besoin.
 // Le jour ou l'application demenagera sur dualia.app, une seule ligne sera
@@ -24,7 +24,7 @@ export const URL_BASE_APPLICATION = URL_APPLICATION;
  * Fabrique une URL absolue vers une page de l'application.
  *
  *   lienApplication('rejoindre', { token: 'abc' })
- *     -> https://rferreirafr1409.github.io/Dualia/rejoindre?token=abc
+ *     -> https://app.dualia.app/rejoindre?token=abc
  *
  * Les parametres vides ou absents sont ecartes : un `?token=undefined`
  * ramenerait la personne sur un ecran qui refuse un jeton illisible.
