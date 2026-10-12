@@ -31,7 +31,7 @@ module.exports = {
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F8F6F2"
     },
     "ios": {
       // iPad desactive pour la beta : l'app est en portrait seul, et Apple
@@ -48,7 +48,7 @@ module.exports = {
       "package": IDENTIFIANT,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#1C5A47"
       },
       "predictiveBackGestureEnabled": false
     },
