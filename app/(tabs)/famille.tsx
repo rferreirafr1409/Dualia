@@ -22,6 +22,7 @@ import { COLORS, SPACING, TYPOGRAPHY, RADIUS, FONTS } from '../../constants/them
 import { TRADUCTIONS } from '../../constants/i18n';
 import type { ParentRole } from '../../types';
 import { ModaleEnfant } from '../../components/ModalesEnfant';
+import DemandesEnAttente from '../../components/DemandesEnAttente';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -114,6 +115,10 @@ export default function FamilleScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* La demande du co-parent se cherche ici, la ou l'invitation a ete
+            creee ; elle n'etait visible que sur l'accueil (10 octobre 2026). */}
+        <DemandesEnAttente />
+
         {enfants.length === 0 ? (
           // Ce bouton renvoyait vers '/famille', c'est-à-dire l'écran
           // courant : on appuyait sur le seul bouton de la page, et rien ne

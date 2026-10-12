@@ -22,6 +22,7 @@ import {
   View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Alert, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { cheminInvitationEnAttente } from '../lib/invitationEnAttente';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
@@ -73,6 +74,17 @@ export default function ConnexionScreen() {
       if (!familleId && accesTiers) {
         router.replace('/espace-tiers' as any);
         return;
+      }
+
+      // Un co-parent invite qui passe par ici avant d'avoir rejoint l'espace
+      // retrouve son lien d'invitation, au lieu d'etre pousse a creer un
+      // espace a lui (10 octobre 2026).
+      if (!familleId) {
+        const cheminInvitation = await cheminInvitationEnAttente();
+        if (cheminInvitation) {
+          router.replace(cheminInvitation as any);
+          return;
+        }
       }
 
       router.replace('/(tabs)/accueil');
