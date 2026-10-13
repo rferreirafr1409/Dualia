@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { cheminInvitationEnAttente } from '../lib/invitationEnAttente';
 import { Stack, useRouter, useSegments } from 'expo-router';
@@ -77,6 +77,7 @@ export default function RootLayout() {
   const accesTiers = useStore((s) => s.accesTiers);
   const configFoyers = useStore((s) => s.configFoyers);
   const rattachement = useStore((s) => s.rattachement);
+  const demoVue = useStore((s) => s.demoVue);
   const router = useRouter();
   const segments = useSegments();
 
@@ -229,6 +230,37 @@ export default function RootLayout() {
     router.replace(destination as any);
   }, [chargementInitial, sessionActive, rattachement, segments]);
 
+  // Presentation du premier lancement (DUA-127).
+  //
+  // Elle ne s'ouvre qu'une fois la session confirmee, l'espace familial
+  // charge et ses foyers configures, et seulement quand la personne est
+  // posee sur les onglets : jamais sur la connexion ou l'inscription, et
+  // jamais en concurrence avec les redirections ci-dessus, qui emmenent
+  // ailleurs que sur les onglets. Un tiers n'a pas de familleId et ne la
+  // voit donc pas.
+  //
+  // Pas de boucle : la condition sur les onglets exclut /bienvenue
+  // lui-meme, et l'ecran marque demoVue avant de revenir. Le ref couvre
+  // la fenetre entre le push et le changement de segments, pendant
+  // laquelle les dependances peuvent encore bouger. demoVue est persiste
+  // par appareil et survit a la deconnexion ; on utilise push et non
+  // replace pour que « Commencer » retombe sur l'accueil.
+  const demoDejaPoussee = useRef(false);
+  useEffect(() => {
+    if (demoVue || demoDejaPoussee.current) return;
+    // Sur mobile la rehydratation du stockage est asynchrone : avant sa fin,
+    // demoVue vaut sa valeur par defaut, false, meme si la presentation a
+    // deja ete vue sur cet appareil.
+    if (!useStore.persist.hasHydrated()) return;
+    if (chargementInitial) return;
+    if (sessionActive !== true) return;
+    if (!familleId || configFoyers === null) return;
+    if (segments[0] !== '(tabs)') return;
+
+    demoDejaPoussee.current = true;
+    router.push('/bienvenue' as any);
+  }, [demoVue, chargementInitial, sessionActive, familleId, configFoyers, segments]);
+
   // Rien n'est rendu tant qu'on ne sait pas s'il y a une session.
   //
   // C'est le coeur du garde-fou, et sans lui le reste ne servait a rien :
@@ -307,6 +339,8 @@ export default function RootLayout() {
         <Stack.Screen name="personnaliser-transmission" />
         <Stack.Screen name="semaine-activites" />
         <Stack.Screen name="enfant/[id]" />
+        <Stack.Screen name="bienvenue" />
+        <Stack.Screen name="faq" />
       </Stack>
       </ErrorBoundary>
       </CadreWeb>
