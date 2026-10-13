@@ -27,7 +27,7 @@ import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
-import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
+import { aideMotDePasse, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -242,7 +242,7 @@ export default function RejoindreAccesScreen() {
   const [motDePasse, setMotDePasse] = useState('');
   const [chargement, setChargement] = useState(false);
 
-  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse) : null;
+  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse, langue) : null;
 
   useEffect(() => {
     if (!token) {
@@ -288,7 +288,7 @@ export default function RejoindreAccesScreen() {
       alertCompat(l.champsIncomplets, l.champsIncompletsMsg);
       return;
     }
-    const probleme = validerMotDePasse(motDePasse);
+    const probleme = validerMotDePasse(motDePasse, langue);
     if (probleme) {
       alertCompat(l.motDePasseFaible, probleme);
       return;
@@ -350,7 +350,7 @@ export default function RejoindreAccesScreen() {
       } else if (brut.includes('invitation_expiree')) {
         alertCompat(l.lienInvalideTitre, l.motifExpire);
       } else {
-        alertCompat(l.erreur, traduireErreurAuth(brut));
+        alertCompat(l.erreur, traduireErreurAuth(brut, langue));
       }
     } finally {
       setChargement(false);
@@ -427,12 +427,12 @@ export default function RejoindreAccesScreen() {
           style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
           value={motDePasse}
           onChangeText={setMotDePasse}
-          placeholder={AIDE_MOT_DE_PASSE}
+          placeholder={aideMotDePasse(langue)}
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
         />
         <Text style={[styles.aide, !!erreurMotDePasse && styles.aideErreur]}>
-          {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
+          {erreurMotDePasse ?? aideMotDePasse(langue)}
         </Text>
 
         <Pressable style={styles.boutonPrincipal} onPress={accepter} disabled={chargement}>

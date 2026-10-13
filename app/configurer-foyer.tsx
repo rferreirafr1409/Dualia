@@ -11,6 +11,7 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert, Platform }
 import { useRouter } from 'expo-router';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { TRADUCTIONS } from '../constants/i18n';
 import type { ConfigFoyers } from '../types';
 
 function alertCompat(titre: string, message?: string) {
@@ -24,6 +25,8 @@ function alertCompat(titre: string, message?: string) {
 export default function ConfigurerFoyerScreen() {
   const router = useRouter();
   const configurerFoyersInitial = useStore((s) => s.configurerFoyersInitial);
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].configurerFoyer;
   const [choix, setChoix] = useState<ConfigFoyers | null>(null);
   const [chargement, setChargement] = useState(false);
 
@@ -34,7 +37,7 @@ export default function ConfigurerFoyerScreen() {
       await configurerFoyersInitial(choix);
       router.replace('/creer-espace-lien' as any);
     } catch (err: any) {
-      alertCompat('Erreur', err.message ?? 'Une erreur est survenue.');
+      alertCompat(t.erreurTitre, err.message ?? t.erreurGenerique);
     } finally {
       setChargement(false);
     }
@@ -43,10 +46,8 @@ export default function ConfigurerFoyerScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.contentCentre}>
-        <Text style={styles.titre}>Comment vivent vos enfants ?</Text>
-        <Text style={styles.sousTitre}>
-          Cette information nous permet d'organiser correctement l'agenda et le partage des informations.
-        </Text>
+        <Text style={styles.titre}>{t.titre}</Text>
+        <Text style={styles.sousTitre}>{t.sousTitre}</Text>
 
         <Pressable
           style={[styles.option, choix === 'deux_foyers' && styles.optionActive]}
@@ -56,8 +57,8 @@ export default function ConfigurerFoyerScreen() {
             {choix === 'deux_foyers' ? <View style={styles.radioPoint} /> : null}
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.optionTitre}>Nous vivons dans deux foyers</Text>
-            <Text style={styles.optionDesc}>Les enfants alternent entre deux domiciles</Text>
+            <Text style={styles.optionTitre}>{t.deuxFoyersTitre}</Text>
+            <Text style={styles.optionDesc}>{t.deuxFoyersDesc}</Text>
           </View>
         </Pressable>
 
@@ -69,15 +70,12 @@ export default function ConfigurerFoyerScreen() {
             {choix === 'foyer_commun' ? <View style={styles.radioPoint} /> : null}
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.optionTitre}>Nous vivons dans le même foyer</Text>
-            <Text style={styles.optionDesc}>Nous partageons le même domicile</Text>
+            <Text style={styles.optionTitre}>{t.foyerCommunTitre}</Text>
+            <Text style={styles.optionDesc}>{t.foyerCommunDesc}</Text>
           </View>
         </Pressable>
 
-        <Text style={styles.reassurance}>
-          Vous pourrez inviter l'autre parent quand vous serez prêt(e) — rien ne vous oblige à le faire
-          maintenant.
-        </Text>
+        <Text style={styles.reassurance}>{t.reassurance}</Text>
 
         <Pressable
           style={[styles.boutonPrincipal, !choix && styles.boutonDisabled]}
@@ -87,7 +85,7 @@ export default function ConfigurerFoyerScreen() {
           {chargement ? (
             <ActivityIndicator color={COLORS.blanc} />
           ) : (
-            <Text style={styles.boutonPrincipalTexte}>Continuer</Text>
+            <Text style={styles.boutonPrincipalTexte}>{t.continuer}</Text>
           )}
         </Pressable>
       </View>

@@ -19,25 +19,32 @@
 
 export const LONGUEUR_MINIMALE = 10;
 
-export const AIDE_MOT_DE_PASSE =
-  '10 caractères minimum, avec au moins une lettre, un chiffre et un symbole.';
+import { TRADUCTIONS, type Langue } from './i18n';
+
+const libelles = (langue?: Langue) => (TRADUCTIONS[langue ?? 'fr'] ?? TRADUCTIONS.fr).motDePasse;
+
+/** Consigne affichée sous le champ, dans la langue de l'appareil. */
+export function aideMotDePasse(langue?: Langue): string {
+  return libelles(langue).aide;
+}
 
 /**
- * Renvoie un message d'erreur en français si le mot de passe ne convient pas,
- * ou null s'il est valide.
+ * Renvoie un message d'erreur dans la langue demandée si le mot de passe ne
+ * convient pas, ou null s'il est valide.
  */
-export function validerMotDePasse(motDePasse: string): string | null {
+export function validerMotDePasse(motDePasse: string, langue?: Langue): string | null {
+  const l = libelles(langue);
   if (motDePasse.length < LONGUEUR_MINIMALE) {
-    return `Le mot de passe doit contenir au moins ${LONGUEUR_MINIMALE} caractères.`;
+    return l.tropCourt(LONGUEUR_MINIMALE);
   }
   if (!/[a-zA-Zà-üÀ-Ü]/.test(motDePasse)) {
-    return 'Le mot de passe doit contenir au moins une lettre.';
+    return l.sansLettre;
   }
   if (!/[0-9]/.test(motDePasse)) {
-    return 'Le mot de passe doit contenir au moins un chiffre.';
+    return l.sansChiffre;
   }
   if (!/[^a-zA-Z0-9à-üÀ-Ü]/.test(motDePasse)) {
-    return 'Le mot de passe doit contenir au moins un symbole (par exemple ! ? # ou -).';
+    return l.sansSymbole;
   }
   return null;
 }
@@ -46,25 +53,26 @@ export function validerMotDePasse(motDePasse: string): string | null {
  * Traduit les erreurs de mot de passe renvoyées par Supabase, qui arrivent
  * en anglais et sont incompréhensibles pour un parent.
  */
-export function traduireErreurAuth(message?: string): string {
+export function traduireErreurAuth(message?: string, langue?: Langue): string {
+  const l = libelles(langue);
   const m = (message ?? '').toLowerCase();
   if (m.includes('pwned') || m.includes('leaked') || m.includes('compromised')) {
-    return "Ce mot de passe figure dans une fuite de données connue. Choisissez-en un autre, utilisé nulle part ailleurs.";
+    return l.fuite;
   }
   if (m.includes('password') && m.includes('short')) {
-    return `Le mot de passe doit contenir au moins ${LONGUEUR_MINIMALE} caractères.`;
+    return l.tropCourt(LONGUEUR_MINIMALE);
   }
   if (m.includes('password') && (m.includes('weak') || m.includes('requirements'))) {
-    return AIDE_MOT_DE_PASSE;
+    return l.aide;
   }
   if (m.includes('already registered') || m.includes('already been registered')) {
-    return 'Un compte existe déjà avec cette adresse email.';
+    return l.compteExistant;
   }
   if (m.includes('invalid') && m.includes('email')) {
-    return "Cette adresse email n'est pas valide.";
+    return l.emailInvalide;
   }
   if (m.includes('rate limit') || m.includes('too many')) {
-    return 'Trop de tentatives. Réessayez dans quelques minutes.';
+    return l.tropDeTentatives;
   }
-  return message ?? 'Une erreur est survenue.';
+  return message ?? l.erreurGenerique;
 }

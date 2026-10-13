@@ -49,11 +49,12 @@ export default function ConnexionScreen() {
   // en se demandant ce qu'il a casse. La langue vient du stockage local, donc
   // elle est connue avant meme la connexion.
   const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].connexion;
   const [deconnexionInactivite] = useState(() => consommerMotifInactivite());
 
   const seConnecter = async () => {
     if (!email.trim() || !motDePasse) {
-      alertCompat('Champs incomplets', 'Renseigne ton email et ton mot de passe.');
+      alertCompat(t.champsIncompletsTitre, t.champsIncompletsCorps);
       return;
     }
 
@@ -91,7 +92,7 @@ export default function ConnexionScreen() {
     } catch (err: any) {
       // Message volontairement générique : ne pas révéler si c'est l'email
       // ou le mot de passe qui est incorrect (bonne pratique de sécurité).
-      alertCompat('Connexion impossible', 'Email ou mot de passe incorrect.');
+      alertCompat(t.connexionImpossibleTitre, t.connexionImpossibleCorps);
     } finally {
       setChargement(false);
     }
@@ -100,10 +101,8 @@ export default function ConnexionScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.contentCentre}>
-        <Text style={styles.titre}>Se connecter</Text>
-        <Text style={styles.sousTitre}>
-          Retrouvez votre espace familial Dualia.
-        </Text>
+        <Text style={styles.titre}>{t.titre}</Text>
+        <Text style={styles.sousTitre}>{t.sousTitre}</Text>
 
         {deconnexionInactivite ? (
           <Text style={styles.motifDeconnexion}>
@@ -111,24 +110,24 @@ export default function ConnexionScreen() {
           </Text>
         ) : null}
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>{t.email}</Text>
         <TextInput
           style={styles.input}
           value={email}
           onChangeText={setEmail}
-          placeholder="vous@exemple.com"
+          placeholder={t.emailPlaceholder}
           placeholderTextColor={COLORS.ardoise}
           autoCapitalize="none"
           keyboardType="email-address"
           returnKeyType="next"
         />
 
-        <Text style={styles.label}>Mot de passe</Text>
+        <Text style={styles.label}>{t.motDePasse}</Text>
         <TextInput
           style={styles.input}
           value={motDePasse}
           onChangeText={setMotDePasse}
-          placeholder="Votre mot de passe"
+          placeholder={t.motDePassePlaceholder}
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
           returnKeyType="go"
@@ -136,25 +135,25 @@ export default function ConnexionScreen() {
         />
 
         <Pressable onPress={() => router.push('/mot-de-passe-oublie' as any)}>
-          <Text style={styles.lienMotDePasseOublie}>Mot de passe oublié ?</Text>
+          <Text style={styles.lienMotDePasseOublie}>{t.motDePasseOublie}</Text>
         </Pressable>
 
         <Pressable style={styles.boutonPrincipal} onPress={seConnecter} disabled={chargement}>
           {chargement ? (
             <ActivityIndicator color={COLORS.blanc} />
           ) : (
-            <Text style={styles.boutonPrincipalTexte}>Se connecter</Text>
+            <Text style={styles.boutonPrincipalTexte}>{t.bouton}</Text>
           )}
         </Pressable>
 
         <Pressable onPress={() => router.push('/creer-espace' as any)}>
-          <Text style={styles.lienTexteSecondaire}>Je n'ai pas encore de compte</Text>
+          <Text style={styles.lienTexteSecondaire}>{t.pasDeCompte}</Text>
         </Pressable>
 
         {/* La politique de confidentialité existait sans qu'aucun écran n'y
             mène. Apple exige qu'elle soit lisible dans l'app (DUA-098). */}
         <Pressable onPress={() => router.push('/confidentialite' as any)}>
-          <Text style={styles.lienDiscret}>Confidentialité et protection des données</Text>
+          <Text style={styles.lienDiscret}>{t.confidentialite}</Text>
         </Pressable>
       </View>
     </View>

@@ -27,7 +27,8 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
-import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
+import { aideMotDePasse, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
+import { TRADUCTIONS } from '../constants/i18n';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -74,6 +75,8 @@ function nettoyerTokens() {
 
 export default function ReinitialiserMotDePasseScreen() {
   const router = useRouter();
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].reinitialiserMotDePasse;
   const [motDePasse, setMotDePasse] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [chargement, setChargement] = useState(false);
@@ -81,10 +84,10 @@ export default function ReinitialiserMotDePasseScreen() {
   const [tokens] = useState(() => lireTokens());
   const [etatEcran, setEtatEcran] = useState<EtatEcran>(tokens ? 'pret_a_confirmer' : 'echec');
 
-  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse) : null;
+  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse, langue) : null;
   const erreurConfirmation =
     confirmation.length > 0 && motDePasse !== confirmation
-      ? 'Les deux mots de passe ne correspondent pas.'
+      ? t.confirmationDifferente
       : null;
 
   const confirmerEtEtablirSession = async () => {
@@ -109,13 +112,13 @@ export default function ReinitialiserMotDePasseScreen() {
   };
 
   const enregistrerNouveauMotDePasse = async () => {
-    const probleme = validerMotDePasse(motDePasse);
+    const probleme = validerMotDePasse(motDePasse, langue);
     if (probleme) {
-      alertCompat('Mot de passe trop faible', probleme);
+      alertCompat(t.motDePasseFaibleTitre, probleme);
       return;
     }
     if (motDePasse !== confirmation) {
-      alertCompat('Les mots de passe ne correspondent pas', 'Vérifiez la saisie dans les deux champs.');
+      alertCompat(t.nonCorrespondantsTitre, t.nonCorrespondantsCorps);
       return;
     }
 
@@ -130,13 +133,13 @@ export default function ReinitialiserMotDePasseScreen() {
       // session. Et annoncer avant de charger ferait afficher « Mot de passe
       // mis a jour » puis une erreur, pour un mot de passe pourtant change.
       await useStore.getState().initialiserSession();
-      alertCompat('Mot de passe mis à jour', 'Votre nouveau mot de passe est enregistré.');
+      alertCompat(t.misAJourTitre, t.misAJourCorps);
       router.replace('/(tabs)/accueil');
     } catch (err: any) {
       // Le motif réel est affiché, traduit en français. La session vient
       // d'être établie à l'étape précédente : l'échec ici vient presque
       // toujours du mot de passe lui-même, pas du lien.
-      alertCompat('Mot de passe refusé', traduireErreurAuth(err?.message));
+      alertCompat(t.refuseTitre, traduireErreurAuth(err?.message, langue));
     } finally {
       setChargement(false);
     }
@@ -146,13 +149,10 @@ export default function ReinitialiserMotDePasseScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.contentCentre}>
-          <Text style={styles.titre}>Lien invalide ou expiré</Text>
-          <Text style={styles.sousTitre}>
-            Ce lien de réinitialisation n'est plus valable. Demandez-en un nouveau depuis l'écran de
-            connexion.
-          </Text>
+          <Text style={styles.titre}>{t.lienInvalideTitre}</Text>
+          <Text style={styles.sousTitre}>{t.lienInvalideCorps}</Text>
           <Pressable style={styles.boutonPrincipal} onPress={() => router.replace('/mot-de-passe-oublie' as any)}>
-            <Text style={styles.boutonPrincipalTexte}>Demander un nouveau lien</Text>
+            <Text style={styles.boutonPrincipalTexte}>{t.demanderNouveauLien}</Text>
           </Pressable>
         </View>
       </View>
@@ -163,15 +163,13 @@ export default function ReinitialiserMotDePasseScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.contentCentre}>
-          <Text style={styles.titre}>Réinitialiser votre mot de passe</Text>
-          <Text style={styles.sousTitre}>
-            Cliquez ci-dessous pour continuer et choisir un nouveau mot de passe.
-          </Text>
+          <Text style={styles.titre}>{t.reinitialiserTitre}</Text>
+          <Text style={styles.sousTitre}>{t.reinitialiserCorps}</Text>
           <Pressable style={styles.boutonPrincipal} onPress={confirmerEtEtablirSession} disabled={chargement}>
             {chargement ? (
               <ActivityIndicator color={COLORS.blanc} />
             ) : (
-              <Text style={styles.boutonPrincipalTexte}>Continuer</Text>
+              <Text style={styles.boutonPrincipalTexte}>{t.continuer}</Text>
             )}
           </Pressable>
         </View>
@@ -182,30 +180,28 @@ export default function ReinitialiserMotDePasseScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.contentCentre}>
-        <Text style={styles.titre}>Choisir un nouveau mot de passe</Text>
-        <Text style={styles.sousTitre}>
-          Ce mot de passe remplacera l'ancien pour votre compte Dualia.
-        </Text>
+        <Text style={styles.titre}>{t.choisirTitre}</Text>
+        <Text style={styles.sousTitre}>{t.choisirCorps}</Text>
 
-        <Text style={styles.label}>Nouveau mot de passe</Text>
+        <Text style={styles.label}>{t.nouveauMotDePasse}</Text>
         <TextInput
           style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
           value={motDePasse}
           onChangeText={setMotDePasse}
-          placeholder={AIDE_MOT_DE_PASSE}
+          placeholder={aideMotDePasse(langue)}
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
         />
         <Text style={[styles.aide, !!erreurMotDePasse && styles.aideErreur]}>
-          {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
+          {erreurMotDePasse ?? aideMotDePasse(langue)}
         </Text>
 
-        <Text style={styles.label}>Confirmer le mot de passe</Text>
+        <Text style={styles.label}>{t.confirmerMotDePasse}</Text>
         <TextInput
           style={[styles.input, !!erreurConfirmation && styles.inputErreur]}
           value={confirmation}
           onChangeText={setConfirmation}
-          placeholder="Ressaisissez le mot de passe"
+          placeholder={t.confirmerPlaceholder}
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
         />
@@ -217,7 +213,7 @@ export default function ReinitialiserMotDePasseScreen() {
           {chargement ? (
             <ActivityIndicator color={COLORS.blanc} />
           ) : (
-            <Text style={styles.boutonPrincipalTexte}>Enregistrer</Text>
+            <Text style={styles.boutonPrincipalTexte}>{t.enregistrer}</Text>
           )}
         </Pressable>
       </View>
