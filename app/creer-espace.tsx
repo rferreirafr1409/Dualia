@@ -38,6 +38,7 @@ import { useStore } from '../store/useStore';
 import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
+import { TRADUCTIONS } from '../constants/i18n';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -158,6 +159,8 @@ type Etat = 'inscription' | 'confirmation' | 'deja_inscrit' | 'reprise' | 'deja_
 export default function CreerEspaceScreen() {
   const router = useRouter();
   const rattachement = useStore((s) => s.rattachement);
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].creerEspace;
   const [etat, setEtat] = useState<Etat>('inscription');
   const [prenom, setPrenom] = useState('');
   const [email, setEmail] = useState('');
@@ -220,10 +223,7 @@ export default function CreerEspaceScreen() {
         // heurterait à « adresse déjà utilisée ».
         console.error('[Dualia] Session de confirmation refusée :', error);
         setOuvertureSession(false);
-        alertCompat(
-          'Lien expiré',
-          "Ce lien de confirmation n'est plus valable. Connectez-vous avec votre adresse et votre mot de passe : la suite se fera automatiquement."
-        );
+        alertCompat(t.lienExpireTitre, t.lienExpireCorps);
         router.replace('/connexion' as any);
         return;
       }
@@ -247,10 +247,7 @@ export default function CreerEspaceScreen() {
         if (!vivant) return;
         oublierJetonsEmail();
         setOuvertureSession(false);
-        alertCompat(
-          'Connexion interrompue',
-          'Votre adresse est confirmée, mais la session n’a pas pu s’ouvrir. Connectez-vous avec votre adresse et votre mot de passe.'
-        );
+        alertCompat(t.connexionInterrompueTitre, t.connexionInterrompueCorps);
         router.replace('/connexion' as any);
       }
     })();
@@ -304,7 +301,7 @@ export default function CreerEspaceScreen() {
     const { data: sessionData } = await supabase.auth.getSession();
     const userId = sessionData.session?.user?.id;
     if (!userId) {
-      throw new Error('Votre session a expiré. Reconnectez-vous et reprenez où vous en étiez.');
+      throw new Error(t.sessionExpiree);
     }
 
     // Un espace a déjà été créé lors d'une tentative précédente : on reprend
@@ -329,13 +326,13 @@ export default function CreerEspaceScreen() {
         // Le message du serveur est technique — contrainte d'unicité, nom de
         // colonne. Le montrer tel quel n'aide personne et inquiète.
         console.error('[Dualia] Création de l’espace familial refusée :', familleError);
-        throw new Error("L'espace familial n'a pas pu être créé. Réessayez dans un instant.");
+        throw new Error(t.creationRefusee);
       }
 
       const nouvelle = Array.isArray(creation) ? creation[0] : creation;
       familleCree = nouvelle?.famille_id ?? null;
       if (!familleCree) {
-        throw new Error("L'espace familial n'a pas pu être créé. Réessayez dans un instant.");
+        throw new Error(t.creationRefusee);
       }
       espaceDejaCree.current = familleCree;
     }
@@ -359,9 +356,7 @@ export default function CreerEspaceScreen() {
     // retour et exempté de toutes les gardes. Le seul recours était de
     // recharger la page à la main.
     if (useStore.getState().familleId !== familleCree) {
-      throw new Error(
-        "Votre espace a bien été créé, mais n'a pas pu être chargé. Vérifiez votre connexion et réessayez."
-      );
+      throw new Error(t.espaceNonCharge);
     }
 
     oublierBrouillon(userId);
@@ -377,21 +372,21 @@ export default function CreerEspaceScreen() {
   // revient donc explicitement à l'écran de reprise, avec de quoi réessayer.
   const echouer = (err: any) => {
     setEtat('reprise');
-    alertCompat('Erreur', traduireErreurAuth(err?.message));
+    alertCompat(t.erreurTitre, traduireErreurAuth(err?.message));
   };
 
   const creerEspace = async () => {
     if (!prenom.trim() || !email.trim()) {
-      alertCompat('Champs incomplets', 'Renseigne ton prénom et une adresse email.');
+      alertCompat(t.champsIncompletsTitre, t.champsIncompletsCorps);
       return;
     }
     const probleme = validerMotDePasse(motDePasse);
     if (probleme) {
-      alertCompat('Mot de passe trop faible', probleme);
+      alertCompat(t.motDePasseFaibleTitre, probleme);
       return;
     }
     if (!conditionsAcceptees) {
-      alertCompat('Conditions à accepter', "Coche la case pour accepter les conditions d'utilisation et la politique de confidentialité.");
+      alertCompat(t.conditionsTitre, t.conditionsCorps);
       return;
     }
 
@@ -450,7 +445,7 @@ export default function CreerEspaceScreen() {
       // « Terminons votre espace familial », sans aucun compte derrière et
       // sans aucun chemin de retour : le bouton y relançait la même erreur
       // indéfiniment.
-      alertCompat('Erreur', traduireErreurAuth(err?.message));
+      alertCompat(t.erreurTitre, traduireErreurAuth(err?.message));
     } finally {
       fabricationEnCours.current = false;
       setChargement(false);
@@ -459,7 +454,7 @@ export default function CreerEspaceScreen() {
 
   const reprendre = async () => {
     if (!prenom.trim()) {
-      alertCompat('Champ requis', 'Renseigne ton prénom.');
+      alertCompat(t.champRequisTitre, t.champRequisCorps);
       return;
     }
     setChargement(true);
@@ -483,7 +478,7 @@ export default function CreerEspaceScreen() {
     });
     setChargement(false);
     if (error) {
-      alertCompat('Envoi impossible', traduireErreurAuth(error.message));
+      alertCompat(t.envoiImpossibleTitre, traduireErreurAuth(error.message));
       return;
     }
     setRenvoye(true);
@@ -519,43 +514,34 @@ export default function CreerEspaceScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.contentCentre}>
-          <Text style={styles.titre}>Confirmez votre adresse</Text>
-          <Text style={styles.sousTitre}>
-            Un e-mail vient d'être envoyé à {email.trim()}. Ouvrez-le et cliquez sur le lien : votre
-            espace familial se crée juste après — il ne vous restera qu'à confirmer votre prénom.
-          </Text>
+          <Text style={styles.titre}>{t.confirmationTitre}</Text>
+          <Text style={styles.sousTitre}>{t.confirmationCorps(email.trim())}</Text>
           {Platform.OS !== 'web' && (
-            <Text style={styles.sousTitre}>
-              Le lien s'ouvre dans votre navigateur. Une fois votre adresse confirmée, revenez dans
-              l'application Dualia et connectez-vous avec votre e-mail et votre mot de passe.
-            </Text>
+            <Text style={styles.sousTitre}>{t.confirmationMobile}</Text>
           )}
-          <Text style={styles.aide}>
-            L'e-mail met parfois quelques minutes à arriver, et se range volontiers dans les
-            indésirables.
-          </Text>
+          <Text style={styles.aide}>{t.confirmationAide}</Text>
 
           {renvoye ? (
-            <Text style={styles.confirmation}>Un nouvel e-mail a été envoyé.</Text>
+            <Text style={styles.confirmation}>{t.renvoye}</Text>
           ) : (
             <Pressable style={styles.boutonPrincipal} onPress={renvoyerConfirmation} disabled={chargement}>
               {chargement ? (
                 <ActivityIndicator color={COLORS.blanc} />
               ) : (
-                <Text style={styles.boutonPrincipalTexte}>Renvoyer l'e-mail</Text>
+                <Text style={styles.boutonPrincipalTexte}>{t.renvoyer}</Text>
               )}
             </Pressable>
           )}
 
           <Pressable onPress={() => setEtat('inscription')}>
-            <Text style={styles.lienTexteSecondaire}>Corriger mon adresse</Text>
+            <Text style={styles.lienTexteSecondaire}>{t.corrigerAdresse}</Text>
           </Pressable>
 
           {/* La sortie. Elle manquait, et cette page n'en avait aucune
               autre : qui arrivait ici par erreur ne pouvait que patienter
               devant un e-mail ou refaire son adresse. */}
           <Pressable onPress={() => router.replace('/connexion' as any)}>
-            <Text style={styles.lienTexteSecondaire}>J'ai déjà un compte — me connecter</Text>
+            <Text style={styles.lienTexteSecondaire}>{t.dejaUnCompteConnecter}</Text>
           </Pressable>
         </View>
       </View>
@@ -566,25 +552,22 @@ export default function CreerEspaceScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.contentCentre}>
-          <Text style={styles.titre}>Cette adresse a déjà un compte</Text>
-          <Text style={styles.sousTitre}>
-            {email.trim()} est déjà inscrite sur Dualia. Aucun e-mail n'a été envoyé : il n'y a
-            rien à confirmer, il suffit de vous connecter.
-          </Text>
+          <Text style={styles.titre}>{t.dejaInscritTitre}</Text>
+          <Text style={styles.sousTitre}>{t.dejaInscritCorps(email.trim())}</Text>
 
           <Pressable
             style={styles.boutonPrincipal}
             onPress={() => router.replace('/connexion' as any)}
           >
-            <Text style={styles.boutonPrincipalTexte}>Me connecter</Text>
+            <Text style={styles.boutonPrincipalTexte}>{t.meConnecter}</Text>
           </Pressable>
 
           <Pressable onPress={() => router.replace('/mot-de-passe-oublie' as any)}>
-            <Text style={styles.lienTexteSecondaire}>J'ai oublié mon mot de passe</Text>
+            <Text style={styles.lienTexteSecondaire}>{t.motDePasseOublie}</Text>
           </Pressable>
 
           <Pressable onPress={() => setEtat('inscription')}>
-            <Text style={styles.lienTexteSecondaire}>Utiliser une autre adresse</Text>
+            <Text style={styles.lienTexteSecondaire}>{t.autreAdresse}</Text>
           </Pressable>
         </View>
       </View>
@@ -598,20 +581,18 @@ export default function CreerEspaceScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.contentCentre}>
-          <Text style={styles.titre}>Vous êtes déjà connecté</Text>
-          <Text style={styles.sousTitre}>
-            Votre espace familial existe et vous y êtes. Il n'y a rien à créer.
-          </Text>
+          <Text style={styles.titre}>{t.dejaConnecteTitre}</Text>
+          <Text style={styles.sousTitre}>{t.dejaConnecteCorps}</Text>
 
           <Pressable
             style={styles.boutonPrincipal}
             onPress={() => router.replace('/(tabs)/accueil' as any)}
           >
-            <Text style={styles.boutonPrincipalTexte}>Aller à mon espace</Text>
+            <Text style={styles.boutonPrincipalTexte}>{t.allerMonEspace}</Text>
           </Pressable>
 
           <Pressable onPress={changerDeCompte}>
-            <Text style={styles.lienTexteSecondaire}>Utiliser un autre compte</Text>
+            <Text style={styles.lienTexteSecondaire}>{t.autreCompte}</Text>
           </Pressable>
         </View>
       </View>
@@ -622,25 +603,19 @@ export default function CreerEspaceScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.contentCentre}>
-          <Text style={styles.titre}>Terminons votre espace familial</Text>
-          <Text style={styles.sousTitre}>
-            Votre compte est bien confirmé, mais votre espace familial n'a pas encore été créé.
-            Indiquez votre prénom : c'est la dernière étape.
-          </Text>
-          <Text style={styles.aide}>
-            Vous rejoignez l'espace d'un autre parent ? N'allez pas plus loin : ouvrez le lien
-            d'invitation qu'il vous a envoyé, votre place est là-bas.
-          </Text>
+          <Text style={styles.titre}>{t.repriseTitre}</Text>
+          <Text style={styles.sousTitre}>{t.repriseCorps}</Text>
+          <Text style={styles.aide}>{t.repriseAide}</Text>
           {emailConnecte ? (
-            <Text style={styles.aide}>Compte connecté : {emailConnecte}</Text>
+            <Text style={styles.aide}>{t.compteConnecte(emailConnecte)}</Text>
           ) : null}
 
-          <Text style={styles.label}>Votre prénom</Text>
+          <Text style={styles.label}>{t.votrePrenom}</Text>
           <TextInput
             style={styles.input}
             value={prenom}
             onChangeText={setPrenom}
-            placeholder="Ex. Marie"
+            placeholder={t.prenomPlaceholder}
             placeholderTextColor={COLORS.ardoise}
           />
 
@@ -648,16 +623,16 @@ export default function CreerEspaceScreen() {
             {chargement ? (
               <ActivityIndicator color={COLORS.blanc} />
             ) : (
-              <Text style={styles.boutonPrincipalTexte}>Créer mon espace</Text>
+              <Text style={styles.boutonPrincipalTexte}>{t.creerMonEspace}</Text>
             )}
           </Pressable>
 
           <Pressable onPress={() => router.push('/rejoindre' as any)}>
-            <Text style={styles.lienTexteSecondaire}>J'ai reçu un lien d'invitation</Text>
+            <Text style={styles.lienTexteSecondaire}>{t.lienInvitationRecu}</Text>
           </Pressable>
 
           <Pressable onPress={changerDeCompte}>
-            <Text style={styles.lienTexteSecondaire}>Utiliser un autre compte</Text>
+            <Text style={styles.lienTexteSecondaire}>{t.autreCompte}</Text>
           </Pressable>
         </View>
       </View>
@@ -667,33 +642,30 @@ export default function CreerEspaceScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.contentCentre}>
-        <Text style={styles.titre}>Créer votre espace familial</Text>
-        <Text style={styles.sousTitre}>
-          Vous pourrez ensuite inviter l'autre parent à rejoindre le même espace, pour que vos deux
-          comptes restent synchronisés.
-        </Text>
+        <Text style={styles.titre}>{t.titre}</Text>
+        <Text style={styles.sousTitre}>{t.sousTitre}</Text>
 
-        <Text style={styles.label}>Votre prénom</Text>
+        <Text style={styles.label}>{t.votrePrenom}</Text>
         <TextInput
           style={styles.input}
           value={prenom}
           onChangeText={setPrenom}
-          placeholder="Ex. Marie"
+          placeholder={t.prenomPlaceholder}
           placeholderTextColor={COLORS.ardoise}
         />
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>{t.email}</Text>
         <TextInput
           style={styles.input}
           value={email}
           onChangeText={setEmail}
-          placeholder="vous@exemple.com"
+          placeholder={t.emailPlaceholder}
           placeholderTextColor={COLORS.ardoise}
           autoCapitalize="none"
           keyboardType="email-address"
         />
 
-        <Text style={styles.label}>Mot de passe</Text>
+        <Text style={styles.label}>{t.motDePasse}</Text>
         <TextInput
           style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
           value={motDePasse}
@@ -712,12 +684,11 @@ export default function CreerEspaceScreen() {
         <View style={styles.encartDonnees}>
           <Ionicons name="shield-checkmark-outline" size={20} color={COLORS.vert} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.encartDonneesTitre}>Vos données restent entre vous</Text>
+            <Text style={styles.encartDonneesTitre}>{t.donneesTitre}</Text>
             <Text style={styles.encartDonneesTexte}>
-              Enfants, messages et finances ne sont visibles que par les deux parents de l'espace, et par les
-              personnes que vous invitez. Elles sont hébergées en Union européenne, jamais vendues ni partagées.{' '}
+              {t.donneesTexte}{' '}
               <Text style={styles.lienConditions} onPress={() => router.push('/confidentialite' as any)}>
-                En savoir plus
+                {t.enSavoirPlus}
               </Text>
             </Text>
           </View>
@@ -731,13 +702,13 @@ export default function CreerEspaceScreen() {
             color={conditionsAcceptees ? COLORS.vert : COLORS.ardoise}
           />
           <Text style={styles.texteConditions}>
-            J'ai lu et j'accepte les{' '}
+            {t.accepteDebut}{' '}
             <Text style={styles.lienConditions} onPress={() => router.push('/cgu' as any)}>
-              conditions d'utilisation
+              {t.cgu}
             </Text>
-            {' '}et la{' '}
+            {' '}{t.accepteMilieu}{' '}
             <Text style={styles.lienConditions} onPress={() => router.push('/confidentialite' as any)}>
-              politique de confidentialité
+              {t.confidentialite}
             </Text>
             .
           </Text>
@@ -751,16 +722,16 @@ export default function CreerEspaceScreen() {
           {chargement ? (
             <ActivityIndicator color={COLORS.blanc} />
           ) : (
-            <Text style={styles.boutonPrincipalTexte}>Créer mon espace</Text>
+            <Text style={styles.boutonPrincipalTexte}>{t.creerMonEspace}</Text>
           )}
         </Pressable>
 
         <Pressable onPress={() => router.push('/rejoindre' as any)}>
-          <Text style={styles.lienTexteSecondaire}>J'ai déjà reçu un lien d'invitation</Text>
+          <Text style={styles.lienTexteSecondaire}>{t.dejaLienInvitation}</Text>
         </Pressable>
 
         <Pressable onPress={() => router.push('/connexion' as any)}>
-          <Text style={styles.lienTexteSecondaire}>J'ai déjà un compte</Text>
+          <Text style={styles.lienTexteSecondaire}>{t.dejaUnCompte}</Text>
         </Pressable>
 
       </View>

@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { supprimerMonCompte } from '../lib/suppressionCompte';
+import { TRADUCTIONS } from '../constants/i18n';
 
 // Sur le web, Alert.alert (React Native) ne s'affiche pas — on utilise
 // window.alert/confirm à la place. Sur mobile, on garde Alert.alert natif.
@@ -25,20 +26,22 @@ const notifier = (titre: string, message: string) => {
   }
 };
 
-// Le libellé du bouton de confirmation est passé par l'appelant : « Désactiver »
+// Les libellés des deux boutons sont passés par l'appelant : « Désactiver »
 // était codé en dur pour la double authentification, et se serait affiché tel
-// quel sur une demande de déconnexion.
+// quel sur une demande de déconnexion. Ils viennent des traductions, que
+// cette fonction hors composant ne peut pas lire elle-même.
 const demanderConfirmation = (
   titre: string,
   message: string,
-  libelleConfirmation = 'Désactiver'
+  libelleConfirmation: string,
+  libelleAnnulation: string
 ): Promise<boolean> => {
   return new Promise((resolve) => {
     if (Platform.OS === 'web') {
       resolve(window.confirm(`${titre}\n\n${message}`));
     } else {
       Alert.alert(titre, message, [
-        { text: 'Annuler', style: 'cancel', onPress: () => resolve(false) },
+        { text: libelleAnnulation, style: 'cancel', onPress: () => resolve(false) },
         { text: libelleConfirmation, style: 'destructive', onPress: () => resolve(true) },
       ]);
     }
@@ -67,13 +70,16 @@ type Facteur = {
 export default function SecuriteCompte() {
   const router = useRouter();
   const seDeconnecterDuStore = useStore((st) => st.seDeconnecter);
+  const langue = useStore((st) => st.langue);
+  const t = TRADUCTIONS[langue].securiteCompte;
   const [deconnexionEnCours, setDeconnexionEnCours] = useState(false);
 
   const deconnexion = async () => {
     const confirme = await demanderConfirmation(
-      'Se déconnecter',
-      "Les données de votre espace familial seront effacées de cet appareil. Elles reviendront à votre prochaine connexion.",
-      'Se déconnecter'
+      t.deconnexionTitre,
+      t.deconnexionConfirmCorps,
+      t.deconnexionTitre,
+      t.annuler
     );
     if (!confirme) return;
     setDeconnexionEnCours(true);
@@ -83,10 +89,7 @@ export default function SecuriteCompte() {
         // L'appareil est propre, mais la session peut rester ouverte ailleurs.
         // Le dire plutôt que de laisser le parent croire le contraire : sur un
         // ordinateur partagé, c'est précisément ce qu'il a besoin de savoir.
-        notifier(
-          'Déconnecté de cet appareil',
-          "Cet appareil est propre : vos données et votre session y ont été effacées. Nos serveurs n'ont pas pu être joints, donc la session peut rester ouverte sur vos autres appareils."
-        );
+        notifier(t.deconnecteAppareilTitre, t.deconnecteAppareilCorps);
       }
       router.replace('/connexion' as any);
     } finally {
@@ -102,15 +105,17 @@ export default function SecuriteCompte() {
   // rien de tout cela ne se rattrape.
   const supprimerCompte = async () => {
     const premiere = await demanderConfirmation(
-      'Supprimer votre compte',
-      "Votre compte sera supprimé définitivement. Si votre co-parent est encore dans l'espace familial, il garde l'historique partagé (dépenses, messages, décisions) ; ce que vous y avez écrit n'aura plus d'auteur. Si vous êtes seul dans l'espace, tout l'espace est supprimé, enfants, documents et photos compris.",
-      'Continuer'
+      t.supprimerCompteTitre,
+      t.supprimerCompteCorps,
+      t.continuer,
+      t.annuler
     );
     if (!premiere) return;
     const seconde = await demanderConfirmation(
-      'Dernière confirmation',
-      "Cette action est irréversible. Voulez-vous vraiment supprimer votre compte Dualia ?",
-      'Supprimer mon compte'
+      t.derniereConfirmationTitre,
+      t.derniereConfirmationCorps,
+      t.supprimerMonCompte,
+      t.annuler
     );
     if (!seconde) return;
 
@@ -120,10 +125,7 @@ export default function SecuriteCompte() {
     } catch (e) {
       console.error('[Dualia] Suppression de compte impossible :', e);
       setSuppressionEnCours(false);
-      notifier(
-        'Suppression impossible',
-        "Votre compte n'a pas été supprimé. Vérifiez votre connexion et réessayez ; si le problème persiste, écrivez-nous."
-      );
+      notifier(t.suppressionImpossibleTitre, t.suppressionImpossibleCorps);
       return;
     }
     // Le compte n'existe plus : la fermeture de session cote serveur echouera
@@ -131,7 +133,7 @@ export default function SecuriteCompte() {
     // donnees de cet appareil.
     await seDeconnecterDuStore('local');
     setSuppressionEnCours(false);
-    notifier('Compte supprimé', 'Votre compte Dualia a été supprimé.');
+    notifier(t.compteSupprimeTitre, t.compteSupprimeCorps);
     router.replace('/connexion' as any);
   };
 
@@ -149,7 +151,7 @@ export default function SecuriteCompte() {
     setChargement(true);
     const { data, error } = await supabase.auth.mfa.listFactors();
     if (error) {
-      notifier('Erreur', "Impossible de charger l'état de la double authentification.");
+      notifier(t.erreurTitre, t.chargementImpossible);
       setChargement(false);
       return;
     }
@@ -168,7 +170,7 @@ export default function SecuriteCompte() {
     });
 
     if (error || !data) {
-      notifier('Erreur', "Impossible de démarrer l'activation. Réessaie dans un instant.");
+      notifier(t.erreurTitre, t.activationImpossible);
       return;
     }
 
@@ -179,7 +181,7 @@ export default function SecuriteCompte() {
 
   const confirmerCode = async () => {
     if (!factorId || code.trim().length !== 6) {
-      notifier('Code invalide', 'Saisis le code à 6 chiffres affiché dans ton application.');
+      notifier(t.codeInvalideTitre, t.codeInvalideCorps);
       return;
     }
     setVerification(true);
@@ -189,7 +191,7 @@ export default function SecuriteCompte() {
     });
     if (erreurChallenge || !challenge) {
       setVerification(false);
-      notifier('Erreur', 'Impossible de vérifier le code. Réessaie.');
+      notifier(t.erreurTitre, t.verificationImpossible);
       return;
     }
 
@@ -202,7 +204,7 @@ export default function SecuriteCompte() {
     setVerification(false);
 
     if (erreurVerif) {
-      notifier('Code incorrect', "Le code saisi n'est pas valide. Vérifie l'heure de ton téléphone et réessaie.");
+      notifier(t.codeIncorrectTitre, t.codeIncorrectCorps);
       return;
     }
 
@@ -210,7 +212,7 @@ export default function SecuriteCompte() {
     setFactorId(null);
     setSecret(null);
     setCode('');
-    notifier('Activé', 'La double authentification est maintenant active sur ton compte.');
+    notifier(t.activeTitre, t.activeCorps);
     chargerFacteurs();
   };
 
@@ -226,14 +228,16 @@ export default function SecuriteCompte() {
 
   const desactiverFacteur = async (facteur: Facteur) => {
     const confirme = await demanderConfirmation(
-      'Désactiver la double authentification ?',
-      'Ton compte sera moins protégé. Confirme si tu veux vraiment continuer.'
+      t.desactiverTitre,
+      t.desactiverCorps,
+      t.desactiver,
+      t.annuler
     );
     if (!confirme) return;
 
     const { error } = await supabase.auth.mfa.unenroll({ factorId: facteur.id });
     if (error) {
-      notifier('Erreur', 'La désactivation a échoué.');
+      notifier(t.erreurTitre, t.desactivationEchouee);
       return;
     }
     chargerFacteurs();
@@ -257,26 +261,20 @@ export default function SecuriteCompte() {
   return (
     <ScrollView style={styles.conteneur} contentContainerStyle={styles.contenu}>
       <TouchableOpacity onPress={retourner} style={styles.retour}>
-        <Text style={styles.retourTexte}>← Retour</Text>
+        <Text style={styles.retourTexte}>{t.retour}</Text>
       </TouchableOpacity>
 
-      <Text style={styles.titre}>Double authentification</Text>
-      <Text style={styles.sousTitre}>
-        Ajoute une couche de sécurité supplémentaire : en plus de ton mot de passe, un code à 6
-        chiffres généré par une application (Google Authenticator, Authy, etc.) sera demandé à
-        chaque connexion.
-      </Text>
+      <Text style={styles.titre}>{t.titre}</Text>
+      <Text style={styles.sousTitre}>{t.sousTitre}</Text>
 
       {chargement && <ActivityIndicator style={{ marginTop: 24 }} color={COLORS.vert} />}
 
       {!chargement && !inscriptionEnCours && facteurs.length === 0 && (
         <View style={styles.carte}>
-          <Text style={styles.carteTitre}>Non activée</Text>
-          <Text style={styles.carteTexte}>
-            Ton compte n'est actuellement protégé que par ton mot de passe.
-          </Text>
+          <Text style={styles.carteTitre}>{t.nonActivee}</Text>
+          <Text style={styles.carteTexte}>{t.nonActiveeCorps}</Text>
           <TouchableOpacity style={styles.boutonPrincipal} onPress={demarrerInscription}>
-            <Text style={styles.boutonPrincipalTexte}>Activer la double authentification</Text>
+            <Text style={styles.boutonPrincipalTexte}>{t.activer}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -284,29 +282,24 @@ export default function SecuriteCompte() {
       {!chargement &&
         facteurs.map((f) => (
           <View key={f.id} style={styles.carte}>
-            <Text style={styles.carteTitre}>✅ Activée</Text>
-            <Text style={styles.carteTexte}>{f.friendly_name || 'Application d\'authentification'}</Text>
+            <Text style={styles.carteTitre}>{t.activee}</Text>
+            <Text style={styles.carteTexte}>{f.friendly_name || t.applicationAuth}</Text>
             <TouchableOpacity style={styles.boutonSecondaire} onPress={() => desactiverFacteur(f)}>
-              <Text style={styles.boutonSecondaireTexte}>Désactiver</Text>
+              <Text style={styles.boutonSecondaireTexte}>{t.desactiver}</Text>
             </TouchableOpacity>
           </View>
         ))}
 
       {inscriptionEnCours && secret && (
         <View style={styles.carte}>
-          <Text style={styles.carteTitre}>Étape 1 — Ajoute la clé</Text>
-          <Text style={styles.carteTexte}>
-            Ouvre ton application d'authentification (Google Authenticator, Authy, etc.), choisis
-            "Ajouter manuellement" et saisis cette clé :
-          </Text>
+          <Text style={styles.carteTitre}>{t.etape1}</Text>
+          <Text style={styles.carteTexte}>{t.etape1Corps}</Text>
           <View style={styles.secretBox}>
             <Text style={styles.secretTexte}>{secretFormate(secret)}</Text>
           </View>
 
-          <Text style={[styles.carteTitre, { marginTop: 20 }]}>Étape 2 — Confirme</Text>
-          <Text style={styles.carteTexte}>
-            Saisis le code à 6 chiffres que l'application affiche maintenant :
-          </Text>
+          <Text style={[styles.carteTitre, { marginTop: 20 }]}>{t.etape2}</Text>
+          <Text style={styles.carteTexte}>{t.etape2Corps}</Text>
           <TextInput
             style={styles.champCode}
             value={code}
@@ -325,12 +318,12 @@ export default function SecuriteCompte() {
             {verification ? (
               <ActivityIndicator color={COLORS.blanc} />
             ) : (
-              <Text style={styles.boutonPrincipalTexte}>Confirmer</Text>
+              <Text style={styles.boutonPrincipalTexte}>{t.confirmer}</Text>
             )}
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.boutonAnnuler} onPress={annulerInscription}>
-            <Text style={styles.boutonAnnulerTexte}>Annuler</Text>
+            <Text style={styles.boutonAnnulerTexte}>{t.annuler}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -340,12 +333,8 @@ export default function SecuriteCompte() {
           retirer ses données d'un ordinateur partagé — or l'ordinateur familial
           d'un couple séparé est précisément le matériel de nos utilisateurs. */}
       <View style={styles.carte}>
-        <Text style={styles.carteTitre}>Déconnexion</Text>
-        <Text style={styles.carteTexte}>
-          Ferme votre session et efface de cet appareil les données de votre espace familial :
-          messages, dépenses, documents, enfants. Rien n'est supprimé de votre compte, tout
-          revient à la reconnexion.
-        </Text>
+        <Text style={styles.carteTitre}>{t.deconnexionCarteTitre}</Text>
+        <Text style={styles.carteTexte}>{t.deconnexionCarteCorps}</Text>
         <TouchableOpacity
           style={styles.boutonSecondaire}
           onPress={deconnexion}
@@ -354,7 +343,7 @@ export default function SecuriteCompte() {
           {deconnexionEnCours ? (
             <ActivityIndicator color={COLORS.rouge} />
           ) : (
-            <Text style={styles.boutonSecondaireTexte}>Se déconnecter</Text>
+            <Text style={styles.boutonSecondaireTexte}>{t.deconnexionTitre}</Text>
           )}
         </TouchableOpacity>
       </View>
@@ -362,12 +351,8 @@ export default function SecuriteCompte() {
       {/* Suppression du compte (DUA-089) : exigee par Apple pour toute
           application qui permet d'en creer un. */}
       <View style={[styles.carte, styles.carteDanger]}>
-        <Text style={styles.carteTitre}>Supprimer mon compte</Text>
-        <Text style={styles.carteTexte}>
-          Supprime définitivement votre compte Dualia. Votre co-parent, s'il est encore dans
-          l'espace familial, garde l'historique partagé. Si vous êtes seul, tout l'espace est
-          supprimé.
-        </Text>
+        <Text style={styles.carteTitre}>{t.supprimerMonCompte}</Text>
+        <Text style={styles.carteTexte}>{t.suppressionCarteCorps}</Text>
         <TouchableOpacity
           style={styles.boutonDanger}
           onPress={supprimerCompte}
@@ -376,13 +361,13 @@ export default function SecuriteCompte() {
           {suppressionEnCours ? (
             <ActivityIndicator color={COLORS.blanc} />
           ) : (
-            <Text style={styles.boutonDangerTexte}>Supprimer mon compte</Text>
+            <Text style={styles.boutonDangerTexte}>{t.supprimerMonCompte}</Text>
           )}
         </TouchableOpacity>
       </View>
 
       <TouchableOpacity onPress={() => router.push('/confidentialite' as any)} style={styles.lienPolitique}>
-        <Text style={styles.lienPolitiqueTexte}>Lire notre politique de confidentialité</Text>
+        <Text style={styles.lienPolitiqueTexte}>{t.lirePolitique}</Text>
       </TouchableOpacity>
     </ScrollView>
   );

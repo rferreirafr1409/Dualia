@@ -20,6 +20,7 @@ import { useStore } from '../store/useStore';
 import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
+import { TRADUCTIONS } from '../constants/i18n';
 import {
   lireInvitationEnAttente,
   memoriserInvitationEnAttente,
@@ -37,6 +38,8 @@ function alertCompat(titre: string, message?: string) {
 export default function RejoindreScreen() {
   const router = useRouter();
   const { token } = useLocalSearchParams<{ token?: string }>();
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].rejoindre;
 
   const [verification, setVerification] = useState<'en_cours' | 'valide' | 'invalide'>('en_cours');
   const [nomInvitant, setNomInvitant] = useState('');
@@ -145,16 +148,16 @@ export default function RejoindreScreen() {
         router.replace('/(tabs)/accueil');
       } else if (data === 'refusee') {
         setEnAttente(false);
-        setRefus("Ta demande a été refusée. Rapproche-toi de la personne qui t'a invité.");
+        setRefus(t.refusee);
       } else if (data === 'expiree' || data === 'revoquee') {
         setEnAttente(false);
-        setRefus("Ce lien n'est plus valide. Demande-en un nouveau.");
+        setRefus(t.lienPlusValide);
       } else if (data == null) {
         // Plus aucune demande a notre nom : le lien a ete regenere, ou la
         // ligne a disparu. Sans cette branche, l'ecran tournait
         // indefiniment sur un sablier qui ne menait nulle part.
         setEnAttente(false);
-        setRefus("Ta demande n'est plus suivie. Demande un nouveau lien et un nouveau code.");
+        setRefus(t.demandePlusSuivie);
       }
     };
     demander();
@@ -162,34 +165,22 @@ export default function RejoindreScreen() {
     return () => { vivant = false; clearInterval(minuteur); };
   }, [enAttente, router]);
 
-  const MESSAGES: Record<string, string> = {
-    code_invalide: "Ce code ne correspond pas. Vérifie auprès de la personne qui t'a invité.",
-    trop_de_tentatives:
-      "Trop d'essais : ce lien est désormais bloqué. Demande un nouveau lien et un nouveau code.",
-    invitation_expiree: "Ce lien a expiré. Demande-en un nouveau.",
-    invitation_revoquee: "Ce lien a été annulé. Demande-en un nouveau.",
-    invitation_deja_utilisee: "Ce lien a déjà servi.",
-    invitation_introuvable: "Ce lien n'est pas valide.",
-    demande_deja_en_cours: "Une autre demande est déjà en attente sur ce lien.",
-    demande_refusee: "Cette demande a été refusée. Rapproche-toi de la personne qui t'a invité.",
-    deja_membre: "Ce compte appartient déjà à un espace familial.",
-    espace_complet: "Cet espace familial est déjà complet.",
-    session_requise: "Session introuvable. Réessaie.",
-  };
+  // Les codes d'erreur du serveur, et ce qu'on en dit a la personne.
+  const MESSAGES: Record<string, string> = t.messages;
 
   const rejoindre = async () => {
     if (!prenom.trim() || !email.trim()) {
-      alertCompat('Champs incomplets', 'Renseigne ton prénom et une adresse email.');
+      alertCompat(t.champsIncompletsTitre, t.champsIncompletsCorps);
       return;
     }
     if (!/^\d{6}$/.test(code.replace(/\s/g, ''))) {
-      alertCompat('Code manquant', 'Saisis le code à 6 chiffres transmis séparément du lien.');
+      alertCompat(t.codeManquantTitre, t.codeManquantCorps);
       return;
     }
     if (!sessionCorrespond) {
       const probleme = validerMotDePasse(motDePasse);
       if (probleme) {
-        alertCompat('Mot de passe trop faible', probleme);
+        alertCompat(t.motDePasseFaibleTitre, probleme);
         return;
       }
     }
@@ -268,19 +259,15 @@ export default function RejoindreScreen() {
             (inscription.user?.identities?.length ?? 0) === 0);
 
         if (dejaInscrit) {
-          setRefus(
-            "Un compte existe déjà avec cette adresse, mais le mot de passe ne correspond pas. Réessayez, ou passez par « Mot de passe oublié » sur l'écran de connexion."
-          );
+          setRefus(t.compteExistant);
           setChargement(false);
           return;
         } else if (erreurInscription) {
           throw erreurInscription;
         } else if (!inscription.session) {
           alertCompat(
-            'Confirmez votre adresse',
-            Platform.OS === 'web'
-              ? "Un e-mail vient de vous être envoyé. Cliquez sur le lien qu'il contient : il vous ramènera sur cette page. Il vous restera à ressaisir le code et votre mot de passe, puis votre demande sera déposée."
-              : "Un e-mail vient de vous être envoyé. Cliquez sur le lien qu'il contient : il s'ouvre dans votre navigateur et confirme votre adresse. Revenez ensuite dans l'application Dualia, ressaisissez le code et votre mot de passe, puis votre demande sera déposée."
+            t.confirmezAdresseTitre,
+            Platform.OS === 'web' ? t.confirmezAdresseWeb : t.confirmezAdresseMobile
           );
           setChargement(false);
           return;
@@ -290,7 +277,7 @@ export default function RejoindreScreen() {
       }
 
       if (!session) {
-        alertCompat('Connexion impossible', "Réessayez dans un instant.");
+        alertCompat(t.connexionImpossibleTitre, t.connexionImpossibleCorps);
         setChargement(false);
         return;
       }
@@ -305,7 +292,7 @@ export default function RejoindreScreen() {
       if (demandeError) throw demandeError;
 
       if (etat !== 'en_attente_validation') {
-        setRefus(MESSAGES[etat as string] ?? "Cette demande n'a pas pu aboutir.");
+        setRefus(MESSAGES[etat as string] ?? t.demandeNonAboutie);
         setChargement(false);
         return;
       }
@@ -314,7 +301,7 @@ export default function RejoindreScreen() {
       setEnAttente(true);
       oublierInvitationEnAttente();
     } catch (err: any) {
-      alertCompat('Erreur', traduireErreurAuth(err?.message));
+      alertCompat(t.erreurTitre, traduireErreurAuth(err?.message));
     } finally {
       setChargement(false);
     }
@@ -325,13 +312,10 @@ export default function RejoindreScreen() {
   const salleDAttente = () => (
     <View style={styles.screen}>
       <View style={styles.contentCentre}>
-        <Text style={styles.titre}>Demande envoyée</Text>
+        <Text style={styles.titre}>{t.demandeEnvoyeeTitre}</Text>
         <Text style={styles.sousTitre}>
-          {nomInvitant
-            ? `${nomInvitant} doit maintenant valider votre arrivée.`
-            : "L'autre parent doit maintenant valider votre arrivée."}{' '}
-          Vous verrez l'espace familial dès que ce sera fait — vous pouvez laisser cette page
-          ouverte.
+          {nomInvitant ? t.doitValider(nomInvitant) : t.autreParentDoitValider}{' '}
+          {t.attenteSuite}
         </Text>
         <ActivityIndicator size="small" color={COLORS.vert} style={{ marginTop: SPACING.lg }} />
       </View>
@@ -357,11 +341,8 @@ export default function RejoindreScreen() {
     return (
       <View style={styles.screen}>
         <View style={styles.contentCentre}>
-          <Text style={styles.titre}>Lien invalide ou expiré</Text>
-          <Text style={styles.sousTitre}>
-            Ce lien d'invitation n'est plus valable. Demande à l'autre parent de t'en renvoyer un nouveau
-            depuis son écran Dualia.
-          </Text>
+          <Text style={styles.titre}>{t.lienInvalideTitre}</Text>
+          <Text style={styles.sousTitre}>{t.lienInvalideCorps}</Text>
         </View>
       </View>
     );
@@ -370,40 +351,35 @@ export default function RejoindreScreen() {
   return (
     <View style={styles.screen}>
       <View style={styles.contentCentre}>
-        <Text style={styles.titre}>Rejoindre l'espace de {nomInvitant}</Text>
+        <Text style={styles.titre}>{t.titre(nomInvitant)}</Text>
         <Text style={styles.sousTitre}>
-          {sessionCorrespond
-            ? `Vous êtes connecté. Saisissez le code reçu : ${nomInvitant} validera ensuite votre arrivée.`
-            : `Créez votre compte. ${nomInvitant} validera ensuite votre arrivée.`}
+          {sessionCorrespond ? t.sousTitreConnecte(nomInvitant) : t.sousTitreCreer(nomInvitant)}
         </Text>
 
         {refus ? <Text style={styles.refus}>{refus}</Text> : null}
 
-        <Text style={styles.label}>Votre prénom</Text>
+        <Text style={styles.label}>{t.votrePrenom}</Text>
         <TextInput
           style={styles.input}
           value={prenom}
           onChangeText={setPrenom}
-          placeholder="Ex. Pierre"
+          placeholder={t.prenomPlaceholder}
           placeholderTextColor={COLORS.ardoise}
         />
 
-        <Text style={styles.label}>Email</Text>
+        <Text style={styles.label}>{t.email}</Text>
         <TextInput
           style={styles.input}
           value={email}
           onChangeText={setEmail}
-          placeholder="vous@exemple.com"
+          placeholder={t.emailPlaceholder}
           placeholderTextColor={COLORS.ardoise}
           autoCapitalize="none"
           keyboardType="email-address"
         />
 
-        <Text style={styles.label}>Code à 6 chiffres</Text>
-        <Text style={styles.aideCode}>
-          {nomInvitant} vous l'a transmis séparément du lien — par téléphone, de vive voix ou par
-          un autre message. Le lien seul ne suffit pas.
-        </Text>
+        <Text style={styles.label}>{t.code}</Text>
+        <Text style={styles.aideCode}>{t.codeAide(nomInvitant)}</Text>
         <TextInput
           style={styles.input}
           value={code}
@@ -415,10 +391,10 @@ export default function RejoindreScreen() {
         />
 
         {sessionCorrespond ? (
-          <Text style={styles.aide}>Compte connecté : {emailSession}. Pas besoin de mot de passe.</Text>
+          <Text style={styles.aide}>{t.compteConnecte(emailSession)}</Text>
         ) : (
           <>
-            <Text style={styles.label}>Mot de passe</Text>
+            <Text style={styles.label}>{t.motDePasse}</Text>
             <TextInput
               style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
               value={motDePasse}
@@ -437,7 +413,7 @@ export default function RejoindreScreen() {
           {chargement ? (
             <ActivityIndicator color={COLORS.blanc} />
           ) : (
-            <Text style={styles.boutonPrincipalTexte}>Rejoindre</Text>
+            <Text style={styles.boutonPrincipalTexte}>{t.rejoindre}</Text>
           )}
         </Pressable>
       </View>

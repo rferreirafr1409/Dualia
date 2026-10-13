@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useStore } from '../store/useStore';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
+import { TRADUCTIONS } from '../constants/i18n';
 import type { Foyer, ParentRole } from '../types';
 import { retour } from '../lib/navigation';
 
@@ -25,6 +26,8 @@ export default function ParentsFoyersScreen() {
   const associerEnfantAuFoyer = useStore((s) => s.associerEnfantAuFoyer);
   const retirerEnfantDuFoyer = useStore((s) => s.retirerEnfantDuFoyer);
   const definirResidencePrincipale = useStore((s) => s.definirResidencePrincipale);
+  const langue = useStore((s) => s.langue);
+  const t = TRADUCTIONS[langue].parentsFoyers;
 
   const [foyerOuvert, setFoyerOuvert] = useState<Foyer | null>(null);
   const [formNom, setFormNom] = useState('');
@@ -127,13 +130,13 @@ export default function ParentsFoyersScreen() {
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text style={styles.headerTitre}>Parents & foyers</Text>
-          <Text style={styles.headerSous}>Qui compose votre famille, et où vivent vos enfants</Text>
+          <Text style={styles.headerTitre}>{t.titre}</Text>
+          <Text style={styles.headerSous}>{t.sousTitre}</Text>
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionLabel}>PARENTS</Text>
+        <Text style={styles.sectionLabel}>{t.sectionParents}</Text>
         {(['A', 'B'] as ParentRole[]).map((role) => {
           const p = parents[role];
           if (!p) return null;
@@ -145,19 +148,19 @@ export default function ParentsFoyersScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.parentNom}>{p.nom}</Text>
                 <Text style={styles.parentStatut}>
-                  {p.uuid ? 'Compte Dualia actif' : 'Pas encore invité(e)'}
+                  {p.uuid ? t.compteActif : t.pasInvite}
                 </Text>
               </View>
             </View>
           );
         })}
 
-        <Text style={styles.sectionLabel}>FOYERS</Text>
+        <Text style={styles.sectionLabel}>{t.sectionFoyers}</Text>
         {foyersVisibles.length === 0 ? (
           <View style={styles.videCard}>
-            <Text style={styles.videTxt}>Aucun foyer configuré pour le moment.</Text>
+            <Text style={styles.videTxt}>{t.aucunFoyer}</Text>
             <Pressable style={styles.videCta} onPress={() => router.push('/configurer-foyer' as any)}>
-              <Text style={styles.videCtaTxt}>Configurer mes foyers</Text>
+              <Text style={styles.videCtaTxt}>{t.configurerFoyers}</Text>
             </Pressable>
           </View>
         ) : (
@@ -178,7 +181,7 @@ export default function ParentsFoyersScreen() {
                 ) : null}
                 {(foyer.enfantIdsResidencePrincipale ?? []).length > 0 ? (
                   <Text style={styles.foyerResidence}>
-                    Résidence principale : {prenomsEnfants(foyer.enfantIdsResidencePrincipale ?? [])}
+                    {t.residencePrincipale(prenomsEnfants(foyer.enfantIdsResidencePrincipale ?? []))}
                   </Text>
                 ) : null}
               </View>
@@ -193,38 +196,34 @@ export default function ParentsFoyersScreen() {
           <View style={styles.modalCard}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={styles.modalTitre}>
-                {monFoyer ? 'Modifier le foyer' : foyerOuvert?.nom}
+                {monFoyer ? t.modifierFoyer : foyerOuvert?.nom}
               </Text>
 
               {/* Foyer de l'autre parent : on annonce la regle avant les
                   champs, pour que le gris des zones de saisie ne passe pas
                   pour une panne. */}
               {!monFoyer ? (
-                <Text style={styles.lectureSeuleNote}>
-                  Ce foyer est celui de l'autre parent. Vous pouvez le consulter et indiquer
-                  quels enfants y vivent, mais son nom et son adresse ne sont modifiables que
-                  par lui.
-                </Text>
+                <Text style={styles.lectureSeuleNote}>{t.lectureSeule}</Text>
               ) : null}
 
-              <Text style={styles.fieldLabel}>Nom du foyer</Text>
+              <Text style={styles.fieldLabel}>{t.nomFoyer}</Text>
               <TextInput
                 style={[styles.input, !monFoyer && styles.inputVerrouille]}
                 value={formNom}
                 onChangeText={setFormNom}
                 editable={monFoyer}
-                placeholder="Ex. Chez Ricardo"
+                placeholder={t.nomFoyerPlaceholder}
                 placeholderTextColor={COLORS.ardoise}
               />
 
-              <Text style={styles.fieldLabel}>Adresse (optionnel)</Text>
+              <Text style={styles.fieldLabel}>{t.adresse}</Text>
               {monFoyer || foyerOuvert?.adresse ? (
                 <TextInput
                   style={[styles.input, !monFoyer && styles.inputVerrouille]}
                   value={formAdresse}
                   onChangeText={setFormAdresse}
                   editable={monFoyer}
-                  placeholder="12 rue de..."
+                  placeholder={t.adressePlaceholder}
                   placeholderTextColor={COLORS.ardoise}
                 />
               ) : (
@@ -232,19 +231,17 @@ export default function ParentsFoyersScreen() {
                    partagee. On le dit, au lieu d'afficher un champ vide qui
                    laisserait croire qu'aucune adresse n'est renseignee. */
                 <Text style={styles.adresseMasquee}>
-                  {foyerOuvert?.adresseVisible
-                    ? "Aucune adresse renseignée."
-                    : "Adresse masquée par l'autre parent."}
+                  {foyerOuvert?.adresseVisible ? t.aucuneAdresse : t.adresseMasquee}
                 </Text>
               )}
 
-              <Text style={styles.fieldLabel}>Ville (optionnel)</Text>
+              <Text style={styles.fieldLabel}>{t.ville}</Text>
               <TextInput
                 style={[styles.input, !monFoyer && styles.inputVerrouille]}
                 value={formVille}
                 onChangeText={setFormVille}
                 editable={monFoyer}
-                placeholder="Paris"
+                placeholder={t.villePlaceholder}
                 placeholderTextColor={COLORS.ardoise}
               />
 
@@ -252,13 +249,8 @@ export default function ParentsFoyersScreen() {
               {monFoyer ? (
                 <View style={styles.switchLigne}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.switchLabel}>Partager ma rue avec l'autre parent</Text>
-                    <Text style={styles.switchDesc}>
-                      Activé par défaut : savoir où dort son enfant fait partie d'une
-                      coparentalité normale. Si vous le désactivez, l'autre parent ne verra plus
-                      que le nom de votre foyer et votre ville — de quoi organiser la garde, sans
-                      votre adresse précise.
-                    </Text>
+                    <Text style={styles.switchLabel}>{t.partagerRue}</Text>
+                    <Text style={styles.switchDesc}>{t.partagerRueDesc}</Text>
                   </View>
                   <Switch value={formAdresseVisible} onValueChange={setFormAdresseVisible} />
                 </View>
@@ -266,7 +258,7 @@ export default function ParentsFoyersScreen() {
 
               {enfants.length > 0 ? (
                 <>
-                  <Text style={styles.fieldLabel}>Enfants de ce foyer</Text>
+                  <Text style={styles.fieldLabel}>{t.enfantsDuFoyer}</Text>
                   <View style={styles.pillRow}>
                     {enfants.map((e) => {
                       const dedans = foyerOuvert?.enfantIds.includes(e.id);
@@ -288,11 +280,8 @@ export default function ParentsFoyersScreen() {
                   En foyer commun il n'y a qu'un domicile, rien à trancher. */}
               {configFoyers === 'deux_foyers' && enfantsDuFoyerOuvert.length > 0 ? (
                 <>
-                  <Text style={styles.fieldLabel}>Résidence principale</Text>
-                  <Text style={styles.residenceAide}>
-                    En garde alternée, ne cochez rien : l'enfant vit dans les deux foyers à parts
-                    égales. En garde exclusive, cochez le foyer où l'enfant a sa résidence.
-                  </Text>
+                  <Text style={styles.fieldLabel}>{t.residencePrincipaleTitre}</Text>
+                  <Text style={styles.residenceAide}>{t.residenceAide}</Text>
                   {enfantsDuFoyerOuvert.map((e) => (
                     <View key={e.id} style={styles.residenceLigne}>
                       <Text style={styles.residenceNom}>{e.prenom}</Text>
@@ -306,21 +295,18 @@ export default function ParentsFoyersScreen() {
               ) : null}
 
               {refus ? (
-                <Text style={styles.refusTxt}>
-                  Cette modification n'a pas été enregistrée : ce foyer appartient à l'autre
-                  parent. Rien n'a été changé.
-                </Text>
+                <Text style={styles.refusTxt}>{t.refus}</Text>
               ) : null}
 
               <View style={styles.modalActions}>
                 <Pressable style={styles.btnAnnuler} onPress={() => setFoyerOuvert(null)}>
-                  <Text style={styles.btnAnnulerTxt}>Fermer</Text>
+                  <Text style={styles.btnAnnulerTxt}>{t.fermer}</Text>
                 </Pressable>
                 {/* Pas de bouton Enregistrer sur le foyer de l'autre : rien
                     a enregistrer, et le proposer serait mentir. */}
                 {monFoyer ? (
                   <Pressable style={styles.btnValider} onPress={enregistrerFoyer} disabled={sauvegarde}>
-                    <Text style={styles.btnValiderTxt}>{sauvegarde ? '...' : 'Enregistrer'}</Text>
+                    <Text style={styles.btnValiderTxt}>{sauvegarde ? '...' : t.enregistrer}</Text>
                   </Pressable>
                 ) : null}
               </View>
