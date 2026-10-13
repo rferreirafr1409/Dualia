@@ -856,6 +856,10 @@ interface DualiaStore {
   messagesAnalyses: string[];
   marquerMessageAnalyse: (id: string) => void;
   suggestionsMessages: Record<string, { titre: string; date: string; enfant: string | null }>;
+  // Id provisoire (« msg-… ») -> id Supabase, pour les messages dont la
+  // synchronisation s'est terminee pendant que le detecteur d'evenements
+  // tournait encore. Memoire vive seulement.
+  idsDefinitifsMessages: Record<string, string>;
   ajouterSuggestionMessage: (msgId: string, sug: { titre: string; date: string; enfant: string | null }) => void;
   retirerSuggestionMessage: (msgId: string) => void;
   supprimerEvenement: (id: string) => void;
@@ -1638,8 +1642,17 @@ export const useStore = create<DualiaStore>()(
       marquerMessageAnalyse: (id) =>
         set((state) => ({ messagesAnalyses: [...state.messagesAnalyses, id] })),
       suggestionsMessages: {},
+      idsDefinitifsMessages: {},
+      // DUA-134 : le detecteur est lance sur l'id provisoire du message, et
+      // repond apres que Supabase a rendu l'id definitif. La suggestion
+      // arrivait donc sous un id qu'aucun message ne portait plus : jamais
+      // affichee dans le fil, mais comptee sur l'accueil (« 5 messages a
+      // examiner »). On la range sous l'id que le message porte maintenant.
       ajouterSuggestionMessage: (msgId, sug) =>
-        set((state) => ({ suggestionsMessages: { ...state.suggestionsMessages, [msgId]: sug } })),
+        set((state) => {
+          const cible = state.idsDefinitifsMessages[msgId] ?? msgId;
+          return { suggestionsMessages: { ...state.suggestionsMessages, [cible]: sug } };
+        }),
       retirerSuggestionMessage: (msgId) =>
         set((state) => {
           const next = { ...state.suggestionsMessages };
@@ -1726,6 +1739,7 @@ export const useStore = create<DualiaStore>()(
           suggestionsMessages: state.suggestionsMessages[m.id]
             ? { ...state.suggestionsMessages, [data.id]: state.suggestionsMessages[m.id] }
             : state.suggestionsMessages,
+          idsDefinitifsMessages: { ...state.idsDefinitifsMessages, [m.id]: data.id },
         }));
       });
   },
@@ -1885,6 +1899,7 @@ export const useStore = create<DualiaStore>()(
       messages: [],
       messagesAnalyses: [],
       suggestionsMessages: {},
+      idsDefinitifsMessages: {},
       journalEntries: [],
       depenses: [],
       documents: [],
@@ -3651,7 +3666,18 @@ export const useStore = create<DualiaStore>()(
       .order('date_envoi', { ascending: true });
     if (erreurMessages) console.error('[Dualia] Échec chargement messages :', erreurMessages);
     if (!erreurMessages) {
-        set({ messages: (messagesDB ?? []).map((row: any) => messageDepuisDB(row, roleParUuid)) });
+        const messagesCharges = (messagesDB ?? []).map((row: any) => messageDepuisDB(row, roleParUuid));
+        // Les suggestions rangees sous un id que plus aucun message ne porte
+        // (id provisoire perdu, message supprime) restaient dans le stockage
+        // local et gonflaient le compteur de l'accueil sans jamais etre
+        // visibles. On ne garde que celles d'un message reellement charge.
+        const idsConnus = new Set(messagesCharges.map((m) => m.id));
+        const suggestionsVivantes: Record<string, { titre: string; date: string; enfant: string | null }> = {};
+        const { suggestionsMessages } = get();
+        for (const id of Object.keys(suggestionsMessages)) {
+          if (idsConnus.has(id)) suggestionsVivantes[id] = suggestionsMessages[id];
+        }
+        set({ messages: messagesCharges, suggestionsMessages: suggestionsVivantes });
     }
 
     const { data: tiersDB, error: erreurTiers } = await supabase
