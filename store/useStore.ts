@@ -891,6 +891,12 @@ interface DualiaStore {
   langueDetectee: boolean;
   detecterLangueAuto: () => void;
 
+  // Presentation du premier lancement (DUA-127). Preference de l'appareil,
+  // pas du compte : persistee, et volontairement absente de
+  // purgerDonneesFamiliales, sinon chaque deconnexion la ferait revenir.
+  demoVue: boolean;
+  marquerDemoVue: () => void;
+
   agendaScolaire: AgendaScolaireItem[];
   ajouterAgendaScolaire: (a: AgendaScolaireItem) => void;
   basculerAgendaScolaireFait: (id: string) => void;
@@ -1747,6 +1753,9 @@ export const useStore = create<DualiaStore>()(
   tiers: [],
 
   langueDetectee: false,
+
+  demoVue: false,
+  marquerDemoVue: () => set({ demoVue: true }),
 
   detecterLangueAuto: () => {
     const { langueDetectee, setLangue } = get();
@@ -4040,6 +4049,7 @@ export const useStore = create<DualiaStore>()(
         // personne à l'autre sur un ordinateur partagé.
         parents: state.parents,
         langue: state.langue,
+        demoVue: state.demoVue,
         evenements: state.evenements,
         evenementsCalendrier: state.evenementsCalendrier,
         messagesAnalyses: state.messagesAnalyses,

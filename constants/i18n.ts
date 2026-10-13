@@ -986,6 +986,63 @@ export const TRADUCTIONS = {
       reassurance: "Vous pourrez inviter l'autre parent quand vous serez prêt(e) — rien ne vous oblige à le faire maintenant.",
       continuer: 'Continuer',
     },
+    bienvenue: {
+      passer: 'Passer',
+      suivant: 'Suivant',
+      commencer: 'Commencer',
+      entreeTitre: 'Revoir la présentation',
+      entreeDesc: 'Ce que Dualia fait, en quatre écrans',
+      etapes: [
+        { titre: 'Le calendrier de garde', texte: 'Les semaines de chacun, les passations et les activités des enfants, visibles par les deux parents.' },
+        { titre: 'Les dépenses partagées', texte: 'Scannez un ticket, choisissez la répartition et sachez à tout moment qui doit quoi.' },
+        { titre: 'Les messages', texte: 'Un canal apaisé entre parents. Les rendez-vous évoqués sont proposés pour le calendrier.' },
+        { titre: 'Le journal', texte: "Les moments de l'enfant, partagés entre les deux maisons." },
+      ],
+    },
+    faq: {
+      titre: 'Questions fréquentes',
+      sousTitre: 'Touchez une question pour lire la réponse.',
+      entreeTitre: 'Questions fréquentes',
+      entreeDesc: 'Données, invitation, calendrier, valeur juridique…',
+      questions: [
+        {
+          question: 'Qui voit mes données ?',
+          reponse: "Seuls les deux parents et les proches que vous avez invités voient votre espace familial. Les données sont hébergées dans l'Union européenne. Elles ne sont jamais vendues ni transmises à des tiers à des fins commerciales.",
+        },
+        {
+          question: "Comment inviter l'autre parent ?",
+          reponse: "Depuis l'onglet Famille, ouvrez « Inviter le co-parent » : vous obtenez un lien et un code à transmettre séparément. L'autre parent crée son compte avec le lien, saisit le code, et vous validez sa demande.",
+        },
+        {
+          question: "Que se passe-t-il si l'autre parent ne rejoint pas ?",
+          reponse: "Dualia fonctionne aussi seul : calendrier, dépenses, documents et journal restent utilisables. L'invitation reste valable et peut être régénérée à tout moment depuis l'onglet Famille. Quand l'autre parent rejoint, il accède au même espace.",
+        },
+        {
+          question: 'Comment fonctionne le calendrier de garde ?',
+          reponse: 'Vous indiquez le rythme de garde (une semaine sur deux, par exemple) et la date de départ : Dualia génère les semaines de chacun. Vous pouvez ensuite ajuster une date, noter une passation ou ajouter une activité. Les deux parents voient le même calendrier.',
+        },
+        {
+          question: 'Comment partager une dépense et scanner un ticket ?',
+          reponse: "Dans Finances, ajoutez une dépense en photographiant le ticket ou en saisissant le montant. Vous choisissez la répartition, et Dualia tient le compte de ce que chacun doit à l'autre.",
+        },
+        {
+          question: "À quoi servent la messagerie et l'IA qui propose des rendez-vous ?",
+          reponse: "La messagerie est un canal réservé aux deux parents, pensé pour rester factuel. Quand un message mentionne un rendez-vous ou une date, Dualia propose de l'ajouter au calendrier : vous acceptez ou ignorez, rien n'est ajouté sans vous.",
+        },
+        {
+          question: 'Puis-je ajouter les grands-parents ou la nounou ?',
+          reponse: 'Oui. Depuis Famille > Accès tiers, vous invitez un proche avec un accès limité à ce que vous choisissez de partager (le calendrier, par exemple). Cet accès peut être retiré à tout moment.',
+        },
+        {
+          question: 'Comment supprimer mon compte ?',
+          reponse: "Dans Famille > Mon compte, choisissez « Supprimer mon compte ». La suppression est définitive. Si votre co-parent reste dans l'espace, il conserve l'historique partagé ; si vous êtes seul, tout l'espace est supprimé.",
+        },
+        {
+          question: 'Dualia a-t-elle une valeur juridique ?',
+          reponse: 'Les décisions et les échanges sont horodatés et tracés, ce qui peut aider à retracer ce qui a été convenu. Dualia ne remplace toutefois ni un jugement ni une convention parentale. Un horodatage qualifié est en préparation.',
+        },
+      ],
+    },
   },
   es: {
     motDePasse: {
@@ -1971,6 +2028,63 @@ export const TRADUCTIONS = {
       foyerCommunDesc: 'Compartimos el mismo domicilio',
       reassurance: 'Podrás invitar al otro progenitor cuando estés listo/a — nada te obliga a hacerlo ahora.',
       continuer: 'Continuar',
+    },
+    bienvenue: {
+      passer: 'Omitir',
+      suivant: 'Siguiente',
+      commencer: 'Empezar',
+      entreeTitre: 'Volver a ver la presentación',
+      entreeDesc: 'Lo que hace Dualia, en cuatro pantallas',
+      etapes: [
+        { titre: 'El calendario de custodia', texte: 'Las semanas de cada uno, las entregas y las actividades de los niños, visibles para ambos padres.' },
+        { titre: 'Los gastos compartidos', texte: 'Escanea un tique, elige el reparto y sabe en todo momento quién debe qué.' },
+        { titre: 'Los mensajes', texte: 'Un canal sereno entre padres. Las citas mencionadas se proponen para el calendario.' },
+        { titre: 'El diario', texte: 'Los momentos del niño, compartidos entre las dos casas.' },
+      ],
+    },
+    faq: {
+      titre: 'Preguntas frecuentes',
+      sousTitre: 'Toca una pregunta para leer la respuesta.',
+      entreeTitre: 'Preguntas frecuentes',
+      entreeDesc: 'Datos, invitación, calendario, valor legal…',
+      questions: [
+        {
+          question: '¿Quién ve mis datos?',
+          reponse: 'Solo los dos padres y los allegados que hayáis invitado ven vuestro espacio familiar. Los datos se alojan en la Unión Europea. Nunca se venden ni se ceden a terceros con fines comerciales.',
+        },
+        {
+          question: '¿Cómo invito al otro progenitor?',
+          reponse: 'Desde la pestaña Familia, abre « Invitar al coprogenitor »: obtienes un enlace y un código para enviar por separado. El otro progenitor crea su cuenta con el enlace, introduce el código y tú validas su solicitud.',
+        },
+        {
+          question: '¿Qué pasa si el otro progenitor no se une?',
+          reponse: 'Dualia también funciona en solitario: calendario, gastos, documentos y diario siguen disponibles. La invitación sigue siendo válida y puede regenerarse en cualquier momento desde la pestaña Familia. Cuando el otro progenitor se una, accederá al mismo espacio.',
+        },
+        {
+          question: '¿Cómo funciona el calendario de custodia?',
+          reponse: 'Indicas el ritmo de custodia (una semana de cada dos, por ejemplo) y la fecha de inicio: Dualia genera las semanas de cada uno. Después puedes ajustar una fecha, anotar una entrega o añadir una actividad. Ambos padres ven el mismo calendario.',
+        },
+        {
+          question: '¿Cómo comparto un gasto y escaneo un tique?',
+          reponse: 'En Finanzas, añade un gasto fotografiando el tique o introduciendo el importe. Eliges el reparto y Dualia lleva la cuenta de lo que cada uno debe al otro.',
+        },
+        {
+          question: '¿Para qué sirven la mensajería y la IA que propone citas?',
+          reponse: 'La mensajería es un canal reservado a los dos padres, pensado para ceñirse a los hechos. Cuando un mensaje menciona una cita o una fecha, Dualia propone añadirla al calendario: tú aceptas o ignoras, nada se añade sin ti.',
+        },
+        {
+          question: '¿Puedo añadir a los abuelos o a la niñera?',
+          reponse: 'Sí. Desde Familia > Acceso de terceros, invitas a un allegado con un acceso limitado a lo que decidas compartir (el calendario, por ejemplo). Ese acceso puede retirarse en cualquier momento.',
+        },
+        {
+          question: '¿Cómo elimino mi cuenta?',
+          reponse: 'En Familia > Mi cuenta, elige « Eliminar mi cuenta ». La eliminación es definitiva. Si tu coprogenitor permanece en el espacio, conserva el historial compartido; si estás solo, se elimina todo el espacio.',
+        },
+        {
+          question: '¿Tiene Dualia valor legal?',
+          reponse: 'Las decisiones y los intercambios quedan fechados y registrados, lo que puede ayudar a reconstruir lo acordado. Sin embargo, Dualia no sustituye ni una sentencia ni un convenio regulador. Se está preparando un sellado de tiempo cualificado.',
+        },
+      ],
     },
   },
   pt: {
@@ -2958,6 +3072,63 @@ export const TRADUCTIONS = {
       reassurance: 'Poderá convidar o outro progenitor quando estiver pronto(a) — nada o obriga a fazê-lo agora.',
       continuer: 'Continuar',
     },
+    bienvenue: {
+      passer: 'Saltar',
+      suivant: 'Seguinte',
+      commencer: 'Começar',
+      entreeTitre: 'Rever a apresentação',
+      entreeDesc: 'O que a Dualia faz, em quatro ecrãs',
+      etapes: [
+        { titre: 'O calendário de guarda', texte: 'As semanas de cada um, as entregas e as atividades das crianças, visíveis pelos dois pais.' },
+        { titre: 'As despesas partilhadas', texte: 'Digitalize um talão, escolha a repartição e saiba a qualquer momento quem deve o quê.' },
+        { titre: 'As mensagens', texte: 'Um canal sereno entre pais. Os encontros mencionados são propostos para o calendário.' },
+        { titre: 'O diário', texte: 'Os momentos da criança, partilhados entre as duas casas.' },
+      ],
+    },
+    faq: {
+      titre: 'Perguntas frequentes',
+      sousTitre: 'Toque numa pergunta para ler a resposta.',
+      entreeTitre: 'Perguntas frequentes',
+      entreeDesc: 'Dados, convite, calendário, valor jurídico…',
+      questions: [
+        {
+          question: 'Quem vê os meus dados?',
+          reponse: 'Apenas os dois pais e as pessoas próximas que convidaram veem o vosso espaço familiar. Os dados são alojados na União Europeia. Nunca são vendidos nem cedidos a terceiros para fins comerciais.',
+        },
+        {
+          question: 'Como convido o outro progenitor?',
+          reponse: 'No separador Família, abra « Convidar o coprogenitor »: obtém uma ligação e um código para enviar separadamente. O outro progenitor cria a conta com a ligação, introduz o código e você valida o pedido.',
+        },
+        {
+          question: 'O que acontece se o outro progenitor não aderir?',
+          reponse: 'A Dualia também funciona a sós: calendário, despesas, documentos e diário continuam disponíveis. O convite mantém-se válido e pode ser gerado de novo a qualquer momento no separador Família. Quando o outro progenitor aderir, acede ao mesmo espaço.',
+        },
+        {
+          question: 'Como funciona o calendário de guarda?',
+          reponse: 'Indica o ritmo de guarda (uma semana sim, uma semana não, por exemplo) e a data de início: a Dualia gera as semanas de cada um. Depois pode ajustar uma data, registar uma entrega ou acrescentar uma atividade. Os dois pais veem o mesmo calendário.',
+        },
+        {
+          question: 'Como partilho uma despesa e digitalizo um talão?',
+          reponse: 'Em Finanças, acrescente uma despesa fotografando o talão ou introduzindo o montante. Escolhe a repartição e a Dualia mantém a conta do que cada um deve ao outro.',
+        },
+        {
+          question: 'Para que servem as mensagens e a IA que propõe encontros?',
+          reponse: 'As mensagens são um canal reservado aos dois pais, pensado para se manter factual. Quando uma mensagem menciona uma consulta ou uma data, a Dualia propõe acrescentá-la ao calendário: aceita ou ignora, nada é acrescentado sem si.',
+        },
+        {
+          question: 'Posso acrescentar os avós ou a ama?',
+          reponse: 'Sim. Em Família > Acesso de terceiros, convida uma pessoa próxima com um acesso limitado ao que decidir partilhar (o calendário, por exemplo). Esse acesso pode ser retirado a qualquer momento.',
+        },
+        {
+          question: 'Como elimino a minha conta?',
+          reponse: 'Em Família > A minha conta, escolha « Eliminar a minha conta ». A eliminação é definitiva. Se o seu coprogenitor permanecer no espaço, conserva o histórico partilhado; se estiver sozinho, todo o espaço é eliminado.',
+        },
+        {
+          question: 'A Dualia tem valor jurídico?',
+          reponse: 'As decisões e as trocas ficam datadas e registadas, o que pode ajudar a reconstituir o que foi acordado. No entanto, a Dualia não substitui nem uma sentença nem um acordo parental. Está em preparação um selo temporal qualificado.',
+        },
+      ],
+    },
   },
   en: {
     motDePasse: {
@@ -3943,6 +4114,63 @@ export const TRADUCTIONS = {
       foyerCommunDesc: 'We share the same home',
       reassurance: 'You can invite the other parent whenever you are ready — nothing obliges you to do it now.',
       continuer: 'Continue',
+    },
+    bienvenue: {
+      passer: 'Skip',
+      suivant: 'Next',
+      commencer: 'Get started',
+      entreeTitre: 'See the introduction again',
+      entreeDesc: 'What Dualia does, in four screens',
+      etapes: [
+        { titre: 'The custody calendar', texte: "Each parent's weeks, handovers and the children's activities, visible to both parents." },
+        { titre: 'Shared expenses', texte: 'Scan a receipt, choose the split and know at any time who owes what.' },
+        { titre: 'Messages', texte: 'A calm channel between parents. Appointments mentioned are suggested for the calendar.' },
+        { titre: 'The journal', texte: "The child's moments, shared between both homes." },
+      ],
+    },
+    faq: {
+      titre: 'Frequently asked questions',
+      sousTitre: 'Tap a question to read the answer.',
+      entreeTitre: 'Frequently asked questions',
+      entreeDesc: 'Data, invitation, calendar, legal value…',
+      questions: [
+        {
+          question: 'Who can see my data?',
+          reponse: 'Only the two parents and the relatives you have invited can see your family space. Data is hosted in the European Union. It is never sold or passed on to third parties for commercial purposes.',
+        },
+        {
+          question: 'How do I invite the other parent?',
+          reponse: 'From the Family tab, open "Invite the co-parent": you get a link and a code to send separately. The other parent creates their account with the link, enters the code, and you approve their request.',
+        },
+        {
+          question: 'What happens if the other parent does not join?',
+          reponse: 'Dualia also works on your own: calendar, expenses, documents and journal remain available. The invitation stays valid and can be regenerated at any time from the Family tab. When the other parent joins, they access the same space.',
+        },
+        {
+          question: 'How does the custody calendar work?',
+          reponse: "You set the custody rhythm (every other week, for example) and the start date: Dualia generates each parent's weeks. You can then adjust a date, note a handover or add an activity. Both parents see the same calendar.",
+        },
+        {
+          question: 'How do I share an expense and scan a receipt?',
+          reponse: 'In Finances, add an expense by photographing the receipt or entering the amount. You choose the split, and Dualia keeps track of what each parent owes the other.',
+        },
+        {
+          question: 'What are messages and the AI that suggests appointments for?',
+          reponse: 'Messaging is a channel reserved for the two parents, designed to stay factual. When a message mentions an appointment or a date, Dualia offers to add it to the calendar: you accept or ignore it, nothing is added without you.',
+        },
+        {
+          question: 'Can I add grandparents or a nanny?',
+          reponse: 'Yes. From Family > Third-party access, you invite a relative with access limited to what you choose to share (the calendar, for example). That access can be withdrawn at any time.',
+        },
+        {
+          question: 'How do I delete my account?',
+          reponse: 'In Family > My account, choose "Delete my account". Deletion is permanent. If your co-parent stays in the space, they keep the shared history; if you are alone, the whole space is deleted.',
+        },
+        {
+          question: 'Does Dualia have legal value?',
+          reponse: 'Decisions and exchanges are timestamped and logged, which can help reconstruct what was agreed. However, Dualia does not replace a court ruling or a parenting agreement. A qualified timestamp is in preparation.',
+        },
+      ],
     },
   },
 } as const;

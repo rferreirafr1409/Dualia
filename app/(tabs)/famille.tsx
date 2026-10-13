@@ -64,6 +64,8 @@ export default function FamilleScreen() {
   const evenements = useStore((s) => s.evenements);
   const parents = useStore((s) => s.parents);
   const t = TRADUCTIONS[langue].famille;
+  const tFaq = TRADUCTIONS[langue].faq;
+  const tBienvenue = TRADUCTIONS[langue].bienvenue;
 
   const roleAujourdhui = parentDuJour(new Date(), evenements);
   const nomChezQui = roleAujourdhui ? parents[roleAujourdhui]?.nom?.split(' ')[0] : null;
@@ -95,6 +97,26 @@ export default function FamilleScreen() {
       titre: LIBELLES_COMPTE[langue].titre,
       desc: LIBELLES_COMPTE[langue].desc,
       route: '/securite-compte',
+    },
+    // Aide (DUA-127, DUA-053) : les questions que posent les premiers
+    // testeurs, et la presentation du premier lancement pour qui l'a passee
+    // trop vite. Sans ces deux lignes, l'une n'existait pas et l'autre ne
+    // se revoyait jamais.
+    {
+      icone: 'help-circle-outline',
+      couleur: COLORS.vert,
+      fond: '#EEF4F1',
+      titre: tFaq.entreeTitre,
+      desc: tFaq.entreeDesc,
+      route: '/faq',
+    },
+    {
+      icone: 'play-circle-outline',
+      couleur: COLORS.terracotta,
+      fond: '#F6EFEA',
+      titre: tBienvenue.entreeTitre,
+      desc: tBienvenue.entreeDesc,
+      route: '/bienvenue',
     },
     {
       icone: 'shield-outline',
