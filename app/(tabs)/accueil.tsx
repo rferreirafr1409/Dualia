@@ -366,12 +366,15 @@ export default function AccueilScreen() {
               <Text style={styles.muted}>{t.accueil.cockpitRienATraiter}</Text>
             )}
             {nbSuggestionsMessages > 0 ? (
-              <View style={styles.cardRow}>
+              // DUA-135 : ces propositions vivent dans la messagerie, pas
+              // dans les decisions. La ligne y mene directement, sans passer
+              // par la carte qui, elle, ouvre les decisions.
+              <Pressable style={styles.cardRow} onPress={() => router.push('/messagerie' as any)}>
                 <Text style={styles.cardRowTexte} numberOfLines={1}>
                   {t.accueil.messagesAExaminer(nbSuggestionsMessages)}
                 </Text>
                 <Text style={styles.cardRowChevron}>›</Text>
-              </View>
+              </Pressable>
             ) : null}
           </Pressable>
         );
