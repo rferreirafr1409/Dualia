@@ -37,7 +37,7 @@ import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
-import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
+import { aideMotDePasse, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
 import { TRADUCTIONS } from '../constants/i18n';
 
 function alertCompat(titre: string, message?: string) {
@@ -186,7 +186,7 @@ export default function CreerEspaceScreen() {
 
   // Message affiché sous le champ pendant la saisie, plutôt qu'une alerte
   // au moment de valider : le parent voit ce qui manque au fur et à mesure.
-  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse) : null;
+  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse, langue) : null;
 
   // Arrivée depuis le lien de confirmation : on ouvre la session avec les
   // jetons que Supabase a joints à la redirection, puis on laisse le store
@@ -372,7 +372,7 @@ export default function CreerEspaceScreen() {
   // revient donc explicitement à l'écran de reprise, avec de quoi réessayer.
   const echouer = (err: any) => {
     setEtat('reprise');
-    alertCompat(t.erreurTitre, traduireErreurAuth(err?.message));
+    alertCompat(t.erreurTitre, traduireErreurAuth(err?.message, langue));
   };
 
   const creerEspace = async () => {
@@ -380,7 +380,7 @@ export default function CreerEspaceScreen() {
       alertCompat(t.champsIncompletsTitre, t.champsIncompletsCorps);
       return;
     }
-    const probleme = validerMotDePasse(motDePasse);
+    const probleme = validerMotDePasse(motDePasse, langue);
     if (probleme) {
       alertCompat(t.motDePasseFaibleTitre, probleme);
       return;
@@ -445,7 +445,7 @@ export default function CreerEspaceScreen() {
       // « Terminons votre espace familial », sans aucun compte derrière et
       // sans aucun chemin de retour : le bouton y relançait la même erreur
       // indéfiniment.
-      alertCompat(t.erreurTitre, traduireErreurAuth(err?.message));
+      alertCompat(t.erreurTitre, traduireErreurAuth(err?.message, langue));
     } finally {
       fabricationEnCours.current = false;
       setChargement(false);
@@ -478,7 +478,7 @@ export default function CreerEspaceScreen() {
     });
     setChargement(false);
     if (error) {
-      alertCompat(t.envoiImpossibleTitre, traduireErreurAuth(error.message));
+      alertCompat(t.envoiImpossibleTitre, traduireErreurAuth(error.message, langue));
       return;
     }
     setRenvoye(true);
@@ -670,12 +670,12 @@ export default function CreerEspaceScreen() {
           style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
           value={motDePasse}
           onChangeText={setMotDePasse}
-          placeholder={AIDE_MOT_DE_PASSE}
+          placeholder={aideMotDePasse(langue)}
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
         />
         <Text style={[styles.aide, !!erreurMotDePasse && styles.aideErreur]}>
-          {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
+          {erreurMotDePasse ?? aideMotDePasse(langue)}
         </Text>
 
         {/* DUA-125 : au moment de donner un e-mail et un mot de passe, un

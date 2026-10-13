@@ -2,6 +2,18 @@ export type Langue = 'fr' | 'pt' | 'es' | 'en';
 
 export const TRADUCTIONS = {
   fr: {
+    motDePasse: {
+      aide: '10 caractères minimum, avec au moins une lettre, un chiffre et un symbole.',
+      tropCourt: (n: number) => `Le mot de passe doit contenir au moins ${n} caractères.`,
+      sansLettre: 'Le mot de passe doit contenir au moins une lettre.',
+      sansChiffre: 'Le mot de passe doit contenir au moins un chiffre.',
+      sansSymbole: 'Le mot de passe doit contenir au moins un symbole (par exemple ! ? # ou -).',
+      fuite: "Ce mot de passe figure dans une fuite de données connue. Choisissez-en un autre, utilisé nulle part ailleurs.",
+      compteExistant: 'Un compte existe déjà avec cette adresse email.',
+      emailInvalide: "Cette adresse email n'est pas valide.",
+      tropDeTentatives: 'Trop de tentatives. Réessayez dans quelques minutes.',
+      erreurGenerique: 'Une erreur est survenue.',
+    },
     inactivite: {
       titre: 'Toujours là ?',
       corps: (s: number) =>
@@ -976,6 +988,18 @@ export const TRADUCTIONS = {
     },
   },
   es: {
+    motDePasse: {
+      aide: '10 caracteres como mínimo, con al menos una letra, un número y un símbolo.',
+      tropCourt: (n: number) => `La contraseña debe tener al menos ${n} caracteres.`,
+      sansLettre: 'La contraseña debe contener al menos una letra.',
+      sansChiffre: 'La contraseña debe contener al menos un número.',
+      sansSymbole: 'La contraseña debe contener al menos un símbolo (por ejemplo ! ? # o -).',
+      fuite: 'Esta contraseña aparece en una filtración de datos conocida. Elige otra, que no uses en ningún otro sitio.',
+      compteExistant: 'Ya existe una cuenta con esta dirección de correo.',
+      emailInvalide: 'Esta dirección de correo no es válida.',
+      tropDeTentatives: 'Demasiados intentos. Vuelve a intentarlo en unos minutos.',
+      erreurGenerique: 'Se ha producido un error.',
+    },
     inactivite: {
       titre: '¿Sigues ahí?',
       corps: (s: number) =>
@@ -1950,6 +1974,18 @@ export const TRADUCTIONS = {
     },
   },
   pt: {
+    motDePasse: {
+      aide: '10 caracteres no mínimo, com pelo menos uma letra, um algarismo e um símbolo.',
+      tropCourt: (n: number) => `A palavra-passe deve ter pelo menos ${n} caracteres.`,
+      sansLettre: 'A palavra-passe deve conter pelo menos uma letra.',
+      sansChiffre: 'A palavra-passe deve conter pelo menos um algarismo.',
+      sansSymbole: 'A palavra-passe deve conter pelo menos um símbolo (por exemplo ! ? # ou -).',
+      fuite: 'Esta palavra-passe consta de uma fuga de dados conhecida. Escolha outra, que não use em mais lado nenhum.',
+      compteExistant: 'Já existe uma conta com este endereço de e-mail.',
+      emailInvalide: 'Este endereço de e-mail não é válido.',
+      tropDeTentatives: 'Demasiadas tentativas. Tente novamente dentro de alguns minutos.',
+      erreurGenerique: 'Ocorreu um erro.',
+    },
     inactivite: {
       titre: 'Ainda aí?',
       corps: (s: number) =>
@@ -2924,6 +2960,18 @@ export const TRADUCTIONS = {
     },
   },
   en: {
+    motDePasse: {
+      aide: 'At least 10 characters, with at least one letter, one digit and one symbol.',
+      tropCourt: (n: number) => `The password must be at least ${n} characters long.`,
+      sansLettre: 'The password must contain at least one letter.',
+      sansChiffre: 'The password must contain at least one digit.',
+      sansSymbole: 'The password must contain at least one symbol (for example ! ? # or -).',
+      fuite: 'This password appears in a known data breach. Choose another one that you use nowhere else.',
+      compteExistant: 'An account already exists with this email address.',
+      emailInvalide: 'This email address is not valid.',
+      tropDeTentatives: 'Too many attempts. Try again in a few minutes.',
+      erreurGenerique: 'Something went wrong.',
+    },
     inactivite: {
       titre: 'Still there?',
       corps: (s: number) =>

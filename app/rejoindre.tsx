@@ -19,7 +19,7 @@ import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { lienApplication } from '../constants/liens';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
-import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
+import { aideMotDePasse, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
 import { TRADUCTIONS } from '../constants/i18n';
 import {
   lireInvitationEnAttente,
@@ -55,7 +55,7 @@ export default function RejoindreScreen() {
   const [enAttente, setEnAttente] = useState(false);
   const [refus, setRefus] = useState<string | null>(null);
 
-  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse) : null;
+  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse, langue) : null;
 
   // Adresse du compte deja connecte sur cet appareil, s'il y en a un. Quand
   // elle correspond a l'adresse saisie, le mot de passe n'a plus rien a
@@ -178,7 +178,7 @@ export default function RejoindreScreen() {
       return;
     }
     if (!sessionCorrespond) {
-      const probleme = validerMotDePasse(motDePasse);
+      const probleme = validerMotDePasse(motDePasse, langue);
       if (probleme) {
         alertCompat(t.motDePasseFaibleTitre, probleme);
         return;
@@ -301,7 +301,7 @@ export default function RejoindreScreen() {
       setEnAttente(true);
       oublierInvitationEnAttente();
     } catch (err: any) {
-      alertCompat(t.erreurTitre, traduireErreurAuth(err?.message));
+      alertCompat(t.erreurTitre, traduireErreurAuth(err?.message, langue));
     } finally {
       setChargement(false);
     }
@@ -399,12 +399,12 @@ export default function RejoindreScreen() {
               style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
               value={motDePasse}
               onChangeText={setMotDePasse}
-              placeholder={AIDE_MOT_DE_PASSE}
+              placeholder={aideMotDePasse(langue)}
               placeholderTextColor={COLORS.ardoise}
               secureTextEntry
             />
             <Text style={[styles.aide, !!erreurMotDePasse && styles.aideErreur]}>
-              {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
+              {erreurMotDePasse ?? aideMotDePasse(langue)}
             </Text>
           </>
         )}

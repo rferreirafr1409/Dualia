@@ -27,7 +27,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
-import { AIDE_MOT_DE_PASSE, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
+import { aideMotDePasse, validerMotDePasse, traduireErreurAuth } from '../constants/motDePasse';
 import { TRADUCTIONS } from '../constants/i18n';
 
 function alertCompat(titre: string, message?: string) {
@@ -84,7 +84,7 @@ export default function ReinitialiserMotDePasseScreen() {
   const [tokens] = useState(() => lireTokens());
   const [etatEcran, setEtatEcran] = useState<EtatEcran>(tokens ? 'pret_a_confirmer' : 'echec');
 
-  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse) : null;
+  const erreurMotDePasse = motDePasse.length > 0 ? validerMotDePasse(motDePasse, langue) : null;
   const erreurConfirmation =
     confirmation.length > 0 && motDePasse !== confirmation
       ? t.confirmationDifferente
@@ -112,7 +112,7 @@ export default function ReinitialiserMotDePasseScreen() {
   };
 
   const enregistrerNouveauMotDePasse = async () => {
-    const probleme = validerMotDePasse(motDePasse);
+    const probleme = validerMotDePasse(motDePasse, langue);
     if (probleme) {
       alertCompat(t.motDePasseFaibleTitre, probleme);
       return;
@@ -139,7 +139,7 @@ export default function ReinitialiserMotDePasseScreen() {
       // Le motif réel est affiché, traduit en français. La session vient
       // d'être établie à l'étape précédente : l'échec ici vient presque
       // toujours du mot de passe lui-même, pas du lien.
-      alertCompat(t.refuseTitre, traduireErreurAuth(err?.message));
+      alertCompat(t.refuseTitre, traduireErreurAuth(err?.message, langue));
     } finally {
       setChargement(false);
     }
@@ -188,12 +188,12 @@ export default function ReinitialiserMotDePasseScreen() {
           style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
           value={motDePasse}
           onChangeText={setMotDePasse}
-          placeholder={AIDE_MOT_DE_PASSE}
+          placeholder={aideMotDePasse(langue)}
           placeholderTextColor={COLORS.ardoise}
           secureTextEntry
         />
         <Text style={[styles.aide, !!erreurMotDePasse && styles.aideErreur]}>
-          {erreurMotDePasse ?? AIDE_MOT_DE_PASSE}
+          {erreurMotDePasse ?? aideMotDePasse(langue)}
         </Text>
 
         <Text style={styles.label}>{t.confirmerMotDePasse}</Text>
