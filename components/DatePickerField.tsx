@@ -6,15 +6,33 @@ import {
   format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay,
   addMonths, subMonths, getDay, setYear, setMonth,
 } from 'date-fns';
-import { fr, pt } from 'date-fns/locale';
+import { fr, pt, es, enGB } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { useStore } from '../store/useStore';
 
-const JOURS_FR = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
-const JOURS_PT = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'];
-const MOIS_FR = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-const MOIS_PT = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+type Langue = 'fr' | 'pt' | 'es' | 'en';
+
+const LOCALES = { fr, pt, es, en: enGB };
+const JOURS: Record<Langue, string[]> = {
+  fr: ['L', 'M', 'M', 'J', 'V', 'S', 'D'],
+  pt: ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'],
+  es: ['L', 'M', 'X', 'J', 'V', 'S', 'D'],
+  en: ['M', 'T', 'W', 'T', 'F', 'S', 'S'],
+};
+const MOIS: Record<Langue, string[]> = {
+  fr: ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'],
+  pt: ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'],
+  es: ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+};
+const FERMER: Record<Langue, string> = { fr: 'Fermer', pt: 'Fechar', es: 'Cerrar', en: 'Close' };
+const PLACEHOLDER: Record<Langue, string> = {
+  fr: 'Sélectionner une date',
+  pt: 'Selecionar uma data',
+  es: 'Seleccionar una fecha',
+  en: 'Select a date',
+};
 
 function jourFR(date: Date): number {
   const d = getDay(date);
@@ -30,9 +48,9 @@ type Props = {
 
 export default function DatePickerField({ label, value, onChange, minDate }: Props) {
   const langue = useStore((s) => s.langue);
-  const locale = langue === 'pt' ? pt : fr;
-  const jours = langue === 'pt' ? JOURS_PT : JOURS_FR;
-  const moisLabels = langue === 'pt' ? MOIS_PT : MOIS_FR;
+  const locale = LOCALES[langue] ?? fr;
+  const jours = JOURS[langue] ?? JOURS.fr;
+  const moisLabels = MOIS[langue] ?? MOIS.fr;
 
   const [visible, setVisible] = useState(false);
   const [moisAffiche, setMoisAffiche] = useState(value ?? new Date());
@@ -81,7 +99,7 @@ export default function DatePickerField({ label, value, onChange, minDate }: Pro
       <Text style={styles.label}>{label}</Text>
       <Pressable style={styles.field} onPress={ouvrir}>
         <Text style={[styles.fieldText, !value && styles.fieldPlaceholder]}>
-          {value ? format(value, 'd MMMM yyyy', { locale }) : (langue === 'pt' ? 'Selecionar uma data' : 'Sélectionner une date')}
+          {value ? format(value, 'd MMMM yyyy', { locale }) : (PLACEHOLDER[langue] ?? PLACEHOLDER.fr)}
         </Text>
         <Ionicons name="calendar-outline" size={17} color={COLORS.ardoise} />
       </Pressable>
@@ -193,7 +211,7 @@ export default function DatePickerField({ label, value, onChange, minDate }: Pro
             )}
 
             <Pressable style={styles.closeBtn} onPress={() => setVisible(false)}>
-              <Text style={styles.closeBtnText}>{langue === 'pt' ? 'Fechar' : 'Fermer'}</Text>
+              <Text style={styles.closeBtnText}>{FERMER[langue] ?? FERMER.fr}</Text>
             </Pressable>
           </Pressable>
         </Pressable>

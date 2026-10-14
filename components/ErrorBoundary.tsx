@@ -16,6 +16,30 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
+import { useStore } from '../store/useStore';
+
+const LIBELLES: Record<'fr' | 'pt' | 'es' | 'en', { titre: string; texte: string; recharger: string }> = {
+  fr: {
+    titre: "Cet écran n'a pas pu s'afficher",
+    texte: "Vos données sont intactes. Rechargez la page : si le problème persiste, il vient probablement d'un élément précis de votre espace, et nous pouvons le corriger.",
+    recharger: 'Recharger',
+  },
+  pt: {
+    titre: 'Não foi possível mostrar este ecrã',
+    texte: 'Os seus dados estão intactos. Recarregue a página: se o problema persistir, vem provavelmente de um elemento específico do seu espaço, e podemos corrigi-lo.',
+    recharger: 'Recarregar',
+  },
+  es: {
+    titre: 'Esta pantalla no se ha podido mostrar',
+    texte: 'Tus datos están intactos. Recarga la página: si el problema persiste, probablemente venga de un elemento concreto de tu espacio, y podemos corregirlo.',
+    recharger: 'Recargar',
+  },
+  en: {
+    titre: 'This screen could not be displayed',
+    texte: 'Your data is intact. Reload the page: if the problem persists, it probably comes from a specific item in your space, and we can fix it.',
+    recharger: 'Reload',
+  },
+};
 
 type Props = { children: React.ReactNode };
 type State = { enErreur: boolean };
@@ -48,16 +72,16 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   render() {
     if (!this.state.enErreur) return this.props.children;
 
+    // Composant de classe : pas de hook, on lit l'etat du store directement.
+    const l = LIBELLES[useStore.getState().langue] ?? LIBELLES.fr;
+
     return (
       <View style={styles.ecran}>
         <View style={styles.carte}>
-          <Text style={styles.titre}>Cet écran n'a pas pu s'afficher</Text>
-          <Text style={styles.texte}>
-            Vos données sont intactes. Rechargez la page : si le problème persiste, il vient
-            probablement d'un élément précis de votre espace, et nous pouvons le corriger.
-          </Text>
+          <Text style={styles.titre}>{l.titre}</Text>
+          <Text style={styles.texte}>{l.texte}</Text>
           <Pressable style={styles.bouton} onPress={this.recharger}>
-            <Text style={styles.boutonTexte}>Recharger</Text>
+            <Text style={styles.boutonTexte}>{l.recharger}</Text>
           </Pressable>
         </View>
       </View>

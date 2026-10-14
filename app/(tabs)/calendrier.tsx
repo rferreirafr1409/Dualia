@@ -365,7 +365,7 @@ export default function CalendrierScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.modeleGardeLienBtn} onPress={() => router.push('/calendriers-externes' as any)}>
               <Ionicons name="link-outline" size={13} color={COLORS.vert} />
-              <Text style={styles.modeleGardeLienTxt} numberOfLines={1}>Calendriers externes</Text>
+              <Text style={styles.modeleGardeLienTxt} numberOfLines={1}>{t.calendriersExternes}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -374,7 +374,7 @@ export default function CalendrierScreen() {
           <TouchableOpacity
             onPress={() => setMois((m) => subMonths(m, 1))}
             style={styles.navBtn}
-            accessibilityLabel={langue === 'pt' ? 'Mês anterior' : 'Mois précédent'}
+            accessibilityLabel={t.moisPrecedent}
           >
             <Ionicons name="chevron-back" size={18} color={COLORS.ardoise} />
           </TouchableOpacity>
@@ -387,7 +387,7 @@ export default function CalendrierScreen() {
           <TouchableOpacity
             onPress={() => setMois((m) => addMonths(m, 1))}
             style={styles.navBtn}
-            accessibilityLabel={langue === 'pt' ? 'Mês seguinte' : 'Mois suivant'}
+            accessibilityLabel={t.moisSuivant}
           >
             <Ionicons name="chevron-forward" size={18} color={COLORS.ardoise} />
           </TouchableOpacity>
@@ -518,11 +518,11 @@ export default function CalendrierScreen() {
                   style={styles.tiersRetirerBtn}
                   onPress={() => supprimerEvenementGarde(elementsJour.garde!.id)}
                 >
-                  <Text style={styles.tiersRetirerBtnTexte}>Retirer, revenir au rythme habituel</Text>
+                  <Text style={styles.tiersRetirerBtnTexte}>{t.retirerTiers}</Text>
                 </TouchableOpacity>
               ) : tiersGardiens.length > 0 ? (
                 <View style={styles.tiersConfierBloc}>
-                  <Text style={styles.tiersConfierLabel}>Confier ce jour à :</Text>
+                  <Text style={styles.tiersConfierLabel}>{t.confierJourA}</Text>
                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
                     {tiersGardiens.map((tr) => (
                       <TouchableOpacity
@@ -668,7 +668,7 @@ export default function CalendrierScreen() {
 
               {enfants.length > 0 ? (
                 <>
-                  <Text style={styles.label}>Enfant concerné (optionnel)</Text>
+                  <Text style={styles.label}>{t.enfantConcerneOptionnel}</Text>
                   <View style={styles.parentChoixLigne}>
                     <TouchableOpacity
                       style={[styles.parentChoix, formEnfantId === null && { backgroundColor: COLORS.vertProfond, borderColor: COLORS.vertProfond }]}
