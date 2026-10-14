@@ -870,6 +870,19 @@ export default function MessagerieScreen() {
             placeholderTextColor={COLORS.ardoise}
             multiline
             editable={!verificationEnCours}
+            // Sur ordinateur, Entrée envoie le message (Maj+Entrée va à la
+            // ligne). Sur mobile, le clavier garde son comportement natif.
+            onKeyPress={
+              Platform.OS === 'web'
+                ? (e) => {
+                    const touche = e.nativeEvent as unknown as { key?: string; shiftKey?: boolean };
+                    if (touche.key === 'Enter' && !touche.shiftKey) {
+                      e.preventDefault();
+                      envoyerMessage();
+                    }
+                  }
+                : undefined
+            }
           />
           <Pressable
             style={[
