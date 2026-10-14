@@ -18,6 +18,17 @@ import { retour } from '../lib/navigation';
 
 const LOCALES = { fr, pt, es, en: enGB };
 
+const LIBELLES: Record<'fr' | 'pt' | 'es' | 'en', {
+  toutReplier: string;
+  revelationLe: (date: string) => string;
+  ajouterSouvenir: string;
+}> = {
+  fr: { toutReplier: 'Tout replier', revelationLe: (date) => `révélation le ${date}`, ajouterSouvenir: 'Ajouter un souvenir' },
+  pt: { toutReplier: 'Recolher tudo', revelationLe: (date) => `revelação a ${date}`, ajouterSouvenir: 'Adicionar uma memória' },
+  es: { toutReplier: 'Plegar todo', revelationLe: (date) => `se revela el ${date}`, ajouterSouvenir: 'Añadir un recuerdo' },
+  en: { toutReplier: 'Collapse all', revelationLe: (date) => `revealed on ${date}`, ajouterSouvenir: 'Add a memory' },
+};
+
 function formatDate(isoDate: string, langue: 'fr' | 'pt' | 'es' | 'en') {
   const d = new Date(isoDate);
   return d.toLocaleDateString(
@@ -34,6 +45,7 @@ export default function EnfantHistoireScreen() {
   const entries = useStore((s) => s.journalEntries);
   const parents = useStore((s) => s.parents);
   const t = TRADUCTIONS[langue].histoireEnfant;
+  const l = LIBELLES[langue] ?? LIBELLES.fr;
 
   const [onglet, setOnglet] = useState<'chronologie' | 'capsules'>('chronologie');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -91,7 +103,7 @@ export default function EnfantHistoireScreen() {
         </View>
         {expandedId ? (
           <Pressable style={styles.collapseAllBtn} onPress={() => setExpandedId(null)}>
-            <Text style={styles.collapseAllBtnText}>Tout replier</Text>
+            <Text style={styles.collapseAllBtnText}>{l.toutReplier}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -131,7 +143,7 @@ export default function EnfantHistoireScreen() {
                       <View style={{ flex: 1 }}>
                         <Text style={styles.ligneTitreLocked}>{t.capsules}</Text>
                         <Text style={styles.ligneMeta}>
-                          {author} · révélation le {formatDate(entry.dateRevelation!, langue)}
+                          {author} · {l.revelationLe(formatDate(entry.dateRevelation!, langue))}
                         </Text>
                       </View>
                     </View>
@@ -175,7 +187,7 @@ export default function EnfantHistoireScreen() {
 
       <Pressable style={styles.fab} onPress={ajouterSouvenir}>
         <Ionicons name="add" size={20} color={COLORS.blanc} />
-        <Text style={styles.fabTxt}>Ajouter un souvenir</Text>
+        <Text style={styles.fabTxt}>{l.ajouterSouvenir}</Text>
       </Pressable>
     </SafeAreaView>
   );

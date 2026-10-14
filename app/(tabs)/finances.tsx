@@ -264,11 +264,11 @@ const CATEGORIE_VERS_REGLE: Partial<Record<CategorieDepense, CategorieRegle>> = 
   activites: 'activitesExtra',
 };
 
-const LABELS_CATEGORIE_REGLE: Record<CategorieRegle, string> = {
-  fraisMedicaux: 'frais médicaux',
-  fraisScolaires: 'frais scolaires',
-  activitesExtra: 'activités extrascolaires',
-  autre: 'autre',
+const LABELS_CATEGORIE_REGLE: Record<'fr' | 'pt' | 'es' | 'en', Record<CategorieRegle, string>> = {
+  fr: { fraisMedicaux: 'frais médicaux', fraisScolaires: 'frais scolaires', activitesExtra: 'activités extrascolaires', autre: 'autre' },
+  pt: { fraisMedicaux: 'despesas de saúde', fraisScolaires: 'despesas escolares', activitesExtra: 'atividades extracurriculares', autre: 'outro' },
+  es: { fraisMedicaux: 'gastos médicos', fraisScolaires: 'gastos escolares', activitesExtra: 'actividades extraescolares', autre: 'otro' },
+  en: { fraisMedicaux: 'medical costs', fraisScolaires: 'school costs', activitesExtra: 'extracurricular activities', autre: 'other' },
 };
 
 function compresserImageWeb(dataUrl: string): Promise<{ dataUrl: string; base64: string; mediaType: string }> {
@@ -1024,11 +1024,11 @@ function FinancesScreenInner() {
                 color={cadreFamilial.statut === 'valide' ? COLORS.vert : COLORS.or}
               />
               <View>
-                <Text style={styles.cadreCardTitre}>Votre cadre familial</Text>
+                <Text style={styles.cadreCardTitre}>{t.cadreCardTitre}</Text>
                 <Text style={styles.cadreCardSousTitre}>
                   {cadreFamilial.statut === 'valide'
-                    ? 'Validé — règles actives'
-                    : `${cadreFamilial.regles.filter((r) => r.validation.statut !== 'a_verifier').length} / ${cadreFamilial.regles.length} règles vérifiées`}
+                    ? t.cadreValide
+                    : t.cadreVerifiees(cadreFamilial.regles.filter((r) => r.validation.statut !== 'a_verifier').length, cadreFamilial.regles.length)}
                 </Text>
               </View>
             </View>
@@ -1323,23 +1323,22 @@ function FinancesScreenInner() {
               {formPartage === 'regle' && regleActive ? (
                 <>
                   <Pressable style={styles.whyToggle} onPress={() => setWhyOpen(!whyOpen)}>
-                    <Text style={styles.whyToggleTexte}>Pourquoi cette répartition ?</Text>
+                    <Text style={styles.whyToggleTexte}>{t.pourquoiRepartition}</Text>
                     <Ionicons name={whyOpen ? 'chevron-up' : 'chevron-down'} size={14} color={COLORS.vert} />
                   </Pressable>
                   {whyOpen && (
                     <View style={styles.whyBox}>
                       <Text style={styles.whyBoxLigne}>
-                        Catégorie : {LABELS_CATEGORIE_REGLE[regleActive.categorie]}
+                        {t.whyCategorie} : {LABELS_CATEGORIE_REGLE[langue][regleActive.categorie]}
                       </Text>
                       {regleActive.clauseSource?.reference && (
-                        <Text style={styles.whyBoxLigne}>Source : {regleActive.clauseSource.reference}</Text>
+                        <Text style={styles.whyBoxLigne}>{t.whySource} : {regleActive.clauseSource.reference}</Text>
                       )}
                       {regleActive.clauseSource?.extrait && (
                         <Text style={styles.whyBoxExtrait}>« {regleActive.clauseSource.extrait} »</Text>
                       )}
                       <Text style={styles.whyBoxNote}>
-                        Répartition proposée à titre indicatif à partir de votre cadre familial. Ne
-                        remplace pas un avis juridique.
+                        {t.repartitionNote}
                       </Text>
                     </View>
                   )}

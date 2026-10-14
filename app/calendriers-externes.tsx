@@ -19,12 +19,149 @@ import { useCalendriersExternes } from '../hooks/useCalendriersExternes';
 import { choisirFichierICS } from '../lib/pickerFichierICS';
 import { alerter, confirmer } from '../lib/dialogue';
 import { retour } from '../lib/navigation';
+import { useStore } from '../store/useStore';
+
+type Langue = 'fr' | 'pt' | 'es' | 'en';
+
+const LIBELLES: Record<Langue, {
+  titre: string;
+  sousTitre: string;
+  aucun: string;
+  lienIcs: string;
+  fichier: string;
+  fichierImporte: string;
+  synchroniseLe: (date: string) => string;
+  locale: string;
+  placeholderNom: string;
+  placeholderUrl: string;
+  annuler: string;
+  ajouter: string;
+  choisirFichier: string;
+  importEnCours: string;
+  ajouterCalendrier: string;
+  erreurNomEtLien: string;
+  erreurNomDabord: string;
+  erreurGenerique: string;
+  erreurLecture: (detail: string) => string;
+  erreurLectureSimple: string;
+  supprimerTitre: string;
+  supprimerTexte: (nom: string) => string;
+  supprimer: string;
+  syncImpossible: string;
+}> = {
+  fr: {
+    titre: 'Calendriers externes',
+    sousTitre: "Abonne-toi au calendrier d'une école, d'un club, ou importe un fichier .ics. Ces événements s'affichent dans ton agenda, clairement identifiés, sans jamais modifier tes événements Dualia.",
+    aucun: "Aucun calendrier externe pour l'instant.",
+    lienIcs: 'Lien .ics',
+    fichier: 'Fichier',
+    fichierImporte: 'Fichier importé',
+    synchroniseLe: (date) => ` · synchronisé le ${date}`,
+    locale: 'fr-FR',
+    placeholderNom: "Nom (ex. École d'Emma)",
+    placeholderUrl: 'https://... .ics',
+    annuler: 'Annuler',
+    ajouter: 'Ajouter',
+    choisirFichier: 'Choisir le fichier',
+    importEnCours: 'Import…',
+    ajouterCalendrier: 'Ajouter un calendrier',
+    erreurNomEtLien: 'Donne un nom et un lien .ics.',
+    erreurNomDabord: "Donne d'abord un nom à ce calendrier.",
+    erreurGenerique: 'Une erreur est survenue.',
+    erreurLecture: (detail) => `Impossible de lire ce fichier : ${detail}`,
+    erreurLectureSimple: 'Impossible de lire ce fichier.',
+    supprimerTitre: 'Supprimer ce calendrier ?',
+    supprimerTexte: (nom) => `"${nom}" et tous ses événements seront retirés de ta Home.`,
+    supprimer: 'Supprimer',
+    syncImpossible: 'Synchronisation impossible',
+  },
+  pt: {
+    titre: 'Calendários externos',
+    sousTitre: 'Subscreva o calendário de uma escola, de um clube, ou importe um ficheiro .ics. Estes eventos aparecem na sua agenda, claramente identificados, sem nunca alterar os seus eventos Dualia.',
+    aucun: 'Ainda não há calendários externos.',
+    lienIcs: 'Ligação .ics',
+    fichier: 'Ficheiro',
+    fichierImporte: 'Ficheiro importado',
+    synchroniseLe: (date) => ` · sincronizado em ${date}`,
+    locale: 'pt-PT',
+    placeholderNom: 'Nome (ex. Escola da Emma)',
+    placeholderUrl: 'https://... .ics',
+    annuler: 'Cancelar',
+    ajouter: 'Adicionar',
+    choisirFichier: 'Escolher o ficheiro',
+    importEnCours: 'A importar…',
+    ajouterCalendrier: 'Adicionar um calendário',
+    erreurNomEtLien: 'Indique um nome e uma ligação .ics.',
+    erreurNomDabord: 'Dê primeiro um nome a este calendário.',
+    erreurGenerique: 'Ocorreu um erro.',
+    erreurLecture: (detail) => `Não foi possível ler este ficheiro: ${detail}`,
+    erreurLectureSimple: 'Não foi possível ler este ficheiro.',
+    supprimerTitre: 'Eliminar este calendário?',
+    supprimerTexte: (nom) => `"${nom}" e todos os seus eventos serão retirados do seu Início.`,
+    supprimer: 'Eliminar',
+    syncImpossible: 'Sincronização impossível',
+  },
+  es: {
+    titre: 'Calendarios externos',
+    sousTitre: 'Suscríbete al calendario de un colegio, de un club, o importa un archivo .ics. Estos eventos se muestran en tu agenda, claramente identificados, sin modificar nunca tus eventos de Dualia.',
+    aucun: 'Todavía no hay calendarios externos.',
+    lienIcs: 'Enlace .ics',
+    fichier: 'Archivo',
+    fichierImporte: 'Archivo importado',
+    synchroniseLe: (date) => ` · sincronizado el ${date}`,
+    locale: 'es-ES',
+    placeholderNom: 'Nombre (ej. Colegio de Emma)',
+    placeholderUrl: 'https://... .ics',
+    annuler: 'Cancelar',
+    ajouter: 'Añadir',
+    choisirFichier: 'Elegir el archivo',
+    importEnCours: 'Importando…',
+    ajouterCalendrier: 'Añadir un calendario',
+    erreurNomEtLien: 'Indica un nombre y un enlace .ics.',
+    erreurNomDabord: 'Ponle primero un nombre a este calendario.',
+    erreurGenerique: 'Se ha producido un error.',
+    erreurLecture: (detail) => `No se ha podido leer este archivo: ${detail}`,
+    erreurLectureSimple: 'No se ha podido leer este archivo.',
+    supprimerTitre: '¿Eliminar este calendario?',
+    supprimerTexte: (nom) => `"${nom}" y todos sus eventos se retirarán de tu Inicio.`,
+    supprimer: 'Eliminar',
+    syncImpossible: 'Sincronización imposible',
+  },
+  en: {
+    titre: 'External calendars',
+    sousTitre: "Subscribe to a school's or club's calendar, or import an .ics file. These events appear in your diary, clearly labelled, without ever changing your Dualia events.",
+    aucun: 'No external calendars yet.',
+    lienIcs: '.ics link',
+    fichier: 'File',
+    fichierImporte: 'Imported file',
+    synchroniseLe: (date) => ` · synced on ${date}`,
+    locale: 'en-GB',
+    placeholderNom: "Name (e.g. Emma's school)",
+    placeholderUrl: 'https://... .ics',
+    annuler: 'Cancel',
+    ajouter: 'Add',
+    choisirFichier: 'Choose the file',
+    importEnCours: 'Importing…',
+    ajouterCalendrier: 'Add a calendar',
+    erreurNomEtLien: 'Enter a name and an .ics link.',
+    erreurNomDabord: 'Give this calendar a name first.',
+    erreurGenerique: 'Something went wrong.',
+    erreurLecture: (detail) => `This file could not be read: ${detail}`,
+    erreurLectureSimple: 'This file could not be read.',
+    supprimerTitre: 'Delete this calendar?',
+    supprimerTexte: (nom) => `"${nom}" and all its events will be removed from your Home.`,
+    supprimer: 'Delete',
+    syncImpossible: 'Sync failed',
+  },
+};
 
 const LIGNE_CARTE = 'rgba(23,63,50,0.12)';
 const COULEURS_DISPONIBLES = ['#6B7F7A', '#2D6A4F', '#B5927C', '#C9A84C', '#8899AA', '#A66B8F'];
 
 export default function CalendriersExternesScreen() {
   const router = useRouter();
+  const langue = useStore((s) => s.langue);
+  const l = LIBELLES[langue] ?? LIBELLES.fr;
   const {
     calendriers,
     chargement,
@@ -58,7 +195,7 @@ export default function CalendriersExternesScreen() {
 
   const validerAjoutUrl = async () => {
     if (!nom.trim() || !url.trim()) {
-      setErreurFormulaire('Donne un nom et un lien .ics.');
+      setErreurFormulaire(l.erreurNomEtLien);
       return;
     }
     setEnCours(true);
@@ -69,7 +206,7 @@ export default function CalendriersExternesScreen() {
       setFormulaireOuvert(false);
       reinitialiserFormulaire();
     } else {
-      setErreurFormulaire(resultat.erreur ?? 'Une erreur est survenue.');
+      setErreurFormulaire(resultat.erreur ?? l.erreurGenerique);
     }
   };
 
@@ -84,13 +221,13 @@ export default function CalendriersExternesScreen() {
       setFormulaireOuvert(false);
       reinitialiserFormulaire();
     } else {
-      setErreurFormulaire(resultat.erreur ?? 'Une erreur est survenue.');
+      setErreurFormulaire(resultat.erreur ?? l.erreurGenerique);
     }
   };
 
   const choisirFichier = async () => {
     if (!nom.trim()) {
-      setErreurFormulaire("Donne d'abord un nom à ce calendrier.");
+      setErreurFormulaire(l.erreurNomDabord);
       return;
     }
 
@@ -111,7 +248,7 @@ export default function CalendriersExternesScreen() {
       await traiterContenuFichier(contenu);
     } catch (e: any) {
       setEnCours(false);
-      setErreurFormulaire(`Impossible de lire ce fichier : ${e.message ?? e}`);
+      setErreurFormulaire(l.erreurLecture(String(e.message ?? e)));
     }
   };
 
@@ -124,7 +261,7 @@ export default function CalendriersExternesScreen() {
       const contenu = typeof lecteur.result === 'string' ? lecteur.result : '';
       traiterContenuFichier(contenu);
     };
-    lecteur.onerror = () => setErreurFormulaire('Impossible de lire ce fichier.');
+    lecteur.onerror = () => setErreurFormulaire(l.erreurLectureSimple);
     lecteur.readAsText(fichier);
     event.target.value = ''; // permet de resélectionner le même fichier plus tard
   };
@@ -133,10 +270,10 @@ export default function CalendriersExternesScreen() {
   // calendrier ne produisait rien — ni confirmation, ni suppression.
   const confirmerSuppression = async (id: string, nomCalendrier: string) => {
     const accepte = await confirmer(
-      'Supprimer ce calendrier ?',
-      `"${nomCalendrier}" et tous ses événements seront retirés de ta Home.`,
-      'Supprimer',
-      'Annuler',
+      l.supprimerTitre,
+      l.supprimerTexte(nomCalendrier),
+      l.supprimer,
+      l.annuler,
       true
     );
     if (accepte) supprimer(id);
@@ -147,7 +284,7 @@ export default function CalendriersExternesScreen() {
     const resultat = await resynchroniser(id);
     setResyncEnCours(null);
     if (!resultat.ok) {
-      alerter('Synchronisation impossible', resultat.erreur ?? 'Une erreur est survenue.');
+      alerter(l.syncImpossible, resultat.erreur ?? l.erreurGenerique);
     }
   };
 
@@ -170,15 +307,12 @@ export default function CalendriersExternesScreen() {
         <Pressable style={styles.retourBtn} onPress={() => retour(router, '/(tabs)/calendrier')}>
           <Ionicons name="chevron-back" size={20} color={COLORS.vertProfond} />
         </Pressable>
-        <Text style={styles.titre}>Calendriers externes</Text>
+        <Text style={styles.titre}>{l.titre}</Text>
         <View style={{ width: 32 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.contenu} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sousTitre}>
-          Abonne-toi au calendrier d'une école, d'un club, ou importe un fichier .ics. Ces événements
-          s'affichent dans ton agenda, clairement identifiés, sans jamais modifier tes événements Dualia.
-        </Text>
+        <Text style={styles.sousTitre}>{l.sousTitre}</Text>
 
         {erreur ? <Text style={styles.erreurTexte}>{erreur}</Text> : null}
 
@@ -188,8 +322,8 @@ export default function CalendriersExternesScreen() {
             <View style={{ flex: 1 }}>
               <Text style={styles.nomCalendrier} numberOfLines={1}>{cal.nom}</Text>
               <Text style={styles.metaCalendrier}>
-                {cal.type === 'url' ? 'Lien .ics' : 'Fichier importé'}
-                {cal.derniereSync ? ` · synchronisé le ${new Date(cal.derniereSync).toLocaleDateString('fr-FR')}` : ''}
+                {cal.type === 'url' ? l.lienIcs : l.fichierImporte}
+                {cal.derniereSync ? l.synchroniseLe(new Date(cal.derniereSync).toLocaleDateString(l.locale)) : ''}
               </Text>
             </View>
             {cal.type === 'url' ? (
@@ -218,7 +352,7 @@ export default function CalendriersExternesScreen() {
         ))}
 
         {!chargement && calendriers.length === 0 && !formulaireOuvert ? (
-          <Text style={styles.muted}>Aucun calendrier externe pour l'instant.</Text>
+          <Text style={styles.muted}>{l.aucun}</Text>
         ) : null}
 
         {formulaireOuvert ? (
@@ -228,19 +362,19 @@ export default function CalendriersExternesScreen() {
                 style={[styles.modeBtn, modeAjout === 'url' && styles.modeBtnActif]}
                 onPress={() => setModeAjout('url')}
               >
-                <Text style={[styles.modeBtnTexte, modeAjout === 'url' && styles.modeBtnTexteActif]}>Lien .ics</Text>
+                <Text style={[styles.modeBtnTexte, modeAjout === 'url' && styles.modeBtnTexteActif]}>{l.lienIcs}</Text>
               </Pressable>
               <Pressable
                 style={[styles.modeBtn, modeAjout === 'fichier' && styles.modeBtnActif]}
                 onPress={() => setModeAjout('fichier')}
               >
-                <Text style={[styles.modeBtnTexte, modeAjout === 'fichier' && styles.modeBtnTexteActif]}>Fichier</Text>
+                <Text style={[styles.modeBtnTexte, modeAjout === 'fichier' && styles.modeBtnTexteActif]}>{l.fichier}</Text>
               </Pressable>
             </View>
 
             <TextInput
               style={styles.input}
-              placeholder="Nom (ex. École d'Emma)"
+              placeholder={l.placeholderNom}
               placeholderTextColor={COLORS.ardoise}
               value={nom}
               onChangeText={setNom}
@@ -249,7 +383,7 @@ export default function CalendriersExternesScreen() {
             {modeAjout === 'url' ? (
               <TextInput
                 style={styles.input}
-                placeholder="https://... .ics"
+                placeholder={l.placeholderUrl}
                 placeholderTextColor={COLORS.ardoise}
                 value={url}
                 onChangeText={setUrl}
@@ -275,7 +409,7 @@ export default function CalendriersExternesScreen() {
                 style={styles.btnAnnuler}
                 onPress={() => { setFormulaireOuvert(false); reinitialiserFormulaire(); }}
               >
-                <Text style={styles.btnAnnulerTexte}>Annuler</Text>
+                <Text style={styles.btnAnnulerTexte}>{l.annuler}</Text>
               </Pressable>
               <Pressable
                 style={[styles.btnValider, enCours && { opacity: 0.6 }]}
@@ -283,7 +417,7 @@ export default function CalendriersExternesScreen() {
                 disabled={enCours}
               >
                 <Text style={styles.btnValiderTexte}>
-                  {enCours ? 'Import…' : modeAjout === 'url' ? 'Ajouter' : 'Choisir le fichier'}
+                  {enCours ? l.importEnCours : modeAjout === 'url' ? l.ajouter : l.choisirFichier}
                 </Text>
               </Pressable>
             </View>
@@ -291,7 +425,7 @@ export default function CalendriersExternesScreen() {
         ) : (
           <Pressable style={styles.btnAjouter} onPress={() => setFormulaireOuvert(true)}>
             <Ionicons name="add" size={16} color={COLORS.vertProfond} />
-            <Text style={styles.btnAjouterTexte}>Ajouter un calendrier</Text>
+            <Text style={styles.btnAjouterTexte}>{l.ajouterCalendrier}</Text>
           </Pressable>
         )}
       </ScrollView>

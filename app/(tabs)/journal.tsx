@@ -404,7 +404,7 @@ export default function JournalScreen() {
               ) : (
                 <Pressable style={styles.photoBtn} onPress={choisirPhoto}>
                   <Ionicons name="camera-outline" size={22} color={COLORS.vert} />
-                  <Text style={styles.photoBtnTxt}>Ajouter une photo</Text>
+                  <Text style={styles.photoBtnTxt}>{t.ajouterPhoto}</Text>
                 </Pressable>
               )}
 
@@ -505,8 +505,8 @@ export default function JournalScreen() {
       <Modal visible={!!confirmDeleteId} animationType="fade" transparent onRequestClose={() => setConfirmDeleteId(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.confirmCard}>
-            <Text style={styles.modalTitle}>Supprimer ce souvenir ?</Text>
-            <Text style={styles.recitHint}>Cette action est définitive et ne peut pas être annulée.</Text>
+            <Text style={styles.modalTitle}>{t.supprimerTitre}</Text>
+            <Text style={styles.recitHint}>{t.supprimerTexte}</Text>
             <View style={styles.modalActions}>
               <Pressable style={[styles.modalBtn, styles.modalBtnCancel]} onPress={() => setConfirmDeleteId(null)}>
                 <Text style={styles.modalBtnCancelText}>{t.annuler}</Text>

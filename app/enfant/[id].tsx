@@ -20,11 +20,44 @@ import { retour } from '../../lib/navigation';
 import { confirmer, alerter } from '../../lib/dialogue';
 import { ModaleEnfant, ModaleContactUrgence } from '../../components/ModalesEnfant';
 
+const LIBELLES: Record<'fr' | 'pt' | 'es' | 'en', {
+  introuvableTitre: string;
+  introuvableTexte: string;
+  retourFamille: string;
+  ans: string;
+}> = {
+  fr: {
+    introuvableTitre: "Cette fiche n'est pas disponible",
+    introuvableTexte: "L'enfant a peut-être été retiré de votre espace, ou la page a été ouverte avant le chargement de vos données.",
+    retourFamille: 'Retour à Famille',
+    ans: 'ans',
+  },
+  pt: {
+    introuvableTitre: 'Esta ficha não está disponível',
+    introuvableTexte: 'A criança pode ter sido retirada do seu espaço, ou a página foi aberta antes de os seus dados serem carregados.',
+    retourFamille: 'Voltar a Família',
+    ans: 'anos',
+  },
+  es: {
+    introuvableTitre: 'Esta ficha no está disponible',
+    introuvableTexte: 'Puede que el niño haya sido retirado de tu espacio, o que la página se haya abierto antes de cargar tus datos.',
+    retourFamille: 'Volver a Familia',
+    ans: 'años',
+  },
+  en: {
+    introuvableTitre: 'This profile is not available',
+    introuvableTexte: 'The child may have been removed from your space, or the page was opened before your data had loaded.',
+    retourFamille: 'Back to Family',
+    ans: 'yrs',
+  },
+};
+
 export default function FicheEnfantScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
   const langue = useStore((s) => s.langue);
   const t = TRADUCTIONS[langue].ficheEnfant;
+  const l = LIBELLES[langue] ?? LIBELLES.fr;
   const enfants = useStore((s) => s.enfants);
   const chargementInitial = useStore((s) => s.chargementInitial);
   const enfant = enfants.find((e) => e.id === id);
@@ -76,16 +109,13 @@ export default function FicheEnfantScreen() {
           <Ionicons name="chevron-back" size={22} color={COLORS.vertProfond} />
         </Pressable>
         <View style={styles.introuvableBloc}>
-          <Text style={styles.introuvableTitre}>Cette fiche n'est pas disponible</Text>
-          <Text style={styles.introuvableTexte}>
-            L'enfant a peut-être été retiré de votre espace, ou la page a été ouverte avant le
-            chargement de vos données.
-          </Text>
+          <Text style={styles.introuvableTitre}>{l.introuvableTitre}</Text>
+          <Text style={styles.introuvableTexte}>{l.introuvableTexte}</Text>
           <Pressable
             style={styles.introuvableBouton}
             onPress={() => router.replace('/(tabs)/famille' as any)}
           >
-            <Text style={styles.introuvableBoutonTexte}>Retour à Famille</Text>
+            <Text style={styles.introuvableBoutonTexte}>{l.retourFamille}</Text>
           </Pressable>
         </View>
       </SafeAreaView>
@@ -141,7 +171,7 @@ export default function FicheEnfantScreen() {
             )}
           </View>
           <Text style={styles.prenom}>{enfant.prenom}</Text>
-          {age !== null ? <Text style={styles.age}>{age} {langue === 'pt' ? 'anos' : langue === 'es' ? 'años' : langue === 'en' ? 'yrs' : 'ans'}</Text> : null}
+          {age !== null ? <Text style={styles.age}>{age} {l.ans}</Text> : null}
         </View>
 
         <Text style={styles.sectionLabel}>{t.essentiel}</Text>

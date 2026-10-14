@@ -18,6 +18,48 @@ import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 
+const LIBELLES: Record<'fr' | 'pt' | 'es' | 'en', {
+  titre: string;
+  sansNom: string;
+  avertissement: string;
+  refuser: string;
+  accepter: string;
+  erreur: string;
+}> = {
+  fr: {
+    titre: "Demande d'accès à votre espace",
+    sansNom: 'Sans nom',
+    avertissement: 'Cette personne a le lien et le code. Acceptez seulement si vous reconnaissez ce nom et cette adresse : elle aura accès aux messages, aux dépenses et aux documents.',
+    refuser: 'Refuser',
+    accepter: 'Accepter',
+    erreur: "La réponse n'a pas pu être enregistrée. Réessayez.",
+  },
+  pt: {
+    titre: 'Pedido de acesso ao seu espaço',
+    sansNom: 'Sem nome',
+    avertissement: 'Esta pessoa tem a ligação e o código. Aceite apenas se reconhecer este nome e este endereço: terá acesso às mensagens, às despesas e aos documentos.',
+    refuser: 'Recusar',
+    accepter: 'Aceitar',
+    erreur: 'Não foi possível registar a resposta. Tente novamente.',
+  },
+  es: {
+    titre: 'Solicitud de acceso a tu espacio',
+    sansNom: 'Sin nombre',
+    avertissement: 'Esta persona tiene el enlace y el código. Acepta solo si reconoces este nombre y esta dirección: tendrá acceso a los mensajes, los gastos y los documentos.',
+    refuser: 'Rechazar',
+    accepter: 'Aceptar',
+    erreur: 'No se ha podido registrar la respuesta. Inténtalo de nuevo.',
+  },
+  en: {
+    titre: 'Request to join your space',
+    sansNom: 'No name',
+    avertissement: 'This person has the link and the code. Only accept if you recognise this name and this address: they will have access to messages, expenses and documents.',
+    refuser: 'Decline',
+    accepter: 'Accept',
+    erreur: 'Your answer could not be saved. Please try again.',
+  },
+};
+
 type Demande = {
   invitation_id: string;
   nom: string | null;
@@ -28,6 +70,8 @@ type Demande = {
 export default function DemandesEnAttente() {
   const sessionActive = useStore((s) => s.sessionActive);
   const familleId = useStore((s) => s.familleId);
+  const langue = useStore((s) => s.langue);
+  const l = LIBELLES[langue] ?? LIBELLES.fr;
   const [demandes, setDemandes] = React.useState<Demande[]>([]);
   const [enCours, setEnCours] = React.useState<string | null>(null);
   const [erreur, setErreur] = React.useState<string | null>(null);
@@ -64,7 +108,7 @@ export default function DemandesEnAttente() {
       p_accepter: accepter,
     });
     if (error) {
-      setErreur("La réponse n'a pas pu être enregistrée. Réessayez.");
+      setErreur(l.erreur);
       setEnCours(null);
       return;
     }
@@ -81,15 +125,12 @@ export default function DemandesEnAttente() {
     <View style={styles.bloc}>
       {demandes.map((d) => (
         <View key={d.invitation_id} style={styles.carte}>
-          <Text style={styles.titre}>Demande d'accès à votre espace</Text>
+          <Text style={styles.titre}>{l.titre}</Text>
           <Text style={styles.identite} numberOfLines={2}>
-            {d.nom || 'Sans nom'}
+            {d.nom || l.sansNom}
             {d.email ? ` — ${d.email}` : ''}
           </Text>
-          <Text style={styles.avertissement}>
-            Cette personne a le lien et le code. Acceptez seulement si vous reconnaissez ce nom et
-            cette adresse : elle aura accès aux messages, aux dépenses et aux documents.
-          </Text>
+          <Text style={styles.avertissement}>{l.avertissement}</Text>
 
           {erreur ? <Text style={styles.erreur}>{erreur}</Text> : null}
 
@@ -98,10 +139,10 @@ export default function DemandesEnAttente() {
           ) : (
             <View style={styles.actions}>
               <Pressable style={styles.btnRefuser} onPress={() => repondre(d.invitation_id, false)}>
-                <Text style={styles.btnRefuserTxt}>Refuser</Text>
+                <Text style={styles.btnRefuserTxt}>{l.refuser}</Text>
               </Pressable>
               <Pressable style={styles.btnAccepter} onPress={() => repondre(d.invitation_id, true)}>
-                <Text style={styles.btnAccepterTxt}>Accepter</Text>
+                <Text style={styles.btnAccepterTxt}>{l.accepter}</Text>
               </Pressable>
             </View>
           )}

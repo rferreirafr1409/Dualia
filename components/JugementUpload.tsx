@@ -235,6 +235,39 @@ type JugementUploadProps = {
   onTermine?: () => void;
 };
 
+
+// Alertes de fin de parcours, dans les quatre langues de l'app.
+const LIBELLES_ERREURS: Record<'fr' | 'pt' | 'es' | 'en', { pieceNonArchiveeTitre: string; pieceNonArchivee: string; echecCadreTitre: string; echecCadre: string; erreurGenerique: string }> = {
+  fr: {
+    pieceNonArchiveeTitre: 'Pièce non archivée',
+    pieceNonArchivee: "Les clauses sont enregistrées, mais le PDF n'a pas pu être déposé dans le coffre-fort. Vous pouvez l'ajouter à la main depuis Documents.",
+    echecCadreTitre: "Échec de l'enregistrement",
+    echecCadre: "Impossible d'enregistrer le cadre familial pour l'instant. Vérifiez votre connexion et réessayez.",
+    erreurGenerique: 'Une erreur est survenue.',
+  },
+  pt: {
+    pieceNonArchiveeTitre: 'Documento não arquivado',
+    pieceNonArchivee: 'As cláusulas foram guardadas, mas o PDF não pôde ser colocado no cofre. Pode adicioná-lo manualmente a partir de Documentos.',
+    echecCadreTitre: 'Falha ao guardar',
+    echecCadre: 'Não é possível guardar o enquadramento familiar neste momento. Verifique a sua ligação e tente novamente.',
+    erreurGenerique: 'Ocorreu um erro.',
+  },
+  es: {
+    pieceNonArchiveeTitre: 'Documento no archivado',
+    pieceNonArchivee: 'Las cláusulas se han guardado, pero el PDF no se ha podido depositar en la caja fuerte. Puedes añadirlo a mano desde Documentos.',
+    echecCadreTitre: 'Error al guardar',
+    echecCadre: 'No se puede guardar el marco familiar por ahora. Comprueba tu conexión y vuelve a intentarlo.',
+    erreurGenerique: 'Se ha producido un error.',
+  },
+  en: {
+    pieceNonArchiveeTitre: 'Document not archived',
+    pieceNonArchivee: 'The clauses were saved, but the PDF could not be stored in the vault. You can add it manually from Documents.',
+    echecCadreTitre: 'Could not save',
+    echecCadre: 'The family framework cannot be saved right now. Check your connection and try again.',
+    erreurGenerique: 'Something went wrong.',
+  },
+};
+
 export default function JugementUpload({ onTermine }: JugementUploadProps) {
   const router = useRouter();
   const synchroniserCadreFamilial = useStore((s) => s.synchroniserCadreFamilial);
@@ -396,27 +429,22 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
 
       const echecPiece = await archiverPiece();
       if (echecPiece && echecPiece !== 'absent') {
-        const message =
-          "Les clauses sont enregistrées, mais le PDF n'a pas pu être déposé dans le coffre-fort. " +
-          'Tu peux l\'ajouter à la main depuis Documents.\n\n' +
-          echecPiece;
+        const message = LIBELLES_ERREURS[langue].pieceNonArchivee + '\n\n' + echecPiece;
         if (Platform.OS === 'web') {
           window.alert(message);
         } else {
-          Alert.alert('Pièce non archivée', message);
+          Alert.alert(LIBELLES_ERREURS[langue].pieceNonArchiveeTitre, message);
         }
       }
 
       onTermine?.();
       router.push('/validation-cadre' as any);
     } catch (e: any) {
-      const message = e?.message ?? 'Une erreur est survenue.';
+      const message = e?.message ?? LIBELLES_ERREURS[langue].erreurGenerique;
       if (Platform.OS === 'web') {
-        window.alert(
-          "Impossible d'enregistrer le cadre familial pour l'instant. Vérifie ta connexion et réessaie.\n\n" + message
-        );
+        window.alert(LIBELLES_ERREURS[langue].echecCadre + '\n\n' + message);
       } else {
-        Alert.alert("Échec de l'enregistrement", message);
+        Alert.alert(LIBELLES_ERREURS[langue].echecCadreTitre, message);
       }
     } finally {
       setSynchronisationEnCours(false);
