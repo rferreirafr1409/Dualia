@@ -142,7 +142,11 @@ export default function AccueilScreen() {
   const t = TRADUCTIONS[langue];
   const dateLocale = LOCALES[langue];
   const chargementEnCours = useStore((s) => s.chargementInitial);
-  const prenom = parents[parentActif]?.nom?.split(' ')[0] ?? '';
+  // Sans prenom enregistre, le store retombe sur « Parent 1 » et l'ecran
+  // disait « Bonjour Parent ». Un « Bonjour » seul vaut mieux qu'un faux
+  // prenom ; le vrai se saisit dans Parents & foyers.
+  const nomBrut = parents[parentActif]?.nom ?? '';
+  const prenom = /^Parent [12]$/.test(nomBrut.trim()) ? '' : nomBrut.split(' ')[0] ?? '';
 
   const { widgetsVisibles } = useHomeWidgets();
   const { echeances: echeancesAAnticiper } = useAnticiper();
@@ -657,7 +661,7 @@ export default function AccueilScreen() {
               titre : côte à côte, ils sont tronqués en plein milieu d'un mot. */}
           <View style={[styles.entete, isMobile && styles.enteteMobile]}>
             <View style={isMobile ? { width: '100%' } : undefined}>
-              <Text style={styles.bonjour}>{t.accueil.bonjour} {prenom}</Text>
+              <Text style={styles.bonjour}>{prenom ? `${t.accueil.bonjour} ${prenom}` : t.accueil.bonjour}</Text>
               <Text style={styles.sousBonjour}>{t.accueil.cockpitSousTitre}</Text>
             </View>
             <View style={isMobile ? styles.enteteDatesMobile : { alignItems: 'flex-end' }}>
