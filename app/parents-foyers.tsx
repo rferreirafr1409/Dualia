@@ -27,7 +27,38 @@ export default function ParentsFoyersScreen() {
   const retirerEnfantDuFoyer = useStore((s) => s.retirerEnfantDuFoyer);
   const definirResidencePrincipale = useStore((s) => s.definirResidencePrincipale);
   const langue = useStore((s) => s.langue);
+  const parentActif = useStore((s) => s.parentActif);
+  const modifierMonPrenom = useStore((s) => s.modifierMonPrenom);
   const t = TRADUCTIONS[langue].parentsFoyers;
+
+  // Modification de son propre prenom. Sans cet ecran, un parent inscrit
+  // sans prenom restait « Parent 1 » partout, jusque dans « Bonjour Parent ».
+  const [prenomOuvert, setPrenomOuvert] = useState(false);
+  const [formPrenom, setFormPrenom] = useState('');
+  const [sauvegardePrenom, setSauvegardePrenom] = useState(false);
+  const [refusPrenom, setRefusPrenom] = useState(false);
+
+  const ouvrirPrenom = () => {
+    setRefusPrenom(false);
+    setFormPrenom(parents[parentActif]?.nom ?? '');
+    setPrenomOuvert(true);
+  };
+
+  const enregistrerPrenom = async () => {
+    if (!formPrenom.trim()) return;
+    setSauvegardePrenom(true);
+    setRefusPrenom(false);
+    try {
+      const ok = await modifierMonPrenom(formPrenom);
+      if (!ok) {
+        setRefusPrenom(true);
+        return;
+      }
+      setPrenomOuvert(false);
+    } finally {
+      setSauvegardePrenom(false);
+    }
+  };
 
   const [foyerOuvert, setFoyerOuvert] = useState<Foyer | null>(null);
   const [formNom, setFormNom] = useState('');
@@ -140,8 +171,16 @@ export default function ParentsFoyersScreen() {
         {(['A', 'B'] as ParentRole[]).map((role) => {
           const p = parents[role];
           if (!p) return null;
+          const moi = role === parentActif;
           return (
-            <View key={role} style={styles.parentCard}>
+            <Pressable
+              key={role}
+              style={styles.parentCard}
+              onPress={moi ? ouvrirPrenom : undefined}
+              disabled={!moi}
+              accessibilityRole={moi ? 'button' : undefined}
+              accessibilityLabel={moi ? t.modifierPrenom : undefined}
+            >
               <View style={[styles.avatar, { backgroundColor: p.couleur }]}>
                 <Text style={styles.avatarTxt}>{(p.nom ?? '?').charAt(0).toUpperCase()}</Text>
               </View>
@@ -151,7 +190,10 @@ export default function ParentsFoyersScreen() {
                   {p.uuid ? t.compteActif : t.pasInvite}
                 </Text>
               </View>
-            </View>
+              {/* Le crayon ne s'affiche que sur sa propre fiche : la base
+                  n'accepte que celle-la. */}
+              {moi ? <Ionicons name="pencil-outline" size={18} color={COLORS.ardoise} /> : null}
+            </Pressable>
           );
         })}
 
@@ -311,6 +353,41 @@ export default function ParentsFoyersScreen() {
                 ) : null}
               </View>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={prenomOuvert} animationType="slide" transparent onRequestClose={() => setPrenomOuvert(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitre}>{t.modifierPrenom}</Text>
+            <Text style={styles.fieldLabel}>{t.prenom}</Text>
+            <TextInput
+              style={styles.input}
+              value={formPrenom}
+              onChangeText={setFormPrenom}
+              placeholder={t.prenomPlaceholder}
+              placeholderTextColor={COLORS.ardoise}
+              autoFocus
+              autoCapitalize="words"
+              maxLength={40}
+              returnKeyType="done"
+              onSubmitEditing={enregistrerPrenom}
+            />
+            <Text style={styles.lectureSeuleNote}>{t.prenomAide}</Text>
+            {refusPrenom ? <Text style={styles.refusTxt}>{t.refusPrenom}</Text> : null}
+            <View style={styles.modalActions}>
+              <Pressable style={styles.btnAnnuler} onPress={() => setPrenomOuvert(false)}>
+                <Text style={styles.btnAnnulerTxt}>{t.fermer}</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.btnValider, !formPrenom.trim() && { opacity: 0.5 }]}
+                onPress={enregistrerPrenom}
+                disabled={sauvegardePrenom || !formPrenom.trim()}
+              >
+                <Text style={styles.btnValiderTxt}>{sauvegardePrenom ? '...' : t.enregistrer}</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>

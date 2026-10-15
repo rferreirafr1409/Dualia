@@ -986,6 +986,9 @@ interface DualiaStore {
     id: string,
     updates: Partial<Pick<Foyer, 'nom' | 'adresse' | 'ville' | 'codePostal' | 'pays' | 'couleur' | 'adresseVisible' | 'actif'>>
   ) => Promise<boolean>;
+  // Prenom du parent connecte, modifiable depuis Parents & foyers. Rend false
+  // si la base a refuse ou n'a pas repondu : l'ecran garde alors l'ancien.
+  modifierMonPrenom: (prenom: string) => Promise<boolean>;
   associerEnfantAuFoyer: (foyerId: string, enfantId: string, residencePrincipale?: boolean) => Promise<void>;
   retirerEnfantDuFoyer: (foyerId: string, enfantId: string) => Promise<void>;
   definirResidencePrincipale: (foyerId: string, enfantId: string, valeur: boolean) => Promise<void>;
@@ -2560,6 +2563,18 @@ export const useStore = create<DualiaStore>()(
   setLangue: (langue) => {
     const cartes = { fr: FAMILY_CARD_FR, pt: FAMILY_CARD_PT, es: FAMILY_CARD_ES, en: FAMILY_CARD_EN };
     set({ langue, familyCard: cartes[langue] ?? FAMILY_CARD_FR });
+    // La langue etait memorisee dans le navigateur seulement : un parent qui
+    // se connectait sur un autre appareil, ou apres quelqu'un d'autre sur le
+    // meme navigateur, retrouvait une langue qui n'etait pas la sienne. On
+    // l'inscrit sur le compte ; initialiserSession la reapplique a la
+    // connexion. Hors session, rien a enregistrer : la valeur locale suffit.
+    if (get().sessionActive) {
+      supabase.auth
+        .updateUser({ data: { langue } })
+        .then(({ error }) => {
+          if (error) console.error('[Dualia] Langue non enregistrée sur le compte :', error);
+        });
+    }
   },
 
   reglerDepense: (id) => {
@@ -3283,6 +3298,30 @@ export const useStore = create<DualiaStore>()(
     }
   },
 
+  modifierMonPrenom: async (prenom) => {
+    const { parentActif, parents } = get();
+    const moi = parents[parentActif];
+    const nom = prenom.trim();
+    if (!moi?.uuid || !nom) return false;
+
+    // Meme precaution que modifierFoyer : on redemande la ligne, car une
+    // regle de securite qui refuse ne leve pas d'erreur, elle ne renvoie
+    // simplement rien. La base n'autorise que sa propre fiche.
+    const { data, error } = await supabase
+      .from('parents')
+      .update({ nom })
+      .eq('id', moi.uuid)
+      .select('id');
+    if (error || !data || data.length === 0) {
+      console.error('[Dualia] Prénom non enregistré :', error);
+      return false;
+    }
+    set((state) => ({
+      parents: { ...state.parents, [parentActif]: { ...moi, nom } },
+    }));
+    return true;
+  },
+
   modifierFoyer: async (id, updates) => {
     // Un foyer qui ne nous appartient pas n'est plus modifiable : la base
     // refuse l'ecriture. On s'arrete donc AVANT de toucher a l'etat local,
@@ -3917,6 +3956,24 @@ export const useStore = create<DualiaStore>()(
       return;
     }
     set({ sessionActive: true, sessionVerifiee: true });
+
+    // Langue du compte (voir setLangue). Si le compte en a une, elle
+    // l'emporte sur celle de l'appareil ; sinon on inscrit celle de
+    // l'appareil, pour que le prochain appareil de ce parent la retrouve.
+    const langueCompte = user.user_metadata?.langue;
+    const LANGUES: Langue[] = ['fr', 'pt', 'es', 'en'];
+    if (LANGUES.includes(langueCompte)) {
+      if (langueCompte !== get().langue) {
+        const cartes = { fr: FAMILY_CARD_FR, pt: FAMILY_CARD_PT, es: FAMILY_CARD_ES, en: FAMILY_CARD_EN };
+        set({ langue: langueCompte, familyCard: cartes[langueCompte as Langue] ?? FAMILY_CARD_FR });
+      }
+    } else {
+      supabase.auth
+        .updateUser({ data: { langue: get().langue } })
+        .then(({ error }) => {
+          if (error) console.error('[Dualia] Langue non enregistrée sur le compte :', error);
+        });
+    }
 
     const { data: mesAppartenances, error: erreurAppartenances } = await supabase
       .from('parents')
