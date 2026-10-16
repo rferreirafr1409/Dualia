@@ -40,6 +40,7 @@ import {
 import { formatMontant as formatMontantBrut } from '../../lib/comptes';
 import { BACKEND_URL } from '../../constants/environnement';
 import { lireErreurBackend } from '../../lib/erreursBackend';
+import { decouperTicket } from '../../lib/tuilesTicket';
 import InformationIA from '../../components/InformationIA';
 
 const URL_SCAN_TICKET = `${BACKEND_URL}/api/scan-ticket`;
@@ -662,10 +663,22 @@ function FinancesScreenInner() {
         setFormPhotoUri(dataUrl);
         setFormJustificatif({ base64, contentType: mediaType, nom: nomFichier });
 
+        // Le modèle ne lit pas la photo compressée : un ticket de 50 cm y
+        // fait 5 px par caractère. On lui envoie le ticket seul, découpé en
+        // morceaux lisibles depuis la photo d'origine (lib/tuilesTicket.ts,
+        // DUA-142). La photo compressée reste le justificatif archivé.
+        let tuiles: { base64: string; mediaType: string }[];
+        try {
+          tuiles = await decouperTicket(dataUrlOriginal);
+        } catch (e) {
+          console.error('[Dualia] Découpage du ticket impossible, photo entière envoyée :', e);
+          tuiles = [{ base64, mediaType }];
+        }
+
         const response = await fetchAvecRetry(URL_SCAN_TICKET, {
           method: 'POST',
           headers: await entetesBackend(),
-          body: JSON.stringify({ image: base64, mediaType }),
+          body: JSON.stringify({ images: tuiles.map((tu) => ({ data: tu.base64, mediaType: tu.mediaType })) }),
         });
         if (!response.ok) {
           const motif = await lireErreurBackend(response, langue);
