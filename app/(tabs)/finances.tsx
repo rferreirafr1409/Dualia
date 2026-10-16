@@ -39,6 +39,7 @@ import {
 } from '../../lib/conditionsCadre';
 import { formatMontant as formatMontantBrut } from '../../lib/comptes';
 import { BACKEND_URL } from '../../constants/environnement';
+import { lireErreurBackend } from '../../lib/erreursBackend';
 import InformationIA from '../../components/InformationIA';
 
 const URL_SCAN_TICKET = `${BACKEND_URL}/api/scan-ticket`;
@@ -611,7 +612,17 @@ function FinancesScreenInner() {
         body: JSON.stringify({ image: asset.base64, mediaType: asset.mimeType || 'image/jpeg' }),
       });
 
-      if (!response.ok) throw new Error('scan_failed');
+      if (!response.ok) {
+        // Un refus de la garde (compte sans espace familial, plafond du jour)
+        // a une raison que le parent peut comprendre : on la lui donne au
+        // lieu du « scan impossible » generique (DUA-088).
+        const motif = await lireErreurBackend(response, langue);
+        if (motif) {
+          alertCompat(t.scanEchec, motif);
+          return;
+        }
+        throw new Error('scan_failed');
+      }
 
       const data = await response.json();
 
@@ -656,7 +667,14 @@ function FinancesScreenInner() {
           headers: await entetesBackend(),
           body: JSON.stringify({ image: base64, mediaType }),
         });
-        if (!response.ok) throw new Error('scan_failed');
+        if (!response.ok) {
+          const motif = await lireErreurBackend(response, langue);
+          if (motif) {
+            alertCompat(t.scanEchec, motif);
+            return;
+          }
+          throw new Error('scan_failed');
+        }
         const data = await response.json();
         if (data.montant) setFormMontant(String(data.montant));
         if (data.commercant) setFormCommercant(data.commercant);

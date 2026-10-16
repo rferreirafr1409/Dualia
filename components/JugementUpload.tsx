@@ -40,6 +40,7 @@ import { choisirFichierPDF } from '../lib/pickerFichierPDF';
 import { gardeDepuisExtraction, datesSpecialesDepuisExtraction } from '../lib/gardeJugement';
 import type { CadreFamilial, ReglePartage } from '../types';
 import { BACKEND_URL } from '../constants/environnement';
+import { messageErreurBackend } from '../lib/erreursBackend';
 import InformationIA from './InformationIA';
 
 
@@ -341,7 +342,9 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
       const texteData = await texteResponse.json();
 
       if (!texteResponse.ok) {
-        throw new Error(texteData.error || 'Échec extraction texte');
+        // Le backend rend soit une phrase, soit un code (espace_familial_requis,
+        // plafond_journalier_atteint...) : on le traduit avant de l'afficher.
+        throw new Error(messageErreurBackend(texteData.error, langue) || 'Échec extraction texte');
       }
 
       if (texteData.avertissement) {
@@ -358,7 +361,7 @@ export default function JugementUpload({ onTermine }: JugementUploadProps) {
       const clausesData = await clausesResponse.json();
 
       if (!clausesResponse.ok) {
-        throw new Error(clausesData.error || 'Échec extraction clauses');
+        throw new Error(messageErreurBackend(clausesData.error, langue) || 'Échec extraction clauses');
       }
 
       setResultat(clausesData.extraction);
