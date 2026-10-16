@@ -25,6 +25,7 @@ import { useStore } from '../store/useStore';
 import { entetesBackend } from '../lib/appelBackend';
 import { parserICS, type EvenementICS } from '../lib/icsParser';
 import { BACKEND_URL } from '../constants/environnement';
+import { messageErreurBackend } from '../lib/erreursBackend';
 
 
 export interface CalendrierExterne {
@@ -70,7 +71,10 @@ async function recupererICSDistant(url: string): Promise<{ ok: true; contenu: st
     });
     if (!reponse.ok) {
       const corps = await reponse.json().catch(() => null);
-      return { ok: false, erreur: corps?.error ?? `Le serveur a répondu avec le statut ${reponse.status}` };
+      return {
+        ok: false,
+        erreur: messageErreurBackend(corps?.error, useStore.getState().langue) ?? `Le serveur a répondu avec le statut ${reponse.status}`,
+      };
     }
     const contenu = await reponse.text();
     return { ok: true, contenu };
