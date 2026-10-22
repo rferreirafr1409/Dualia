@@ -30,6 +30,14 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "companyName": "R DIGITAL INSTORE",
+        "appleTeamId": "7K7YZBGK62",
+        "appName": "Dualia",
+        "language": "fr-FR",
+        "sku": "dualia-ios"
+      }
+    }
   }
 }
