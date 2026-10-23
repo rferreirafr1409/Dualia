@@ -87,6 +87,9 @@ export interface Decision {
   statut: StatutDecision;
   horodatageEIDAS?: string;
   signatureToken?: string;
+  // 'certigna' quand la date vient d'un jeton qualifié eIDAS (DUA-069) ;
+  // absent quand elle vient de l'horloge du téléphone (repli).
+  horodatageFournisseur?: string;
 }
 export type StatutMessage = 'envoyé' | 'lu';
 export interface Message {
