@@ -452,21 +452,27 @@ export default function DecisionsScreen() {
                 </View>
               ) : null}
 
-              {/* Bouclier NEUTRE, et libellé qui dit qui date.
-                  Un bouclier doré accolé à un horodatage, sur une décision
-                  « Acceptée », se lit « scellé » — et un magistrat le lira
-                  ainsi. Or cette date est produite par l'horloge du
-                  navigateur du parent (voir horodaterDecision dans le
-                  store) : aucune valeur probatoire tant qu'aucun contrat
-                  avec un prestataire qualifié n'est effectif.
-                  À repasser en doré le jour du jeton qualifié, et pas
-                  avant. */}
+              {/* Bouclier DORÉ et « Horodatée par Certigna le … » seulement
+                  quand la date vient d'un jeton qualifié eIDAS (DUA-069,
+                  horodatageFournisseur posé par le backend). Sinon, bouclier
+                  neutre et « Enregistré par Dualia le … » : cette date vient
+                  de l'horloge du téléphone (repli du store) et un magistrat
+                  ne doit pas la lire comme un scellé. */}
               <View style={styles.cardFoot}>
                 <View style={styles.sealRow}>
-                  <ShieldIcon size={12} color={COLORS.ardoise} strokeWidth={2} />
-                  <Text style={[styles.sealText, { color: COLORS.ardoise }]}>
+                  <ShieldIcon
+                    size={12}
+                    color={decision.horodatageFournisseur ? COLORS.or : COLORS.ardoise}
+                    strokeWidth={2}
+                  />
+                  <Text
+                    style={[
+                      styles.sealText,
+                      { color: decision.horodatageFournisseur ? COLORS.or : COLORS.ardoise },
+                    ]}
+                  >
                     {decision.horodatageEIDAS
-                      ? `${t.enregistreLe} ${formatDateTime(decision.horodatageEIDAS, langue)}`
+                      ? `${decision.horodatageFournisseur ? t.horodateeLe : t.enregistreLe} ${formatDateTime(decision.horodatageEIDAS, langue)}`
                       : `${t.creeLe} ${formatDate(decision.dateCreation, langue)}`}
                   </Text>
                 </View>

@@ -525,6 +525,7 @@ const decisionDepuisDB = (row: any, roleParUuid: Record<string, ParentRole>): De
   statut: row.statut,
   horodatageEIDAS: row.horodatage_eidas ?? undefined,
   signatureToken: row.signature_token ?? undefined,
+  horodatageFournisseur: row.horodatage_fournisseur ?? undefined,
 });
 
 const decisionUpdatesVersDB = (updates: Partial<Decision>) => {
@@ -900,7 +901,7 @@ interface DualiaStore {
   agendaScolaire: AgendaScolaireItem[];
   ajouterAgendaScolaire: (a: AgendaScolaireItem) => void;
   basculerAgendaScolaireFait: (id: string) => void;
-  horodaterDecision: (id: string) => void;
+  horodaterDecision: (id: string) => Promise<void>;
   ajouterJournal: (entry: JournalEntry, photoUri?: string) => Promise<void>;
   modifierJournal: (id: string, updates: Partial<JournalEntry>, photoUri?: string) => Promise<void>;
   supprimerJournal: (id: string) => void;
@@ -2120,14 +2121,44 @@ export const useStore = create<DualiaStore>()(
       });
   },
 
-  // Enregistrement daté d'une décision : la date et l'identifiant sont
-  // produits par Dualia, pas par un tiers de confiance. Le préfixe "EIDAS-"
-  // utilisé auparavant laissait croire à un horodatage qualifié au sens du
-  // règlement (UE) 910/2014, alors qu'aucun contrat avec un prestataire
-  // qualifié (QTSP) n'est signé : un parent aurait pu s'en prévaloir devant
-  // un juge avec un jeton sans aucune valeur probatoire.
-  // À rétablir le jour où le contrat QTSP est effectif.
-  horodaterDecision: (id) => {
+  // Acceptation d'une décision, avec horodatage qualifié eIDAS (DUA-069).
+  //
+  // Le backend (dualia-backend, /api/horodater-decision) calcule l'empreinte
+  // SHA-256 du contenu et demande un jeton RFC 3161 à Certigna, prestataire
+  // qualifié : c'est lui qui écrit en base la date, l'empreinte et le jeton.
+  // L'écran affiche alors « Horodatée par Certigna le … » et un bouclier doré.
+  //
+  // Si le backend ne répond pas (panne, crédits Certigna épuisés, hors
+  // ligne), le parent n'est pas bloqué : la décision passe en « acceptée »
+  // avec, comme avant, une date lue sur l'horloge du téléphone et un jeton
+  // local « DUALIA-… » sans valeur probante. L'écran reste alors neutre, et
+  // le prochain appel pour cette décision obtiendra le vrai jeton : le
+  // backend est idempotent et ne consomme pas deux jetons.
+  horodaterDecision: async (id) => {
+    try {
+      const r = await fetch(`${BACKEND_URL}/api/horodater-decision`, {
+        method: 'POST',
+        headers: await entetesBackend(),
+        body: JSON.stringify({ decisionId: id }),
+      });
+      const reponse = await r.json();
+      if (!r.ok) throw new Error(reponse?.error || `HTTP ${r.status}`);
+      const horodatageEIDAS: string = reponse.horodatageEIDAS;
+      const signatureToken: string = reponse.signatureToken;
+      const horodatageFournisseur: string = reponse.fournisseur || 'certigna';
+      set((state) => ({
+        decisions: state.decisions.map((d) =>
+          d.id === id
+            ? { ...d, horodatageEIDAS, signatureToken, horodatageFournisseur, statut: 'acceptée' as const }
+            : d
+        ),
+      }));
+      return;
+    } catch (e) {
+      console.error('[Dualia] Horodatage qualifié indisponible, repli local :', e);
+    }
+
+    // Repli : date et identifiant produits par Dualia, sans valeur probante.
     const token = `DUALIA-${Date.now()}-${Math.random().toString(36).slice(2, 10).toUpperCase()}`;
     const horodatageEIDAS = new Date().toISOString();
     set((state) => ({
@@ -2137,6 +2168,7 @@ export const useStore = create<DualiaStore>()(
               ...d,
               horodatageEIDAS,
               signatureToken: token,
+              horodatageFournisseur: undefined,
               statut: 'acceptée' as const,
             }
           : d
