@@ -38,6 +38,7 @@ import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
 import { EvenementGarde, ParentRole } from '../../types';
 import { TRADUCTIONS } from '../../constants/i18n';
 import DatePickerField from '../../components/DatePickerField';
+import TimePickerField from '../../components/TimePickerField';
 import { alerter } from '../../lib/dialogue';
 
 const LOCALES = { fr, pt, es, en: enGB };
@@ -638,15 +639,9 @@ export default function CalendrierScreen() {
               <DatePickerField label={t.dateDebut} value={formDate} onChange={setFormDate} />
               <View style={{ height: SPACING.lg }} />
 
-              <Text style={styles.label}>{t.heure}</Text>
-              <TextInput
-                style={styles.input}
-                value={formHeure}
-                onChangeText={setFormHeure}
-                placeholder={t.heurePlaceholder}
-                placeholderTextColor={COLORS.ardoise}
-                keyboardType="numbers-and-punctuation"
-              />
+              {/* DUA-149 : on choisit l'heure, on ne la tape plus (retour testeur). */}
+              <TimePickerField label={t.heure} value={formHeure} onChange={setFormHeure} />
+              <View style={{ height: SPACING.lg }} />
 
               <Text style={styles.label}>{t.parent}</Text>
               <View style={styles.parentChoixLigne}>

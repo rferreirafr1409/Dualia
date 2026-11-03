@@ -449,6 +449,11 @@ const depenseVersDB = (dep: Depense, familleId: string, auteurUuid?: string) => 
   part_b: dep.partB ?? null,
   commercant: dep.commercant ?? null,
   lignes_detail: dep.lignesDetail ?? null,
+  // DUA-148 : on n'envoie les colonnes enfant que si un enfant est choisi.
+  // Tant que la migration 20261103_depense_enfant n'est pas passee, PostgREST
+  // refuserait toute depense portant une colonne inconnue, meme a null — et
+  // plus aucune depense ne s'enregistrerait.
+  ...(dep.enfantId ? { enfant: dep.enfant ?? null, enfant_id: dep.enfantId } : {}),
   justificatif_url: dep.justificatifUrl ?? null,
   justificatif_nom: dep.justificatifNom ?? null,
   justificatif_type: dep.justificatifType ?? null,
@@ -469,6 +474,8 @@ const depenseDepuisDB = (d: any, roleParUuid: Record<string, ParentRole>): Depen
   partB: d.part_b != null ? Number(d.part_b) : undefined,
   commercant: d.commercant ?? undefined,
   lignesDetail: d.lignes_detail ?? undefined,
+  enfant: d.enfant ?? undefined,
+  enfantId: d.enfant_id ?? undefined,
   justificatifUrl: d.justificatif_url ?? undefined,
   justificatifNom: d.justificatif_nom ?? undefined,
   justificatifType: d.justificatif_type ?? undefined,
