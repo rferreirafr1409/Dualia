@@ -39,6 +39,7 @@ import { useTransmission } from '../../hooks/useTransmission';
 import type { WidgetId } from '../../constants/widgetsCatalog';
 import SouvenirModal from '../../components/SouvenirModal';
 import DemandesEnAttente from '../../components/DemandesEnAttente';
+import RaccourcisModules from '../../components/RaccourcisModules';
 import JourneeModal from '../../components/JourneeModal';
 import Drapeau from '../../components/Drapeau';
 import MemoryAccordionRow from '../../components/MemoryAccordionRow';
@@ -706,6 +707,10 @@ export default function AccueilScreen() {
               </Pressable>
             </View>
           ) : null}
+
+          {/* DUA-154 : tous les modules à un appui. Sur ordinateur, la barre
+              latérale les montre déjà. */}
+          {!isDesktop ? <RaccourcisModules /> : null}
 
           {rangeesWidgets.map((rangee, index) => (
             <View key={index} style={styles.cardsRow}>
