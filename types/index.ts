@@ -54,6 +54,9 @@ export interface EvenementCalendrier {
   id: string;
   titre: string;
   date: string;
+  /** Fin de l'événement (DUA-151), instant ISO. Absente : événement
+   *  ponctuel, sans durée. Toujours postérieure ou égale à `date`. */
+  dateFin?: string;
   parentId: ParentRole;
   // Label d'affichage uniquement (prénom), calculé au moment de la
   // création — pas une source de vérité. Pour filtrer/relier de façon
@@ -126,6 +129,10 @@ export interface Depense {
   photoUri?: string;
   commercant?: string;
   lignesDetail?: { libelle: string; montant: number }[];
+  // DUA-148 : enfant concerne par la depense (optionnel). On garde le prenom
+  // en plus de l'id pour l'affichage, comme pour les evenements du calendrier.
+  enfant?: string;
+  enfantId?: string;
 }
 export type CategorieDocument = 'administratif' | 'sante' | 'ecole' | 'juridique';
 

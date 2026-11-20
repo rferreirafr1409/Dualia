@@ -58,6 +58,9 @@ export interface EvenementCalendrier {
   id: string;
   titre: string;
   date: string;
+  /** Fin de l'événement (DUA-151), instant ISO. Absente : événement
+   *  ponctuel, sans durée. Toujours postérieure ou égale à `date`. */
+  dateFin?: string;
   /** Le parent concerné, ou RIEN.
    *
    *  Tous les événements n'appartiennent pas à un parent. Un repère de
@@ -153,6 +156,10 @@ export interface Depense {
   photoUri?: string;
   commercant?: string;
   lignesDetail?: { libelle: string; montant: number }[];
+  // DUA-148 : enfant concerne par la depense (optionnel). On garde le prenom
+  // en plus de l'id pour l'affichage, comme pour les evenements du calendrier.
+  enfant?: string;
+  enfantId?: string;
   // Justificatif : chemin dans le bucket prive documents-familiaux, jamais une
   // URL publique. justificatifExpireLe porte la duree de conservation d'un an
   // demandee par les parents ; elle declenche un rappel, pas une suppression.

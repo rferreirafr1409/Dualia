@@ -13,6 +13,7 @@ import { alerter } from '../lib/dialogue';
 import { COLORS, SPACING, FONTS, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 import { retour } from '../lib/navigation';
+import ChampTexte from '../components/ChampTexte';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 try {
@@ -109,7 +110,7 @@ export default function PartagerMomentScreen() {
           )}
 
           <Text style={styles.label}>{t.texteLabel}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={texte}
             onChangeText={setTexte}

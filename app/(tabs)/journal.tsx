@@ -13,6 +13,7 @@ import DatePickerField from '../../components/DatePickerField';
 import JournalMemoryImage from '../../components/JournalMemoryImage';
 import { TRADUCTIONS } from '../../constants/i18n';
 import { JournalEntry } from '../../types';
+import ChampTexte from '../../components/ChampTexte';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 try {
@@ -228,7 +229,7 @@ export default function JournalScreen() {
           </ScrollView>
           {expandedId ? (
             <Pressable style={styles.collapseAllBtn} onPress={() => setExpandedId(null)}>
-              <Text style={styles.collapseAllBtnText}>Tout replier</Text>
+              <Text style={styles.collapseAllBtnText}>{t.toutReplier}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -384,10 +385,10 @@ export default function JournalScreen() {
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>{editId ? 'Modifier le souvenir' : t.modalTitre}</Text>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
+              <Text style={styles.modalTitle}>{editId ? t.modifierTitre : t.modalTitre}</Text>
 
-              <Text style={styles.fieldLabel}>Photo (optionnel)</Text>
+              <Text style={styles.fieldLabel}>{t.photoOptionnel}</Text>
               {formPhotoUri || formPhotoUrlExistante ? (
                 <View style={styles.photoWrap}>
                   <JournalMemoryImage uri={formPhotoUri ?? formPhotoUrlExistante!} maxHeight={260} />
@@ -409,7 +410,7 @@ export default function JournalScreen() {
               )}
 
               <Text style={styles.fieldLabel}>{t.champTitre}</Text>
-              <TextInput
+              <ChampTexte
                 value={formTitre}
                 onChangeText={setFormTitre}
                 placeholder={t.placeholderTitre}
@@ -418,7 +419,7 @@ export default function JournalScreen() {
               />
 
               <Text style={styles.fieldLabel}>{t.champDescription}</Text>
-              <TextInput
+              <ChampTexte
                 value={formDescription}
                 onChangeText={setFormDescription}
                 placeholder={t.placeholderDescription}
@@ -446,7 +447,7 @@ export default function JournalScreen() {
                   const active = formEnfant === tag;
                   return (
                     <Pressable key={tag} onPress={() => setFormEnfant(tag)} style={[styles.pill, active && styles.pillActive]}>
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>{tag}</Text>
+                      <Text style={[styles.pillText, active && styles.pillTextActive]}>{tag === TOUS ? t.filtreTous : tag}</Text>
                     </Pressable>
                   );
                 })}
@@ -481,7 +482,7 @@ export default function JournalScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{t.recitModalTitre}</Text>
             <Text style={styles.recitHint}>{t.recitHint}</Text>
-            <TextInput
+            <ChampTexte
               value={recitTexte}
               onChangeText={setRecitTexte}
               placeholder={t.recitPlaceholder}
@@ -512,7 +513,7 @@ export default function JournalScreen() {
                 <Text style={styles.modalBtnCancelText}>{t.annuler}</Text>
               </Pressable>
               <Pressable style={[styles.modalBtn, styles.modalBtnDelete]} onPress={confirmerSuppression}>
-                <Text style={styles.modalBtnSubmitText}>Supprimer</Text>
+                <Text style={styles.modalBtnSubmitText}>{t.supprimer}</Text>
               </Pressable>
             </View>
           </View>

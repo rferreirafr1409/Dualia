@@ -31,6 +31,7 @@ import { TRADUCTIONS } from '../constants/i18n';
 import type { RoleTiers, Tiers } from '../types';
 import { retour } from '../lib/navigation';
 import { URL_APPLICATION } from '../constants/environnement';
+import ChampTexte from '../components/ChampTexte';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -442,7 +443,7 @@ export default function AccesTiersScreen() {
               ))}
 
               <Text style={styles.label}>{t.champNom}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={nom}
                 onChangeText={setNom}
@@ -451,7 +452,7 @@ export default function AccesTiersScreen() {
               />
 
               <Text style={styles.label}>{t.champEmail}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={email}
                 onChangeText={setEmail}
@@ -534,7 +535,7 @@ export default function AccesTiersScreen() {
 
             {/* Champ sélectionnable : si le presse-papiers est refusé, le lien
                 reste copiable à la main plutôt que perdu. */}
-            <TextInput
+            <ChampTexte
               style={[styles.input, styles.inputLien]}
               value={lienCree?.lien ?? ''}
               editable={false}

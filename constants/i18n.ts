@@ -106,6 +106,7 @@ export const TRADUCTIONS = {
       transmissionPersonnaliser: 'Personnaliser',
     },
     nav: {
+      espaceFamilial: 'Espace familial',
       accueil: 'Accueil',
       calendrier: 'Calendrier',
       decisions: 'Décisions',
@@ -113,6 +114,7 @@ export const TRADUCTIONS = {
       journal: 'Journal',
     },
     calendrier: {
+      tousLesEnfants: 'Tous',
       calendriersExternes: 'Calendriers externes',
       moisPrecedent: 'Mois précédent',
       moisSuivant: 'Mois suivant',
@@ -149,6 +151,13 @@ export const TRADUCTIONS = {
       garde: 'Garde',
       passage: 'Passage',
       modalTitreEvenement: 'Nouvel événement',
+      modalTitreModifierEvenement: "Modifier l'événement",
+      heureFin: 'Heure de fin',
+      finAvantDebut: 'La fin doit être après le début.',
+      supprimerEvenement: 'Supprimer',
+      confirmerSuppressionEvenement: 'Supprimer cet événement pour les deux parents ?',
+      enregistrerModification: 'Enregistrer',
+      toucherPourModifier: 'Touchez pour modifier',
       champTitre: 'Titre',
       titrePlaceholder: 'Ex : Réunion école',
       heure: 'Heure (optionnel)',
@@ -328,6 +337,10 @@ export const TRADUCTIONS = {
       typeAbsence: 'Absence',
     },
     journal: {
+      toutReplier: 'Tout replier',
+      photoOptionnel: 'Photo (optionnel)',
+      supprimer: 'Supprimer',
+      modifierTitre: 'Modifier le souvenir',
       ajouterPhoto: 'Ajouter une photo',
       supprimerTitre: 'Supprimer ce souvenir ?',
       supprimerTexte: 'Cette action est définitive et ne peut pas être annulée.',
@@ -394,6 +407,8 @@ export const TRADUCTIONS = {
       descriptionPlaceholder: 'Ex. Fournitures scolaires',
       commercant: 'Commerçant',
       commercantPlaceholder: 'Ex. Décathlon',
+      enfantConcerne: 'Enfant concerné',
+      tousLesEnfants: 'Toute la famille',
       date: 'Date',
       categorie: 'Catégorie',
       categories: {
@@ -1036,6 +1051,10 @@ export const TRADUCTIONS = {
           reponse: "Seuls les deux parents et les proches que vous avez invités voient votre espace familial. Les données sont hébergées dans l'Union européenne. Elles ne sont jamais vendues ni transmises à des tiers à des fins commerciales.",
         },
         {
+          question: 'Comment et où sont stockées mes données ?',
+          reponse: "Tout ce que vous saisissez (calendrier, dépenses, messages, décisions, journal) ainsi que les photos et documents est enregistré dans une base de données hébergée à Paris, et le serveur de l'application est lui aussi en France. Les données sont chiffrées pendant leur transfert (HTTPS) et sur les disques. Une sauvegarde complète est faite automatiquement chaque jour et conservée 7 jours, pour pouvoir tout restaurer en cas d'incident. Chaque espace familial est cloisonné : la base elle-même refuse de montrer vos données à quelqu'un qui n'est pas membre de votre espace. Quand vous scannez un ticket, importez un jugement ou utilisez l'aide de la messagerie, le contenu concerné est envoyé à notre prestataire d'intelligence artificielle (Anthropic, traitement en Europe) le temps de l'analyse. Le détail figure dans la politique de confidentialité.",
+        },
+        {
           question: "Comment inviter l'autre parent ?",
           reponse: "Depuis l'onglet Famille, ouvrez « Inviter le co-parent » : vous obtenez un lien et un code à transmettre séparément. L'autre parent crée son compte avec le lien, saisit le code, et vous validez sa demande.",
         },
@@ -1175,6 +1194,7 @@ export const TRADUCTIONS = {
       transmissionPersonnaliser: 'Personalizar',
     },
     nav: {
+      espaceFamilial: 'Espacio familiar',
       accueil: 'Inicio',
       calendrier: 'Calendario',
       decisions: 'Decisiones',
@@ -1182,6 +1202,7 @@ export const TRADUCTIONS = {
       journal: 'Diario',
     },
     calendrier: {
+      tousLesEnfants: 'Todos',
       calendriersExternes: 'Calendarios externos',
       moisPrecedent: 'Mes anterior',
       moisSuivant: 'Mes siguiente',
@@ -1218,6 +1239,13 @@ export const TRADUCTIONS = {
       garde: 'Custodia',
       passage: 'Cambio',
       modalTitreEvenement: 'Nuevo evento',
+      modalTitreModifierEvenement: 'Modificar el evento',
+      heureFin: 'Hora de fin',
+      finAvantDebut: 'El fin debe ser posterior al inicio.',
+      supprimerEvenement: 'Eliminar',
+      confirmerSuppressionEvenement: '¿Eliminar este evento para ambos progenitores?',
+      enregistrerModification: 'Guardar',
+      toucherPourModifier: 'Toca para modificar',
       champTitre: 'Título',
       titrePlaceholder: 'Ej: Reunión escolar',
       heure: 'Hora (opcional)',
@@ -1397,6 +1425,10 @@ export const TRADUCTIONS = {
       typeAbsence: 'Falta',
     },
     journal: {
+      toutReplier: 'Plegar todo',
+      photoOptionnel: 'Foto (opcional)',
+      supprimer: 'Eliminar',
+      modifierTitre: 'Editar el recuerdo',
       ajouterPhoto: 'Añadir una foto',
       supprimerTitre: '¿Eliminar este recuerdo?',
       supprimerTexte: 'Esta acción es definitiva y no se puede deshacer.',
@@ -1463,6 +1495,8 @@ export const TRADUCTIONS = {
       descriptionPlaceholder: 'Ej. Material escolar',
       commercant: 'Comercio',
       commercantPlaceholder: 'Ej. Decathlon',
+      enfantConcerne: 'Hijo afectado',
+      tousLesEnfants: 'Toda la familia',
       date: 'Fecha',
       categorie: 'Categoría',
       categories: {
@@ -2105,6 +2139,10 @@ export const TRADUCTIONS = {
           reponse: 'Solo los dos padres y los allegados que hayáis invitado ven vuestro espacio familiar. Los datos se alojan en la Unión Europea. Nunca se venden ni se ceden a terceros con fines comerciales.',
         },
         {
+          question: '¿Cómo y dónde se guardan mis datos?',
+          reponse: 'Todo lo que introduces (calendario, gastos, mensajes, decisiones, diario), así como las fotos y documentos, se guarda en una base de datos alojada en París, y el servidor de la aplicación también está en Francia. Los datos se cifran durante su transferencia (HTTPS) y en los discos. Cada día se hace automáticamente una copia de seguridad completa, que se conserva 7 días, para poder restaurarlo todo en caso de incidente. Cada espacio familiar está aislado: la propia base de datos se niega a mostrar tus datos a quien no sea miembro de tu espacio. Cuando escaneas un ticket, importas una sentencia o usas la ayuda de la mensajería, el contenido correspondiente se envía a nuestro proveedor de inteligencia artificial (Anthropic, tratamiento en Europa) durante el análisis. El detalle figura en la política de privacidad.',
+        },
+        {
           question: '¿Cómo invito al otro progenitor?',
           reponse: 'Desde la pestaña Familia, abre « Invitar al coprogenitor »: obtienes un enlace y un código para enviar por separado. El otro progenitor crea su cuenta con el enlace, introduce el código y tú validas su solicitud.',
         },
@@ -2244,6 +2282,7 @@ export const TRADUCTIONS = {
       transmissionPersonnaliser: 'Personalizar',
     },
     nav: {
+      espaceFamilial: 'Espaço familiar',
       accueil: 'Início',
       calendrier: 'Calendário',
       decisions: 'Decisões',
@@ -2251,6 +2290,7 @@ export const TRADUCTIONS = {
       journal: 'Diário',
     },
     calendrier: {
+      tousLesEnfants: 'Todos',
       calendriersExternes: 'Calendários externos',
       moisPrecedent: 'Mês anterior',
       moisSuivant: 'Mês seguinte',
@@ -2287,6 +2327,13 @@ export const TRADUCTIONS = {
       garde: 'Guarda',
       passage: 'Troca',
       modalTitreEvenement: 'Novo evento',
+      modalTitreModifierEvenement: 'Alterar o evento',
+      heureFin: 'Hora de fim',
+      finAvantDebut: 'O fim tem de ser depois do início.',
+      supprimerEvenement: 'Eliminar',
+      confirmerSuppressionEvenement: 'Eliminar este evento para os dois progenitores?',
+      enregistrerModification: 'Guardar',
+      toucherPourModifier: 'Toca para alterar',
       champTitre: 'Título',
       titrePlaceholder: 'Ex: Reunião escola',
       heure: 'Hora (opcional)',
@@ -2466,6 +2513,10 @@ export const TRADUCTIONS = {
       typeAbsence: 'Falta',
     },
     journal: {
+      toutReplier: 'Recolher tudo',
+      photoOptionnel: 'Foto (opcional)',
+      supprimer: 'Eliminar',
+      modifierTitre: 'Editar a memória',
       ajouterPhoto: 'Adicionar uma foto',
       supprimerTitre: 'Eliminar esta memória?',
       supprimerTexte: 'Esta ação é definitiva e não pode ser anulada.',
@@ -2532,6 +2583,8 @@ export const TRADUCTIONS = {
       descriptionPlaceholder: 'Ex. Material escolar',
       commercant: 'Comerciante',
       commercantPlaceholder: 'Ex. Decathlon',
+      enfantConcerne: 'Criança em causa',
+      tousLesEnfants: 'Toda a família',
       date: 'Data',
       categorie: 'Categoria',
       categories: {
@@ -3174,6 +3227,10 @@ export const TRADUCTIONS = {
           reponse: 'Apenas os dois pais e as pessoas próximas que convidaram veem o vosso espaço familiar. Os dados são alojados na União Europeia. Nunca são vendidos nem cedidos a terceiros para fins comerciais.',
         },
         {
+          question: 'Como e onde são guardados os meus dados?',
+          reponse: 'Tudo o que introduz (calendário, despesas, mensagens, decisões, diário), bem como as fotos e os documentos, é guardado numa base de dados alojada em Paris, e o servidor da aplicação também está em França. Os dados são cifrados durante a transferência (HTTPS) e nos discos. Todos os dias é feita automaticamente uma cópia de segurança completa, guardada durante 7 dias, para poder restaurar tudo em caso de incidente. Cada espaço familiar está isolado: a própria base de dados recusa mostrar os seus dados a quem não seja membro do seu espaço. Quando digitaliza um recibo, importa uma sentença ou usa a ajuda das mensagens, o conteúdo em causa é enviado ao nosso fornecedor de inteligência artificial (Anthropic, tratamento na Europa) durante a análise. O detalhe consta da política de privacidade.',
+        },
+        {
           question: 'Como convido o outro progenitor?',
           reponse: 'No separador Família, abra « Convidar o coprogenitor »: obtém uma ligação e um código para enviar separadamente. O outro progenitor cria a conta com a ligação, introduz o código e você valida o pedido.',
         },
@@ -3313,6 +3370,7 @@ export const TRADUCTIONS = {
       transmissionPersonnaliser: 'Customise',
     },
     nav: {
+      espaceFamilial: 'Family space',
       accueil: 'Home',
       calendrier: 'Calendar',
       decisions: 'Decisions',
@@ -3320,6 +3378,7 @@ export const TRADUCTIONS = {
       journal: 'Journal',
     },
     calendrier: {
+      tousLesEnfants: 'All',
       calendriersExternes: 'External calendars',
       moisPrecedent: 'Previous month',
       moisSuivant: 'Next month',
@@ -3356,6 +3415,13 @@ export const TRADUCTIONS = {
       garde: 'Custody',
       passage: 'Handover',
       modalTitreEvenement: 'New event',
+      modalTitreModifierEvenement: 'Edit event',
+      heureFin: 'End time',
+      finAvantDebut: 'The end must be after the start.',
+      supprimerEvenement: 'Delete',
+      confirmerSuppressionEvenement: 'Delete this event for both parents?',
+      enregistrerModification: 'Save',
+      toucherPourModifier: 'Tap to edit',
       champTitre: 'Title',
       titrePlaceholder: 'E.g.: School meeting',
       heure: 'Time (optional)',
@@ -3535,6 +3601,10 @@ export const TRADUCTIONS = {
       typeAbsence: 'Absence',
     },
     journal: {
+      toutReplier: 'Collapse all',
+      photoOptionnel: 'Photo (optional)',
+      supprimer: 'Delete',
+      modifierTitre: 'Edit memory',
       ajouterPhoto: 'Add a photo',
       supprimerTitre: 'Delete this memory?',
       supprimerTexte: 'This cannot be undone.',
@@ -3601,6 +3671,8 @@ export const TRADUCTIONS = {
       descriptionPlaceholder: 'E.g. School supplies',
       commercant: 'Merchant',
       commercantPlaceholder: 'E.g. Boots',
+      enfantConcerne: 'Child concerned',
+      tousLesEnfants: 'Whole family',
       date: 'Date',
       categorie: 'Category',
       categories: {
@@ -4241,6 +4313,10 @@ export const TRADUCTIONS = {
         {
           question: 'Who can see my data?',
           reponse: 'Only the two parents and the relatives you have invited can see your family space. Data is hosted in the European Union. It is never sold or passed on to third parties for commercial purposes.',
+        },
+        {
+          question: 'How and where is my data stored?',
+          reponse: "Everything you enter (calendar, expenses, messages, decisions, journal), as well as photos and documents, is stored in a database hosted in Paris, and the app's server is also in France. Data is encrypted in transit (HTTPS) and on disk. A full backup is made automatically every day and kept for 7 days, so everything can be restored after an incident. Each family space is isolated: the database itself refuses to show your data to anyone who is not a member of your space. When you scan a receipt, import a court order or use the messaging assistant, the content concerned is sent to our artificial intelligence provider (Anthropic, processed in Europe) for the analysis. Details are in the privacy policy.",
         },
         {
           question: 'How do I invite the other parent?',

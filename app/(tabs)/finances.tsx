@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, Alert, ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Platform } from 'react-native';
@@ -43,6 +44,7 @@ import { lireErreurBackend } from '../../lib/erreursBackend';
 import { decouperTicket } from '../../lib/tuilesTicket';
 import InformationIA from '../../components/InformationIA';
 import { preparerTicketMobile } from '../../lib/tuilesTicketMobile';
+import ChampTexte from '../../components/ChampTexte';
 
 const URL_SCAN_TICKET = `${BACKEND_URL}/api/scan-ticket`;
 
@@ -365,6 +367,7 @@ function FinancesScreenInner() {
   const depenses = useStore((s) => s.depenses);
   const parents = useStore((s) => s.parents);
   const parentActif = useStore((s) => s.parentActif);
+  const enfants = useStore((s) => s.enfants);
   const ajouterDepense = useStore((s) => s.ajouterDepense);
   const reglerDepense = useStore((s) => s.reglerDepense);
   const televerserPieceJointe = useStore((s) => s.televerserPieceJointe);
@@ -383,6 +386,8 @@ function FinancesScreenInner() {
   const [formCommercant, setFormCommercant] = useState('');
   const [formCategorie, setFormCategorie] = useState<CategorieDepense>('quotidien');
   const [formDate, setFormDate] = useState<Date | null>(new Date());
+  // DUA-148 : enfant concerne par la depense (null = toute la famille).
+  const [formEnfantId, setFormEnfantId] = useState<string | null>(null);
   const [formPhotoUri, setFormPhotoUri] = useState<string | undefined>(undefined);
   const [formPartage, setFormPartage] = useState<'50/50' | 'total' | 'regle'>('50/50');
   const [whyOpen, setWhyOpen] = useState(false);
@@ -531,6 +536,7 @@ function FinancesScreenInner() {
     setFormCommercant('');
     setFormCategorie('quotidien');
     setFormDate(new Date());
+    setFormEnfantId(null);
     setFormPhotoUri(undefined);
     setFormPartage('50/50');
     setWhyOpen(false);
@@ -888,6 +894,7 @@ function FinancesScreenInner() {
     setEnvoiEnCours(true);
     try {
       const piece = formJustificatif ? await televerserPieceJointe(formJustificatif) : null;
+      const enfantChoisi = formEnfantId ? enfants.find((e) => e.id === formEnfantId) : undefined;
 
       const nouvelle: Depense = {
         id: `dep-${Date.now()}`,
@@ -901,6 +908,8 @@ function FinancesScreenInner() {
         partB,
         photoUri: formPhotoUri,
         commercant: formCommercant || undefined,
+        enfant: enfantChoisi?.prenom,
+        enfantId: enfantChoisi?.id,
         justificatifUrl: piece?.chemin,
         justificatifNom: piece?.nom,
         justificatifType: piece?.type,
@@ -938,6 +947,7 @@ function FinancesScreenInner() {
 
     const dateFinale = scanDate || new Date();
     const commercantFinal = scanCommercant || undefined;
+    const enfantChoisiScan = formEnfantId ? enfants.find((e) => e.id === formEnfantId) : undefined;
 
     setEnvoiEnCours(true);
     try {
@@ -977,6 +987,8 @@ function FinancesScreenInner() {
           partA,
           partB,
           commercant: commercantFinal,
+          enfant: enfantChoisiScan?.prenom,
+          enfantId: enfantChoisiScan?.id,
           lignesDetail: lignesDetailPourGroupe(scanLignes, cat, montantCat, l.remiseRepartie),
           justificatifUrl: piece?.chemin,
           justificatifNom: piece?.nom,
@@ -1135,6 +1147,7 @@ function FinancesScreenInner() {
                 <Text style={styles.depenseSousTitre}>
                   {parentNom(dep.auteurId)} · {formatDateCourt(dep.date, langue)}
                   {dep.commercant ? ` · ${dep.commercant}` : ''}
+                  {dep.enfant ? ` · ${dep.enfant}` : ''}
                 </Text>
               </View>
               <View style={{ alignItems: 'flex-end' }}>
@@ -1156,9 +1169,9 @@ function FinancesScreenInner() {
       </ScrollView>
 
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitre}>{t.nouvelleDepense}</Text>
                 <Pressable onPress={() => setModalVisible(false)}>
@@ -1202,7 +1215,7 @@ function FinancesScreenInner() {
               )}
 
               <Text style={styles.label}>{t.montant}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={formMontant}
                 onChangeText={setFormMontant}
@@ -1212,7 +1225,7 @@ function FinancesScreenInner() {
               />
 
               <Text style={styles.label}>{t.description}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={formDescription}
                 onChangeText={setFormDescription}
@@ -1221,7 +1234,7 @@ function FinancesScreenInner() {
               />
 
               <Text style={styles.label}>{t.commercant}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={formCommercant}
                 onChangeText={setFormCommercant}
@@ -1230,6 +1243,36 @@ function FinancesScreenInner() {
               />
 
               <DatePickerField label={t.date} value={formDate} onChange={setFormDate} />
+
+              {/* DUA-148 : pour quel enfant ? (retour testeur). Masque tant
+                  qu'aucun enfant n'est declare : rien a choisir. */}
+              {enfants.length > 0 ? (
+                <>
+                  <Text style={styles.label}>{t.enfantConcerne}</Text>
+                  <View style={styles.categorieRow}>
+                    <Pressable
+                      style={[styles.categorieChip, formEnfantId === null && styles.categorieChipActive]}
+                      onPress={() => setFormEnfantId(null)}
+                    >
+                      <Ionicons name="people-outline" size={16} color={formEnfantId === null ? COLORS.blanc : COLORS.vertProfond} />
+                      <Text style={[styles.categorieChipTexte, formEnfantId === null && styles.categorieChipTexteActive]}>
+                        {t.tousLesEnfants}
+                      </Text>
+                    </Pressable>
+                    {enfants.map((e) => (
+                      <Pressable
+                        key={e.id}
+                        style={[styles.categorieChip, formEnfantId === e.id && styles.categorieChipActive]}
+                        onPress={() => setFormEnfantId(e.id)}
+                      >
+                        <Text style={[styles.categorieChipTexte, formEnfantId === e.id && styles.categorieChipTexteActive]}>
+                          {e.prenom}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </>
+              ) : null}
 
               <Text style={styles.label}>{t.categorie}</Text>
               <View style={styles.categorieRow}>
@@ -1309,7 +1352,7 @@ function FinancesScreenInner() {
               {conditionsActives?.remboursementAssuranceDeduit === true ? (
                 <>
                   <Text style={styles.label}>{lc.remboursementLabel}</Text>
-                  <TextInput
+                  <ChampTexte
                     style={styles.input}
                     value={formRemboursement}
                     onChangeText={setFormRemboursement}
@@ -1411,13 +1454,13 @@ function FinancesScreenInner() {
               </Pressable>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={scanRecapVisible} animationType="slide" transparent onRequestClose={() => setScanRecapVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitre}>{t.recapTitre}</Text>
                 <Pressable onPress={() => setScanRecapVisible(false)}>
@@ -1593,7 +1636,7 @@ function FinancesScreenInner() {
       <Modal visible={!!detailDepense} animationType="slide" transparent onRequestClose={() => setDetailDepense(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitre}>{detailDepense?.description}</Text>
                 <Pressable onPress={() => setDetailDepense(null)}>
@@ -1664,6 +1707,12 @@ function FinancesScreenInner() {
                 <View style={styles.recapLigne}>
                   <Text style={styles.recapLigneTexte}>{t.commercant}</Text>
                   <Text style={styles.recapLigneMontant}>{detailDepense.commercant}</Text>
+                </View>
+              ) : null}
+              {detailDepense?.enfant ? (
+                <View style={styles.recapLigne}>
+                  <Text style={styles.recapLigneTexte}>{t.enfantConcerne}</Text>
+                  <Text style={styles.recapLigneMontant}>{detailDepense.enfant}</Text>
                 </View>
               ) : null}
               <View style={styles.recapLigne}>
@@ -1763,7 +1812,7 @@ function FinancesScreenInner() {
       <Modal visible={retentionVisible} animationType="slide" transparent onRequestClose={() => setRetentionVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitre}>{l.retentionModalTitre}</Text>
                 <Pressable onPress={() => setRetentionVisible(false)}>

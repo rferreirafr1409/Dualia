@@ -166,6 +166,24 @@ const PARENTS: Record<ParentRole, Parent> = {
   B: { id: 'B', nom: 'Parent 2', email: '', couleur: COLORS.terracotta },
 };
 
+// Nom affiché tant qu'un parent n'a pas saisi le sien (souvent le co-parent
+// pas encore invité). Il suit la langue de l'app : un testeur en portugais
+// voyait « Parent 2 » dans l'agenda.
+const NOMS_PARENT_PAR_DEFAUT: Record<Langue, Record<ParentRole, string>> = {
+  fr: { A: 'Parent 1', B: 'Parent 2' },
+  pt: { A: 'Progenitor 1', B: 'Progenitor 2' },
+  es: { A: 'Progenitor 1', B: 'Progenitor 2' },
+  en: { A: 'Parent 1', B: 'Parent 2' },
+};
+
+const estNomParDefaut = (role: ParentRole, nom: string) =>
+  Object.values(NOMS_PARENT_PAR_DEFAUT).some((noms) => noms[role] === nom);
+
+const parentsParDefaut = (langue: Langue): Record<ParentRole, Parent> => ({
+  A: { ...PARENTS.A, nom: NOMS_PARENT_PAR_DEFAUT[langue]?.A ?? PARENTS.A.nom },
+  B: { ...PARENTS.B, nom: NOMS_PARENT_PAR_DEFAUT[langue]?.B ?? PARENTS.B.nom },
+});
+
 const regleVersDB = (regle: ReglePartage, cadreFamilialId: string) => ({
   cadre_familial_id: cadreFamilialId,
   categorie: regle.categorie,
@@ -378,6 +396,10 @@ const evenementCalendrierVersDB = (ev: EvenementCalendrier, familleId: string, p
   parent_id: parentUuid ?? null,
   enfant: ev.enfant ?? null,
   enfant_id: ev.enfantId ?? null,
+  // DUA-151 : la fin n'est envoyée que si elle existe, pour que les
+  // événements continuent de s'enregistrer tant que la colonne date_fin n'a
+  // pas été créée (migration 20261120_evenement_date_fin.sql).
+  ...(ev.dateFin ? { date_fin: ev.dateFin } : {}),
   // La colonne existe et le type la porte, mais elle n'etait jamais envoyee :
   // le lien vers le message d'origine se perdait a la synchronisation, et tous
   // les evenements ressemblaient a des saisies manuelles.
@@ -431,6 +453,7 @@ const evenementCalendrierDepuisDB = (e: any, roleParUuid: Record<string, ParentR
   id: e.id,
   titre: e.titre,
   date: e.date,
+  dateFin: e.date_fin ?? undefined,
   parentId: (e.parent_id && roleParUuid[e.parent_id]) || 'A',
   sourceMessageId: e.source_message_id ?? undefined,
   enfant: e.enfant ?? undefined,
@@ -449,6 +472,11 @@ const depenseVersDB = (dep: Depense, familleId: string, auteurUuid?: string) => 
   part_b: dep.partB ?? null,
   commercant: dep.commercant ?? null,
   lignes_detail: dep.lignesDetail ?? null,
+  // DUA-148 : on n'envoie les colonnes enfant que si un enfant est choisi.
+  // Tant que la migration 20261103_depense_enfant n'est pas passee, PostgREST
+  // refuserait toute depense portant une colonne inconnue, meme a null — et
+  // plus aucune depense ne s'enregistrerait.
+  ...(dep.enfantId ? { enfant: dep.enfant ?? null, enfant_id: dep.enfantId } : {}),
   justificatif_url: dep.justificatifUrl ?? null,
   justificatif_nom: dep.justificatifNom ?? null,
   justificatif_type: dep.justificatifType ?? null,
@@ -469,6 +497,8 @@ const depenseDepuisDB = (d: any, roleParUuid: Record<string, ParentRole>): Depen
   partB: d.part_b != null ? Number(d.part_b) : undefined,
   commercant: d.commercant ?? undefined,
   lignesDetail: d.lignes_detail ?? undefined,
+  enfant: d.enfant ?? undefined,
+  enfantId: d.enfant_id ?? undefined,
   justificatifUrl: d.justificatif_url ?? undefined,
   justificatifNom: d.justificatif_nom ?? undefined,
   justificatifType: d.justificatif_type ?? undefined,
@@ -852,6 +882,13 @@ interface DualiaStore {
   // qu'il a donc ete refuse. Les ecrans doivent tester cette reponse avant
   // d'annoncer quoi que ce soit au parent.
   ajouterEvenementCalendrier: (ev: EvenementCalendrier) => boolean;
+  // DUA-151 : rouvrir un événement pour le modifier ou le supprimer. Même
+  // contrat que l'ajout : FAUX si la date est illisible (rien n'est changé).
+  modifierEvenementCalendrier: (
+    id: string,
+    champs: Pick<EvenementCalendrier, 'titre' | 'date' | 'dateFin' | 'parentId' | 'enfant' | 'enfantId'>
+  ) => boolean;
+  supprimerEvenementCalendrier: (id: string) => void;
   ignorerSuggestion: (messageId: string) => void;
   messagesAnalyses: string[];
   marquerMessageAnalyse: (id: string) => void;
@@ -1645,6 +1682,69 @@ export const useStore = create<DualiaStore>()(
 
         return true;
       },
+      modifierEvenementCalendrier: (id, champs) => {
+        if (!estInstantValide(champs.date) || (champs.dateFin && !estInstantValide(champs.dateFin))) {
+          console.error('[Dualia] Modification refusée : date illisible', JSON.stringify(champs));
+          return false;
+        }
+        const avant = get().evenementsCalendrier.find((e) => e.id === id);
+        if (!avant) return false;
+        const apres: EvenementCalendrier = {
+          ...avant,
+          ...champs,
+          date: instantDepuisHeureLocale(champs.date),
+          dateFin: champs.dateFin ? instantDepuisHeureLocale(champs.dateFin) : undefined,
+        };
+        set((state) => ({
+          evenementsCalendrier: state.evenementsCalendrier.map((e) => (e.id === id ? apres : e)),
+        }));
+        // Un identifiant local (« evt-… ») n'est pas encore en base : l'ajout
+        // en cours le remplacera. Rien à envoyer.
+        if (!EST_UUID.test(id)) return true;
+        const { parents } = get();
+        const parentUuid = apres.parentId ? parents[apres.parentId]?.uuid ?? null : null;
+        supabase
+          .from('evenements_calendrier')
+          .update({
+            titre: apres.titre,
+            date: apres.date,
+            parent_id: parentUuid,
+            enfant: apres.enfant ?? null,
+            enfant_id: apres.enfantId ?? null,
+            // Sans fin, on n'envoie rien plutôt que null : la colonne peut ne
+            // pas encore exister. Une fin retirée reste donc en base jusqu'à
+            // la migration ; c'est le moindre mal.
+            ...(apres.dateFin ? { date_fin: apres.dateFin } : avant.dateFin ? { date_fin: null } : {}),
+          })
+          .eq('id', id)
+          .then(({ error }) => {
+            if (error) {
+              console.error('[Dualia] Échec modification événement calendrier :', error);
+              // Retour à la version d'avant : mieux vaut une modification
+              // perdue qu'un écran qui diffère de celui de l'autre parent.
+              set((state) => ({
+                evenementsCalendrier: state.evenementsCalendrier.map((e) => (e.id === id ? avant : e)),
+              }));
+            }
+          });
+        return true;
+      },
+      supprimerEvenementCalendrier: (id) => {
+        const avant = get().evenementsCalendrier.find((e) => e.id === id);
+        if (!avant) return;
+        set((state) => ({ evenementsCalendrier: state.evenementsCalendrier.filter((e) => e.id !== id) }));
+        if (!EST_UUID.test(id)) return;
+        supabase
+          .from('evenements_calendrier')
+          .delete()
+          .eq('id', id)
+          .then(({ error }) => {
+            if (error) {
+              console.error('[Dualia] Échec suppression événement calendrier :', error);
+              set((state) => ({ evenementsCalendrier: [...state.evenementsCalendrier, avant] }));
+            }
+          });
+      },
       ignorerSuggestion: (messageId) =>
         set((state) => ({ messagesAnalyses: [...state.messagesAnalyses, messageId] })),
       messagesAnalyses: [],
@@ -1905,7 +2005,7 @@ export const useStore = create<DualiaStore>()(
       // temps du rechargement, a un compte sans espace — et declencherait la
       // redirection vers la creation d'un nouvel espace.
       rattachement: 'inconnu' as Rattachement,
-      parents: { ...PARENTS },
+      parents: parentsParDefaut(etat.langue),
       parentActif: 'A',
       decisions: [],
       messages: [],
@@ -2562,7 +2662,15 @@ export const useStore = create<DualiaStore>()(
   // traduits via TRADUCTIONS, jamais via le contenu du store.
   setLangue: (langue) => {
     const cartes = { fr: FAMILY_CARD_FR, pt: FAMILY_CARD_PT, es: FAMILY_CARD_ES, en: FAMILY_CARD_EN };
-    set({ langue, familyCard: cartes[langue] ?? FAMILY_CARD_FR });
+    const parentsActuels = get().parents;
+    const parentsTraduits = { ...parentsActuels };
+    (['A', 'B'] as ParentRole[]).forEach((role) => {
+      const p = parentsActuels[role];
+      if (p && estNomParDefaut(role, p.nom)) {
+        parentsTraduits[role] = { ...p, nom: NOMS_PARENT_PAR_DEFAUT[langue]?.[role] ?? p.nom };
+      }
+    });
+    set({ langue, familyCard: cartes[langue] ?? FAMILY_CARD_FR, parents: parentsTraduits });
     // La langue etait memorisee dans le navigateur seulement : un parent qui
     // se connectait sur un autre appareil, ou apres quelqu'un d'autre sur le
     // meme navigateur, retrouvait une langue qui n'etait pas la sienne. On
@@ -3521,7 +3629,7 @@ export const useStore = create<DualiaStore>()(
       tousLesParents = essaiAvecGenre.data;
     }
 
-    const parentsMap: Record<ParentRole, Parent> = { ...PARENTS };
+    const parentsMap: Record<ParentRole, Parent> = parentsParDefaut(get().langue);
     (tousLesParents ?? []).forEach((p: any) => {
       const role = p.role as ParentRole;
       parentsMap[role] = {
@@ -3531,7 +3639,7 @@ export const useStore = create<DualiaStore>()(
         // prenom : `.split` sur null leve pendant le rendu, donc ecran
         // blanc. La valeur de repli existait deja dans PARENTS, elle
         // n'etait simplement pas utilisee ici.
-        nom: p.nom || PARENTS[role].nom,
+        nom: p.nom || parentsMap[role].nom,
         email: '',
         couleur: p.couleur ?? PARENTS[role].couleur,
         uuid: p.id,

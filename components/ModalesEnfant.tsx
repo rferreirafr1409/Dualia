@@ -30,6 +30,7 @@ import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../constants/theme';
 import { TRADUCTIONS } from '../constants/i18n';
 import DatePickerField from './DatePickerField';
 import { lireConsentementSante, enregistrerConsentementSante } from '../lib/consentementSante';
+import ChampTexte from './ChampTexte';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 try {
@@ -200,7 +201,7 @@ export function ModaleEnfant({
           </TouchableOpacity>
 
           <Text style={styles.label}>{t.prenom}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={form.prenom}
             onChangeText={(v) => setForm((f) => ({ ...f, prenom: v }))}
@@ -216,7 +217,7 @@ export function ModaleEnfant({
           <View style={{ height: SPACING.lg }} />
 
           <Text style={styles.label}>{t.ecole}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={form.ecole}
             onChangeText={(v) => setForm((f) => ({ ...f, ecole: v }))}
@@ -225,7 +226,7 @@ export function ModaleEnfant({
           />
 
           <Text style={styles.label}>{t.medecinTraitant}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={form.medecinTraitant}
             onChangeText={(v) => setForm((f) => ({ ...f, medecinTraitant: v }))}
@@ -234,7 +235,7 @@ export function ModaleEnfant({
           />
 
           <Text style={styles.label}>{t.medecinTelephone}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={form.medecinTelephone}
             onChangeText={(v) => setForm((f) => ({ ...f, medecinTelephone: v }))}
@@ -244,7 +245,7 @@ export function ModaleEnfant({
           />
 
           <Text style={styles.label}>{t.allergies}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={form.allergies}
             onChangeText={(v) => setForm((f) => ({ ...f, allergies: v }))}
@@ -275,7 +276,7 @@ export function ModaleEnfant({
           </View>
 
           <Text style={styles.label}>{t.mutuelle}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={form.mutuelle}
             onChangeText={(v) => setForm((f) => ({ ...f, mutuelle: v }))}
@@ -372,7 +373,7 @@ export function ModaleContactUrgence({
           <Text style={styles.modalTitre}>{t.modalTitreContact}</Text>
 
           <Text style={styles.label}>{t.nomContact}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={nom}
             onChangeText={setNom}
@@ -381,7 +382,7 @@ export function ModaleContactUrgence({
           />
 
           <Text style={styles.label}>{t.relation}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={relation}
             onChangeText={setRelation}
@@ -390,7 +391,7 @@ export function ModaleContactUrgence({
           />
 
           <Text style={styles.label}>{t.telephone}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.input}
             value={telephone}
             onChangeText={setTelephone}

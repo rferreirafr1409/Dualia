@@ -11,6 +11,7 @@ import { StatutDecision } from '../../types';
 import { TRADUCTIONS } from '../../constants/i18n';
 import JugementUpload from '../../components/JugementUpload';
 import { formatMontant } from '../../lib/comptes';
+import ChampTexte from '../../components/ChampTexte';
 
 // Voir DUA-065 : l'export PDF n'existe pas encore.
 const EXPORT_PDF_DISPONIBLE = false;
@@ -509,7 +510,7 @@ export default function DecisionsScreen() {
                 <Text style={styles.jugementModalFermer}>{l.fermer}</Text>
               </Pressable>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <JugementUpload onTermine={() => setJugementModalVisible(false)} />
             </ScrollView>
           </View>
@@ -540,7 +541,7 @@ export default function DecisionsScreen() {
             ) : null}
 
             <Text style={styles.fieldLabel}>{t.champTitre}</Text>
-            <TextInput
+            <ChampTexte
               value={formTitre}
               onChangeText={setFormTitre}
               placeholder={t.placeholderTitre}
@@ -549,7 +550,7 @@ export default function DecisionsScreen() {
             />
 
             <Text style={styles.fieldLabel}>{t.champDescription}</Text>
-            <TextInput
+            <ChampTexte
               value={formDescription}
               onChangeText={setFormDescription}
               placeholder={t.placeholderDescription}

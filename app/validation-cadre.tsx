@@ -49,6 +49,7 @@ import type {
 } from '../types';
 import { retour } from '../lib/navigation';
 import type { VerdictVacances } from '../types';
+import ChampTexte from '../components/ChampTexte';
 
 // Le verdict des vacances scolaires, dit honnêtement.
 //
@@ -759,7 +760,7 @@ export default function ValidationCadreScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitre}>{t.modalTitre}</Text>
             <Text style={styles.modalLabel}>{t.modalLabel}</Text>
-            <TextInput
+            <ChampTexte
               style={styles.modalInput}
               value={partAInput}
               onChangeText={setPartAInput}
