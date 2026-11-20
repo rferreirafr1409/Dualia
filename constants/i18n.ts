@@ -1035,6 +1035,10 @@ export const TRADUCTIONS = {
           reponse: "Seuls les deux parents et les proches que vous avez invités voient votre espace familial. Les données sont hébergées dans l'Union européenne. Elles ne sont jamais vendues ni transmises à des tiers à des fins commerciales.",
         },
         {
+          question: 'Comment et où sont stockées mes données ?',
+          reponse: "Tout ce que vous saisissez (calendrier, dépenses, messages, décisions, journal) ainsi que les photos et documents est enregistré dans une base de données hébergée à Paris, et le serveur de l'application est lui aussi en France. Les données sont chiffrées pendant leur transfert (HTTPS) et sur les disques. Une sauvegarde complète est faite automatiquement chaque jour et conservée 7 jours, pour pouvoir tout restaurer en cas d'incident. Chaque espace familial est cloisonné : la base elle-même refuse de montrer vos données à quelqu'un qui n'est pas membre de votre espace. Quand vous scannez un ticket, importez un jugement ou utilisez l'aide de la messagerie, le contenu concerné est envoyé à notre prestataire d'intelligence artificielle (Anthropic, traitement en Europe) le temps de l'analyse. Le détail figure dans la politique de confidentialité.",
+        },
+        {
           question: "Comment inviter l'autre parent ?",
           reponse: "Depuis l'onglet Famille, ouvrez « Inviter le co-parent » : vous obtenez un lien et un code à transmettre séparément. L'autre parent crée son compte avec le lien, saisit le code, et vous validez sa demande.",
         },
@@ -2101,6 +2105,10 @@ export const TRADUCTIONS = {
         {
           question: '¿Quién ve mis datos?',
           reponse: 'Solo los dos padres y los allegados que hayáis invitado ven vuestro espacio familiar. Los datos se alojan en la Unión Europea. Nunca se venden ni se ceden a terceros con fines comerciales.',
+        },
+        {
+          question: '¿Cómo y dónde se guardan mis datos?',
+          reponse: 'Todo lo que introduces (calendario, gastos, mensajes, decisiones, diario), así como las fotos y documentos, se guarda en una base de datos alojada en París, y el servidor de la aplicación también está en Francia. Los datos se cifran durante su transferencia (HTTPS) y en los discos. Cada día se hace automáticamente una copia de seguridad completa, que se conserva 7 días, para poder restaurarlo todo en caso de incidente. Cada espacio familiar está aislado: la propia base de datos se niega a mostrar tus datos a quien no sea miembro de tu espacio. Cuando escaneas un ticket, importas una sentencia o usas la ayuda de la mensajería, el contenido correspondiente se envía a nuestro proveedor de inteligencia artificial (Anthropic, tratamiento en Europa) durante el análisis. El detalle figura en la política de privacidad.',
         },
         {
           question: '¿Cómo invito al otro progenitor?',
@@ -3171,6 +3179,10 @@ export const TRADUCTIONS = {
           reponse: 'Apenas os dois pais e as pessoas próximas que convidaram veem o vosso espaço familiar. Os dados são alojados na União Europeia. Nunca são vendidos nem cedidos a terceiros para fins comerciais.',
         },
         {
+          question: 'Como e onde são guardados os meus dados?',
+          reponse: 'Tudo o que introduz (calendário, despesas, mensagens, decisões, diário), bem como as fotos e os documentos, é guardado numa base de dados alojada em Paris, e o servidor da aplicação também está em França. Os dados são cifrados durante a transferência (HTTPS) e nos discos. Todos os dias é feita automaticamente uma cópia de segurança completa, guardada durante 7 dias, para poder restaurar tudo em caso de incidente. Cada espaço familiar está isolado: a própria base de dados recusa mostrar os seus dados a quem não seja membro do seu espaço. Quando digitaliza um recibo, importa uma sentença ou usa a ajuda das mensagens, o conteúdo em causa é enviado ao nosso fornecedor de inteligência artificial (Anthropic, tratamento na Europa) durante a análise. O detalhe consta da política de privacidade.',
+        },
+        {
           question: 'Como convido o outro progenitor?',
           reponse: 'No separador Família, abra « Convidar o coprogenitor »: obtém uma ligação e um código para enviar separadamente. O outro progenitor cria a conta com a ligação, introduz o código e você valida o pedido.',
         },
@@ -4237,6 +4249,10 @@ export const TRADUCTIONS = {
         {
           question: 'Who can see my data?',
           reponse: 'Only the two parents and the relatives you have invited can see your family space. Data is hosted in the European Union. It is never sold or passed on to third parties for commercial purposes.',
+        },
+        {
+          question: 'How and where is my data stored?',
+          reponse: "Everything you enter (calendar, expenses, messages, decisions, journal), as well as photos and documents, is stored in a database hosted in Paris, and the app's server is also in France. Data is encrypted in transit (HTTPS) and on disk. A full backup is made automatically every day and kept for 7 days, so everything can be restored after an incident. Each family space is isolated: the database itself refuses to show your data to anyone who is not a member of your space. When you scan a receipt, import a court order or use the messaging assistant, the content concerned is sent to our artificial intelligence provider (Anthropic, processed in Europe) for the analysis. Details are in the privacy policy.",
         },
         {
           question: 'How do I invite the other parent?',
