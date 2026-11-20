@@ -22,6 +22,7 @@ import { formatJourLocal } from '../lib/dates';
 import { TRADUCTIONS } from '../constants/i18n';
 import { COLORS, FONTS, SPACING, RADIUS } from '../constants/theme';
 import { retour } from '../lib/navigation';
+import ChampTexte from '../components/ChampTexte';
 
 const LIGNE = 'rgba(23,63,50,0.12)';
 
@@ -175,7 +176,7 @@ export default function EcheancesScreen() {
         </Pressable>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
         {onglet === 'demarches' ? (
           <>
             {echeances.length === 0 && !chargement ? (
@@ -238,8 +239,8 @@ export default function EcheancesScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCarte}>
             <Text style={styles.modalTitre}>{t.modalTitreDemarche}</Text>
-            <TextInput style={styles.input} placeholder={t.champTitre} placeholderTextColor={COLORS.ardoise} value={titre} onChangeText={setTitre} />
-            <TextInput
+            <ChampTexte style={styles.input} placeholder={t.champTitre} placeholderTextColor={COLORS.ardoise} value={titre} onChangeText={setTitre} />
+            <ChampTexte
               style={[styles.input, { height: 70 }]}
               placeholder={t.champDetails}
               placeholderTextColor={COLORS.ardoise}
@@ -247,7 +248,7 @@ export default function EcheancesScreen() {
               onChangeText={setDescription}
               multiline
             />
-            <TextInput
+            <ChampTexte
               style={styles.input}
               placeholder={t.champDate}
               placeholderTextColor={COLORS.ardoise}
@@ -297,7 +298,7 @@ export default function EcheancesScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCarte}>
             <Text style={styles.modalTitre}>{documentEnEdition?.nom}</Text>
-            <TextInput
+            <ChampTexte
               style={styles.input}
               placeholder={t.dateExpirationPlaceholder}
               placeholderTextColor={COLORS.ardoise}

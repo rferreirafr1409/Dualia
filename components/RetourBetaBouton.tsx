@@ -6,6 +6,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS, TYPOGRAPHY } from '../constants/theme';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import ChampTexte from './ChampTexte';
 
 // Écrans dont le bas est déjà occupé par une zone de saisie permanente.
 // La bulle y recouvrirait le bouton d'envoi, et aucune position de repli
@@ -122,7 +123,7 @@ export default function RetourBetaBouton() {
                   ))}
                 </View>
 
-                <TextInput
+                <ChampTexte
                   value={message}
                   onChangeText={setMessage}
                   placeholder={t.placeholder}

@@ -39,6 +39,7 @@ import { EvenementGarde, ParentRole } from '../../types';
 import { TRADUCTIONS } from '../../constants/i18n';
 import DatePickerField from '../../components/DatePickerField';
 import { alerter } from '../../lib/dialogue';
+import ChampTexte from '../../components/ChampTexte';
 
 const LOCALES = { fr, pt, es, en: enGB };
 
@@ -622,12 +623,12 @@ export default function CalendrierScreen() {
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalAjoutVisible(false)} />
           <View style={styles.modalAjout}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalPoignee} />
               <Text style={styles.modalAjoutTitre}>{t.modalTitreEvenement}</Text>
 
               <Text style={styles.label}>{t.champTitre}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={formTitre}
                 onChangeText={setFormTitre}
@@ -639,7 +640,7 @@ export default function CalendrierScreen() {
               <View style={{ height: SPACING.lg }} />
 
               <Text style={styles.label}>{t.heure}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={formHeure}
                 onChangeText={setFormHeure}

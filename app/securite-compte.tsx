@@ -15,6 +15,7 @@ import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
 import { supprimerMonCompte } from '../lib/suppressionCompte';
 import { TRADUCTIONS } from '../constants/i18n';
+import ChampTexte from '../components/ChampTexte';
 
 // Sur le web, Alert.alert (React Native) ne s'affiche pas — on utilise
 // window.alert/confirm à la place. Sur mobile, on garde Alert.alert natif.
@@ -300,7 +301,7 @@ export default function SecuriteCompte() {
 
           <Text style={[styles.carteTitre, { marginTop: 20 }]}>{t.etape2}</Text>
           <Text style={styles.carteTexte}>{t.etape2Corps}</Text>
-          <TextInput
+          <ChampTexte
             style={styles.champCode}
             value={code}
             onChangeText={setCode}

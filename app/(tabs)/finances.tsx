@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, Alert, ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Platform } from 'react-native';
@@ -42,6 +43,7 @@ import { BACKEND_URL } from '../../constants/environnement';
 import { lireErreurBackend } from '../../lib/erreursBackend';
 import { decouperTicket } from '../../lib/tuilesTicket';
 import InformationIA from '../../components/InformationIA';
+import ChampTexte from '../../components/ChampTexte';
 
 const URL_SCAN_TICKET = `${BACKEND_URL}/api/scan-ticket`;
 
@@ -1134,9 +1136,9 @@ function FinancesScreenInner() {
       </ScrollView>
 
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView style={styles.modalOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitre}>{t.nouvelleDepense}</Text>
                 <Pressable onPress={() => setModalVisible(false)}>
@@ -1180,7 +1182,7 @@ function FinancesScreenInner() {
               )}
 
               <Text style={styles.label}>{t.montant}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={formMontant}
                 onChangeText={setFormMontant}
@@ -1190,7 +1192,7 @@ function FinancesScreenInner() {
               />
 
               <Text style={styles.label}>{t.description}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={formDescription}
                 onChangeText={setFormDescription}
@@ -1199,7 +1201,7 @@ function FinancesScreenInner() {
               />
 
               <Text style={styles.label}>{t.commercant}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={formCommercant}
                 onChangeText={setFormCommercant}
@@ -1287,7 +1289,7 @@ function FinancesScreenInner() {
               {conditionsActives?.remboursementAssuranceDeduit === true ? (
                 <>
                   <Text style={styles.label}>{lc.remboursementLabel}</Text>
-                  <TextInput
+                  <ChampTexte
                     style={styles.input}
                     value={formRemboursement}
                     onChangeText={setFormRemboursement}
@@ -1389,13 +1391,13 @@ function FinancesScreenInner() {
               </Pressable>
             </ScrollView>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={scanRecapVisible} animationType="slide" transparent onRequestClose={() => setScanRecapVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitre}>{t.recapTitre}</Text>
                 <Pressable onPress={() => setScanRecapVisible(false)}>
@@ -1571,7 +1573,7 @@ function FinancesScreenInner() {
       <Modal visible={!!detailDepense} animationType="slide" transparent onRequestClose={() => setDetailDepense(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitre}>{detailDepense?.description}</Text>
                 <Pressable onPress={() => setDetailDepense(null)}>
@@ -1741,7 +1743,7 @@ function FinancesScreenInner() {
       <Modal visible={retentionVisible} animationType="slide" transparent onRequestClose={() => setRetentionVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalHeader}>
                 <Text style={styles.modalTitre}>{l.retentionModalTitre}</Text>
                 <Pressable onPress={() => setRetentionVisible(false)}>

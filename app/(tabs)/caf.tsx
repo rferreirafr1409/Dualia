@@ -69,6 +69,7 @@ import { entetesBackend } from '../../lib/appelBackend';
 import { supabase } from '../../constants/supabase';
 import { formatMontant } from '../../lib/comptes';
 import { BACKEND_URL } from '../../constants/environnement';
+import ChampTexte from '../../components/ChampTexte';
 
 const ACCENT = '#B5927C';
 
@@ -525,7 +526,7 @@ export default function CafScreen() {
               </View>
             ) : (
               <>
-                <TextInput
+                <ChampTexte
                   style={styles.input}
                   value={indiceInitialSaisie}
                   onChangeText={setIndiceInitialSaisie}
@@ -562,7 +563,7 @@ export default function CafScreen() {
                 </Text>
               </TouchableOpacity>
             ) : null}
-            <TextInput
+            <ChampTexte
               style={styles.input}
               value={indiceActuel}
               onChangeText={setIndiceActuel}
