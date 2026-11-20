@@ -1,11 +1,15 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
+import {
+  View, Text, TouchableOpacity, Modal, TextInput, StyleSheet, ActivityIndicator,
+  KeyboardAvoidingView, Keyboard, Platform, Pressable,
+} from 'react-native';
 import { usePathname } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { COLORS, TYPOGRAPHY } from '../constants/theme';
 import { supabase } from '../constants/supabase';
 import { useStore } from '../store/useStore';
+import ChampTexte from './ChampTexte';
 
 // Écrans dont le bas est déjà occupé par une zone de saisie permanente.
 // La bulle y recouvrirait le bouton d'envoi, et aucune position de repli
@@ -98,8 +102,11 @@ export default function RetourBetaBouton() {
       </TouchableOpacity>
 
       <Modal visible={visible} transparent animationType="slide" onRequestClose={() => setVisible(false)}>
-        <View style={styles.overlay}>
-          <View style={styles.carte}>
+        {/* DUA-152 : sur iPhone, le clavier cachait le bouton « Envoyer ».
+            La fenêtre remonte au-dessus du clavier, et toucher à côté du
+            champ le ferme. */}
+        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable style={styles.carte} onPress={Keyboard.dismiss} accessible={false}>
             {succes ? (
               <View style={{ alignItems: 'center', paddingVertical: 24 }}>
                 <Ionicons name="checkmark-circle" size={40} color={COLORS.vert} />
@@ -122,7 +129,7 @@ export default function RetourBetaBouton() {
                   ))}
                 </View>
 
-                <TextInput
+                <ChampTexte
                   value={message}
                   onChangeText={setMessage}
                   placeholder={t.placeholder}
@@ -146,8 +153,8 @@ export default function RetourBetaBouton() {
                 </View>
               </>
             )}
-          </View>
-        </View>
+          </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );

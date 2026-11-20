@@ -26,6 +26,7 @@ import {
   memoriserInvitationEnAttente,
   oublierInvitationEnAttente,
 } from '../lib/invitationEnAttente';
+import ChampTexte from '../components/ChampTexte';
 
 function alertCompat(titre: string, message?: string) {
   if (Platform.OS === 'web') {
@@ -359,7 +360,7 @@ export default function RejoindreScreen() {
         {refus ? <Text style={styles.refus}>{refus}</Text> : null}
 
         <Text style={styles.label}>{t.votrePrenom}</Text>
-        <TextInput
+        <ChampTexte
           style={styles.input}
           value={prenom}
           onChangeText={setPrenom}
@@ -368,7 +369,7 @@ export default function RejoindreScreen() {
         />
 
         <Text style={styles.label}>{t.email}</Text>
-        <TextInput
+        <ChampTexte
           style={styles.input}
           value={email}
           onChangeText={setEmail}
@@ -380,7 +381,7 @@ export default function RejoindreScreen() {
 
         <Text style={styles.label}>{t.code}</Text>
         <Text style={styles.aideCode}>{t.codeAide(nomInvitant)}</Text>
-        <TextInput
+        <ChampTexte
           style={styles.input}
           value={code}
           onChangeText={setCode}
@@ -395,7 +396,7 @@ export default function RejoindreScreen() {
         ) : (
           <>
             <Text style={styles.label}>{t.motDePasse}</Text>
-            <TextInput
+            <ChampTexte
               style={[styles.input, !!erreurMotDePasse && styles.inputErreur]}
               value={motDePasse}
               onChangeText={setMotDePasse}

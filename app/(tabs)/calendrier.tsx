@@ -43,6 +43,7 @@ import { TRADUCTIONS } from '../../constants/i18n';
 import DatePickerField from '../../components/DatePickerField';
 import TimePickerField from '../../components/TimePickerField';
 import { alerter, confirmer } from '../../lib/dialogue';
+import ChampTexte from '../../components/ChampTexte';
 
 const LOCALES = { fr, pt, es, en: enGB };
 
@@ -746,12 +747,12 @@ export default function CalendrierScreen() {
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setModalAjoutVisible(false)} />
           <View style={styles.modalAjout}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <View style={styles.modalPoignee} />
               <Text style={styles.modalAjoutTitre}>{formEditionId ? t.modalTitreModifierEvenement : t.modalTitreEvenement}</Text>
 
               <Text style={styles.label}>{t.champTitre}</Text>
-              <TextInput
+              <ChampTexte
                 style={styles.input}
                 value={formTitre}
                 onChangeText={setFormTitre}

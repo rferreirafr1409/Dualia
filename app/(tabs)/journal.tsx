@@ -13,6 +13,7 @@ import DatePickerField from '../../components/DatePickerField';
 import JournalMemoryImage from '../../components/JournalMemoryImage';
 import { TRADUCTIONS } from '../../constants/i18n';
 import { JournalEntry } from '../../types';
+import ChampTexte from '../../components/ChampTexte';
 
 let ImagePicker: typeof import('expo-image-picker') | null = null;
 try {
@@ -384,7 +385,7 @@ export default function JournalScreen() {
       <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive">
               <Text style={styles.modalTitle}>{editId ? t.modifierTitre : t.modalTitre}</Text>
 
               <Text style={styles.fieldLabel}>{t.photoOptionnel}</Text>
@@ -409,7 +410,7 @@ export default function JournalScreen() {
               )}
 
               <Text style={styles.fieldLabel}>{t.champTitre}</Text>
-              <TextInput
+              <ChampTexte
                 value={formTitre}
                 onChangeText={setFormTitre}
                 placeholder={t.placeholderTitre}
@@ -418,7 +419,7 @@ export default function JournalScreen() {
               />
 
               <Text style={styles.fieldLabel}>{t.champDescription}</Text>
-              <TextInput
+              <ChampTexte
                 value={formDescription}
                 onChangeText={setFormDescription}
                 placeholder={t.placeholderDescription}
@@ -481,7 +482,7 @@ export default function JournalScreen() {
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>{t.recitModalTitre}</Text>
             <Text style={styles.recitHint}>{t.recitHint}</Text>
-            <TextInput
+            <ChampTexte
               value={recitTexte}
               onChangeText={setRecitTexte}
               placeholder={t.recitPlaceholder}
