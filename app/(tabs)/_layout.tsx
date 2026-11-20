@@ -188,9 +188,9 @@ function SidebarDesktop() {
             style={styles.spaceSwitcher}
             onPress={() => plusieursEspaces && setSwitcherOuvert((v) => !v)}
           >
-            <Text style={styles.spaceSwitcherLabel}>Espace familial</Text>
+            <Text style={styles.spaceSwitcherLabel}>{t.nav.espaceFamilial}</Text>
             <Text style={styles.spaceSwitcherValue} numberOfLines={1}>
-              {espaceActif?.label ?? 'Espace familial'}
+              {espaceActif?.label ?? t.nav.espaceFamilial}
               {plusieursEspaces ? '  ▾' : ''}
             </Text>
           </Pressable>
