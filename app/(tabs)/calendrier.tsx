@@ -29,17 +29,20 @@ import {
   endOfWeek,
   isSameDay,
   subDays,
+  startOfDay,
+  endOfDay,
+  Locale,
 } from 'date-fns';
 import { fr, pt, es, enGB } from 'date-fns/locale';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useStore } from '../../store/useStore';
 import { COLORS, SPACING, TYPOGRAPHY, RADIUS } from '../../constants/theme';
-import { EvenementGarde, ParentRole } from '../../types';
+import { EvenementCalendrier, EvenementGarde, ParentRole } from '../../types';
 import { TRADUCTIONS } from '../../constants/i18n';
 import DatePickerField from '../../components/DatePickerField';
 import TimePickerField from '../../components/TimePickerField';
-import { alerter } from '../../lib/dialogue';
+import { alerter, confirmer } from '../../lib/dialogue';
 
 const LOCALES = { fr, pt, es, en: enGB };
 
@@ -85,6 +88,35 @@ function estJourDePassage(date: Date, tousLesEvenements: EvenementGarde[]): bool
   return parentJour !== null && parentVeille !== null && parentJour !== parentVeille;
 }
 
+// DUA-151 : un événement avec une fin couvre chaque jour entre son début et
+// sa fin ; sans fin, seulement son jour.
+function couvreLeJour(ev: EvenementCalendrier, jour: Date): boolean {
+  const debut = parseISO(ev.date);
+  if (!ev.dateFin) return isSameDay(debut, jour);
+  const fin = parseISO(ev.dateFin);
+  return debut <= endOfDay(jour) && fin >= startOfDay(jour);
+}
+
+const aUneHeure = (d: Date) => d.getHours() !== 0 || d.getMinutes() !== 0;
+
+// « 14:00 – 15:30 », « 14:00 », « 12 nov. 14:00 → 14 nov. 18:00 », ou rien.
+function libellePlage(debut: Date, fin: Date | undefined, locale: Locale): string {
+  if (!fin) return aUneHeure(debut) ? format(debut, 'HH:mm') : '';
+  if (isSameDay(debut, fin)) {
+    if (!aUneHeure(debut) && !aUneHeure(fin)) return '';
+    return `${format(debut, 'HH:mm')} – ${format(fin, 'HH:mm')}`;
+  }
+  const bout = (d: Date) => format(d, aUneHeure(d) ? 'd MMM HH:mm' : 'd MMM', { locale });
+  return `${bout(debut)} → ${bout(fin)}`;
+}
+
+// Heure « HH:mm » une heure plus tard, plafonnée à 23:55.
+function heurePlusUne(h: string): string {
+  const [hh, mm] = h.split(':').map(Number);
+  if (hh >= 23) return '23:55';
+  return `${String(hh + 1).padStart(2, '0')}:${String(mm || 0).padStart(2, '0')}`;
+}
+
 export default function CalendrierScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -95,6 +127,8 @@ export default function CalendrierScreen() {
   const params = useLocalSearchParams<{ enfant?: string }>();
   const enfantFiltre = params.enfant ?? null;
   const { evenements, parents, evenementsCalendrier, langue, parentActif, ajouterEvenementCalendrier, enfants } = useStore();
+  const modifierEvenementCalendrier = useStore((s) => s.modifierEvenementCalendrier);
+  const supprimerEvenementCalendrier = useStore((s) => s.supprimerEvenementCalendrier);
   const tiers = useStore((s) => s.tiers);
   const confierGardeATiers = useStore((s) => s.confierGardeATiers);
   const supprimerEvenementGarde = useStore((s) => s.supprimerEvenementGarde);
@@ -110,6 +144,11 @@ export default function CalendrierScreen() {
   const [formTitre, setFormTitre] = useState('');
   const [formDate, setFormDate] = useState<Date | null>(null);
   const [formHeure, setFormHeure] = useState('');
+  // DUA-151 (retour de Maxime) : une fin, comme dans Outlook, et la
+  // possibilité de rouvrir un événement pour le modifier.
+  const [formDateFin, setFormDateFin] = useState<Date | null>(null);
+  const [formHeureFin, setFormHeureFin] = useState('');
+  const [formEditionId, setFormEditionId] = useState<string | null>(null);
   const [formParent, setFormParent] = useState<ParentRole>(parentActif);
   const [formEnfantId, setFormEnfantId] = useState<string | null>(null);
 
@@ -235,12 +274,14 @@ export default function CalendrierScreen() {
     const evs = evenementsCalendrierFiltres
       .filter((ev) => {
         const d = parseISO(ev.date);
-        return d >= debutSemaine && d <= finSemaine;
+        const f = ev.dateFin ? parseISO(ev.dateFin) : d;
+        return d <= finSemaine && f >= debutSemaine;
       })
       .map((ev) => ({
         id: ev.id,
         kind: 'evenement' as const,
         date: parseISO(ev.date),
+        dateFin: ev.dateFin ? parseISO(ev.dateFin) : undefined,
         titre: ev.titre,
         enfant: ev.enfant,
         parentId: ev.parentId,
@@ -253,9 +294,7 @@ export default function CalendrierScreen() {
   const elementsJour = useMemo(() => {
     if (!jourSelectionne) return { garde: undefined as EvenementGarde | undefined, evenements: [] as typeof evenementsCalendrier };
     const gardeDuJour = enfantFiltre ? undefined : evenementDuJour(jourSelectionne, evsMois) ?? undefined;
-    const evsJour = evenementsCalendrierFiltres.filter((ev) =>
-      isSameDay(parseISO(ev.date), jourSelectionne)
-    );
+    const evsJour = evenementsCalendrierFiltres.filter((ev) => couvreLeJour(ev, jourSelectionne));
     return { garde: gardeDuJour, evenements: evsJour };
   }, [jourSelectionne, evsMois, evenementsCalendrierFiltres, enfantFiltre]);
 
@@ -265,13 +304,66 @@ export default function CalendrierScreen() {
   );
 
   const ouvrirAjoutEvenement = () => {
+    setFormEditionId(null);
     setFormTitre('');
     setFormDate(new Date());
     setFormHeure('');
+    setFormDateFin(null);
+    setFormHeureFin('');
     setFormParent(parentActif);
     setFormEnfantId(enfantFiltreResolu?.id ?? null);
     setErreurAjout(null);
     setModalAjoutVisible(true);
+  };
+
+  // DUA-151 : toucher un événement le rouvre, prérempli, pour le modifier.
+  const ouvrirEditionEvenement = (id: string) => {
+    const ev = evenementsCalendrier.find((e) => e.id === id);
+    if (!ev) return;
+    const debut = parseISO(ev.date);
+    const aUneHeure = debut.getHours() !== 0 || debut.getMinutes() !== 0;
+    setFormEditionId(ev.id);
+    setFormTitre(ev.titre);
+    setFormDate(debut);
+    setFormHeure(aUneHeure ? format(debut, 'HH:mm') : '');
+    if (ev.dateFin) {
+      const fin = parseISO(ev.dateFin);
+      setFormDateFin(fin);
+      setFormHeureFin(fin.getHours() !== 0 || fin.getMinutes() !== 0 ? format(fin, 'HH:mm') : '');
+    } else {
+      setFormDateFin(null);
+      setFormHeureFin('');
+    }
+    setFormParent(ev.parentId ?? parentActif);
+    setFormEnfantId(ev.enfantId ?? null);
+    setErreurAjout(null);
+    setJourSelectionne(null);
+    setModalAjoutVisible(true);
+  };
+
+  // La fin suit le début, comme dans Outlook : on ne peut pas se retrouver
+  // avec une fin avant le début sans l'avoir voulu.
+  const changerDateDebut = (d: Date | null) => {
+    setFormDate(d);
+    if (d && formDateFin && startOfDay(formDateFin) < startOfDay(d)) setFormDateFin(d);
+  };
+  const changerHeureDebut = (h: string) => {
+    setFormHeure(h);
+    if (!h) return;
+    const memeJour = !formDateFin || !formDate || isSameDay(formDateFin, formDate);
+    if (memeJour && (!formHeureFin || formHeureFin <= h)) setFormHeureFin(heurePlusUne(h));
+  };
+  const changerDateFin = (d: Date | null) => {
+    setFormDateFin(d && formDate && startOfDay(d) < startOfDay(formDate) ? formDate : d);
+  };
+
+  const confirmerSuppression = async () => {
+    if (!formEditionId) return;
+    const id = formEditionId;
+    const ok = await confirmer(t.supprimerEvenement, t.confirmerSuppressionEvenement, t.supprimerEvenement, t.annuler, true);
+    if (!ok) return;
+    supprimerEvenementCalendrier(id);
+    setModalAjoutVisible(false);
   };
 
   const soumettreEvenement = () => {
@@ -298,16 +390,37 @@ export default function CalendrierScreen() {
       dateComplete.setHours(Number(h), Number(m ?? 0), 0, 0);
     }
 
+    // Fin facultative : seulement si une heure de fin est choisie ou si
+    // l'événement s'étend sur plusieurs jours.
+    let finComplete: Date | undefined;
+    const finSurAutreJour = !!formDateFin && !isSameDay(formDateFin, formDate);
+    if (formHeureFin || finSurAutreJour) {
+      finComplete = new Date(formDateFin ?? formDate);
+      if (formHeureFin) {
+        const [hf, mf] = formHeureFin.split(':');
+        finComplete.setHours(Number(hf), Number(mf ?? 0), 0, 0);
+      } else {
+        finComplete.setHours(0, 0, 0, 0);
+      }
+      if (finComplete.getTime() < dateComplete.getTime()) {
+        setErreurAjout(t.finAvantDebut);
+        return;
+      }
+    }
+
     const enfantChoisi = formEnfantId ? enfants.find((e) => e.id === formEnfantId) : undefined;
 
-    const retenu = ajouterEvenementCalendrier({
-      id: `evt-${Date.now()}`,
+    const champs = {
       titre: formTitre.trim(),
       date: dateComplete.toISOString(),
+      dateFin: finComplete?.toISOString(),
       parentId: formParent,
       enfant: enfantChoisi?.prenom,
       enfantId: enfantChoisi?.id,
-    });
+    };
+    const retenu = formEditionId
+      ? modifierEvenementCalendrier(formEditionId, champs)
+      : ajouterEvenementCalendrier({ id: `evt-${Date.now()}`, ...champs });
 
     // On ne ferme la fenetre que si l'evenement a bien ete retenu. La fermer
     // dans tous les cas donnait au parent la preuve visible d'un
@@ -432,9 +545,7 @@ export default function CalendrierScreen() {
                   const prenomParent = tiersJour ? tiersJour.nom?.split(' ')[0] : parentId ? parents[parentId]?.nom?.split(' ')[0] : null;
                   const estAujourdhui = isToday(jour);
                   const estPassage = enfantFiltre ? false : estJourDePassage(jour, evenements);
-                  const evsJourCellule = evenementsCalendrierFiltres.filter((ev) =>
-                    isSameDay(parseISO(ev.date), jour)
-                  );
+                  const evsJourCellule = evenementsCalendrierFiltres.filter((ev) => couvreLeJour(ev, jour));
 
                   return (
                     <TouchableOpacity
@@ -541,23 +652,29 @@ export default function CalendrierScreen() {
 
             {elementsJour.evenements.length > 0
               ? elementsJour.evenements.map((ev) => (
-                  <View key={ev.id} style={styles.modalLigne}>
+                  <TouchableOpacity
+                    key={ev.id}
+                    style={styles.modalLigne}
+                    onPress={() => ouvrirEditionEvenement(ev.id)}
+                    accessibilityRole="button"
+                    accessibilityHint={t.toucherPourModifier}
+                  >
                     <View
                       style={[
                         styles.modalPuce,
                         { backgroundColor: (ev.parentId ? parents[ev.parentId]?.couleur : undefined) ?? OR },
                       ]}
                     />
-                    <Text style={styles.modalTexte}>
+                    <Text style={[styles.modalTexte, { flex: 1 }]}>
                       {ev.titre}
                       {ev.enfant ? ` — ${ev.enfant}` : ''}
                       {(() => {
-                        const d = parseISO(ev.date);
-                        const aUneHeure = d.getHours() !== 0 || d.getMinutes() !== 0;
-                        return aUneHeure ? ` — ${format(d, 'HH:mm')}` : '';
+                        const plage = libellePlage(parseISO(ev.date), ev.dateFin ? parseISO(ev.dateFin) : undefined, dateLocale);
+                        return plage ? ` — ${plage}` : '';
                       })()}
                     </Text>
-                  </View>
+                    <Ionicons name="create-outline" size={16} color={COLORS.ardoise} />
+                  </TouchableOpacity>
                 ))
               : null}
 
@@ -583,7 +700,13 @@ export default function CalendrierScreen() {
               // qui n'a rien demandé — ou de planter sur `parent.couleur`.
               const parent = ev.parentId ? parents[ev.parentId] : undefined;
               return (
-                <View key={ev.id} style={styles.carteEv}>
+                <TouchableOpacity
+                  key={ev.id}
+                  style={styles.carteEv}
+                  disabled={ev.kind !== 'evenement'}
+                  onPress={() => ouvrirEditionEvenement(ev.id)}
+                  activeOpacity={0.8}
+                >
                   <View style={[styles.barreEv, { backgroundColor: parent?.couleur ?? OR }]} />
                   <View style={styles.contenuEv}>
                     {parent ? <Text style={styles.evParent}>{parent.nom}</Text> : null}
@@ -591,8 +714,8 @@ export default function CalendrierScreen() {
                       {format(ev.date, 'EEEE d MMM', { locale: dateLocale })}
                       {(() => {
                         if (ev.kind !== 'evenement') return '';
-                        const aUneHeure = ev.date.getHours() !== 0 || ev.date.getMinutes() !== 0;
-                        return aUneHeure ? ` · ${format(ev.date, 'HH:mm')}` : '';
+                        const plage = libellePlage(ev.date, ev.dateFin, dateLocale);
+                        return plage ? ` · ${plage}` : '';
                       })()}
                     </Text>
                     <Text style={styles.evType}>
@@ -602,7 +725,7 @@ export default function CalendrierScreen() {
                   <View style={styles.evDot}>
                     <Ionicons name={ev.kind === 'garde' ? 'home-outline' : 'calendar-outline'} size={14} color={OR} />
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })
           )}
@@ -625,7 +748,7 @@ export default function CalendrierScreen() {
           <View style={styles.modalAjout}>
             <ScrollView showsVerticalScrollIndicator={false}>
               <View style={styles.modalPoignee} />
-              <Text style={styles.modalAjoutTitre}>{t.modalTitreEvenement}</Text>
+              <Text style={styles.modalAjoutTitre}>{formEditionId ? t.modalTitreModifierEvenement : t.modalTitreEvenement}</Text>
 
               <Text style={styles.label}>{t.champTitre}</Text>
               <TextInput
@@ -636,11 +759,17 @@ export default function CalendrierScreen() {
                 placeholderTextColor={COLORS.ardoise}
               />
 
-              <DatePickerField label={t.dateDebut} value={formDate} onChange={setFormDate} />
+              <DatePickerField label={t.dateDebut} value={formDate} onChange={changerDateDebut} />
               <View style={{ height: SPACING.lg }} />
 
               {/* DUA-149 : on choisit l'heure, on ne la tape plus (retour testeur). */}
-              <TimePickerField label={t.heure} value={formHeure} onChange={setFormHeure} />
+              <TimePickerField label={t.heure} value={formHeure} onChange={changerHeureDebut} />
+              <View style={{ height: SPACING.lg }} />
+
+              {/* DUA-151 : fin facultative, calée après le début. */}
+              <DatePickerField label={t.dateFin} value={formDateFin ?? formDate} onChange={changerDateFin} />
+              <View style={{ height: SPACING.lg }} />
+              <TimePickerField label={t.heureFin} value={formHeureFin} onChange={setFormHeureFin} />
               <View style={{ height: SPACING.lg }} />
 
               <Text style={styles.label}>{t.parent}</Text>
@@ -686,6 +815,13 @@ export default function CalendrierScreen() {
 
               {erreurAjout ? <Text style={styles.erreurAjout}>{erreurAjout}</Text> : null}
 
+              {formEditionId ? (
+                <TouchableOpacity style={styles.btnSupprimerEv} onPress={confirmerSuppression}>
+                  <Ionicons name="trash-outline" size={16} color={COLORS.erreur} />
+                  <Text style={styles.btnSupprimerEvTxt}>{t.supprimerEvenement}</Text>
+                </TouchableOpacity>
+              ) : null}
+
               <View style={styles.modalActions}>
                 <TouchableOpacity style={styles.btnAnnuler} onPress={() => setModalAjoutVisible(false)}>
                   <Text style={styles.btnAnnulerTxt}>{t.annuler}</Text>
@@ -695,7 +831,7 @@ export default function CalendrierScreen() {
                   onPress={soumettreEvenement}
                   disabled={!formTitre.trim()}
                 >
-                  <Text style={styles.btnValiderTxt}>{t.confirmerAjout}</Text>
+                  <Text style={styles.btnValiderTxt}>{formEditionId ? t.enregistrerModification : t.confirmerAjout}</Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1060,5 +1196,10 @@ const styles = StyleSheet.create({
   btnAnnulerTxt: { fontSize: TYPOGRAPHY.sm, color: COLORS.ardoise, fontWeight: TYPOGRAPHY.medium },
   btnValider: { flex: 2, padding: SPACING.lg, borderRadius: RADIUS.md, backgroundColor: COLORS.vert, alignItems: 'center' },
   btnDisabled: { opacity: 0.45 },
+  btnSupprimerEv: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.xs,
+    paddingVertical: SPACING.md, marginTop: SPACING.sm,
+  },
+  btnSupprimerEvTxt: { fontSize: TYPOGRAPHY.sm, color: COLORS.erreur, fontWeight: TYPOGRAPHY.medium },
   btnValiderTxt: { fontSize: TYPOGRAPHY.sm, color: COLORS.blanc, fontWeight: TYPOGRAPHY.semibold },
 });

@@ -396,6 +396,10 @@ const evenementCalendrierVersDB = (ev: EvenementCalendrier, familleId: string, p
   parent_id: parentUuid ?? null,
   enfant: ev.enfant ?? null,
   enfant_id: ev.enfantId ?? null,
+  // DUA-151 : la fin n'est envoyée que si elle existe, pour que les
+  // événements continuent de s'enregistrer tant que la colonne date_fin n'a
+  // pas été créée (migration 20261120_evenement_date_fin.sql).
+  ...(ev.dateFin ? { date_fin: ev.dateFin } : {}),
   // La colonne existe et le type la porte, mais elle n'etait jamais envoyee :
   // le lien vers le message d'origine se perdait a la synchronisation, et tous
   // les evenements ressemblaient a des saisies manuelles.
@@ -449,6 +453,7 @@ const evenementCalendrierDepuisDB = (e: any, roleParUuid: Record<string, ParentR
   id: e.id,
   titre: e.titre,
   date: e.date,
+  dateFin: e.date_fin ?? undefined,
   parentId: (e.parent_id && roleParUuid[e.parent_id]) || 'A',
   sourceMessageId: e.source_message_id ?? undefined,
   enfant: e.enfant ?? undefined,
@@ -877,6 +882,13 @@ interface DualiaStore {
   // qu'il a donc ete refuse. Les ecrans doivent tester cette reponse avant
   // d'annoncer quoi que ce soit au parent.
   ajouterEvenementCalendrier: (ev: EvenementCalendrier) => boolean;
+  // DUA-151 : rouvrir un événement pour le modifier ou le supprimer. Même
+  // contrat que l'ajout : FAUX si la date est illisible (rien n'est changé).
+  modifierEvenementCalendrier: (
+    id: string,
+    champs: Pick<EvenementCalendrier, 'titre' | 'date' | 'dateFin' | 'parentId' | 'enfant' | 'enfantId'>
+  ) => boolean;
+  supprimerEvenementCalendrier: (id: string) => void;
   ignorerSuggestion: (messageId: string) => void;
   messagesAnalyses: string[];
   marquerMessageAnalyse: (id: string) => void;
@@ -1669,6 +1681,69 @@ export const useStore = create<DualiaStore>()(
           });
 
         return true;
+      },
+      modifierEvenementCalendrier: (id, champs) => {
+        if (!estInstantValide(champs.date) || (champs.dateFin && !estInstantValide(champs.dateFin))) {
+          console.error('[Dualia] Modification refusée : date illisible', JSON.stringify(champs));
+          return false;
+        }
+        const avant = get().evenementsCalendrier.find((e) => e.id === id);
+        if (!avant) return false;
+        const apres: EvenementCalendrier = {
+          ...avant,
+          ...champs,
+          date: instantDepuisHeureLocale(champs.date),
+          dateFin: champs.dateFin ? instantDepuisHeureLocale(champs.dateFin) : undefined,
+        };
+        set((state) => ({
+          evenementsCalendrier: state.evenementsCalendrier.map((e) => (e.id === id ? apres : e)),
+        }));
+        // Un identifiant local (« evt-… ») n'est pas encore en base : l'ajout
+        // en cours le remplacera. Rien à envoyer.
+        if (!EST_UUID.test(id)) return true;
+        const { parents } = get();
+        const parentUuid = apres.parentId ? parents[apres.parentId]?.uuid ?? null : null;
+        supabase
+          .from('evenements_calendrier')
+          .update({
+            titre: apres.titre,
+            date: apres.date,
+            parent_id: parentUuid,
+            enfant: apres.enfant ?? null,
+            enfant_id: apres.enfantId ?? null,
+            // Sans fin, on n'envoie rien plutôt que null : la colonne peut ne
+            // pas encore exister. Une fin retirée reste donc en base jusqu'à
+            // la migration ; c'est le moindre mal.
+            ...(apres.dateFin ? { date_fin: apres.dateFin } : avant.dateFin ? { date_fin: null } : {}),
+          })
+          .eq('id', id)
+          .then(({ error }) => {
+            if (error) {
+              console.error('[Dualia] Échec modification événement calendrier :', error);
+              // Retour à la version d'avant : mieux vaut une modification
+              // perdue qu'un écran qui diffère de celui de l'autre parent.
+              set((state) => ({
+                evenementsCalendrier: state.evenementsCalendrier.map((e) => (e.id === id ? avant : e)),
+              }));
+            }
+          });
+        return true;
+      },
+      supprimerEvenementCalendrier: (id) => {
+        const avant = get().evenementsCalendrier.find((e) => e.id === id);
+        if (!avant) return;
+        set((state) => ({ evenementsCalendrier: state.evenementsCalendrier.filter((e) => e.id !== id) }));
+        if (!EST_UUID.test(id)) return;
+        supabase
+          .from('evenements_calendrier')
+          .delete()
+          .eq('id', id)
+          .then(({ error }) => {
+            if (error) {
+              console.error('[Dualia] Échec suppression événement calendrier :', error);
+              set((state) => ({ evenementsCalendrier: [...state.evenementsCalendrier, avant] }));
+            }
+          });
       },
       ignorerSuggestion: (messageId) =>
         set((state) => ({ messagesAnalyses: [...state.messagesAnalyses, messageId] })),
