@@ -54,6 +54,9 @@ export interface EvenementCalendrier {
   id: string;
   titre: string;
   date: string;
+  /** Fin de l'événement (DUA-151), instant ISO. Absente : événement
+   *  ponctuel, sans durée. Toujours postérieure ou égale à `date`. */
+  dateFin?: string;
   parentId: ParentRole;
   // Label d'affichage uniquement (prénom), calculé au moment de la
   // création — pas une source de vérité. Pour filtrer/relier de façon
