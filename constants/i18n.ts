@@ -106,6 +106,7 @@ export const TRADUCTIONS = {
       transmissionPersonnaliser: 'Personnaliser',
     },
     nav: {
+      espaceFamilial: 'Espace familial',
       accueil: 'Accueil',
       calendrier: 'Calendrier',
       decisions: 'Décisions',
@@ -113,6 +114,7 @@ export const TRADUCTIONS = {
       journal: 'Journal',
     },
     calendrier: {
+      tousLesEnfants: 'Tous',
       calendriersExternes: 'Calendriers externes',
       moisPrecedent: 'Mois précédent',
       moisSuivant: 'Mois suivant',
@@ -328,6 +330,10 @@ export const TRADUCTIONS = {
       typeAbsence: 'Absence',
     },
     journal: {
+      toutReplier: 'Tout replier',
+      photoOptionnel: 'Photo (optionnel)',
+      supprimer: 'Supprimer',
+      modifierTitre: 'Modifier le souvenir',
       ajouterPhoto: 'Ajouter une photo',
       supprimerTitre: 'Supprimer ce souvenir ?',
       supprimerTexte: 'Cette action est définitive et ne peut pas être annulée.',
@@ -1174,6 +1180,7 @@ export const TRADUCTIONS = {
       transmissionPersonnaliser: 'Personalizar',
     },
     nav: {
+      espaceFamilial: 'Espacio familiar',
       accueil: 'Inicio',
       calendrier: 'Calendario',
       decisions: 'Decisiones',
@@ -1181,6 +1188,7 @@ export const TRADUCTIONS = {
       journal: 'Diario',
     },
     calendrier: {
+      tousLesEnfants: 'Todos',
       calendriersExternes: 'Calendarios externos',
       moisPrecedent: 'Mes anterior',
       moisSuivant: 'Mes siguiente',
@@ -1396,6 +1404,10 @@ export const TRADUCTIONS = {
       typeAbsence: 'Falta',
     },
     journal: {
+      toutReplier: 'Plegar todo',
+      photoOptionnel: 'Foto (opcional)',
+      supprimer: 'Eliminar',
+      modifierTitre: 'Editar el recuerdo',
       ajouterPhoto: 'Añadir una foto',
       supprimerTitre: '¿Eliminar este recuerdo?',
       supprimerTexte: 'Esta acción es definitiva y no se puede deshacer.',
@@ -2242,6 +2254,7 @@ export const TRADUCTIONS = {
       transmissionPersonnaliser: 'Personalizar',
     },
     nav: {
+      espaceFamilial: 'Espaço familiar',
       accueil: 'Início',
       calendrier: 'Calendário',
       decisions: 'Decisões',
@@ -2249,6 +2262,7 @@ export const TRADUCTIONS = {
       journal: 'Diário',
     },
     calendrier: {
+      tousLesEnfants: 'Todos',
       calendriersExternes: 'Calendários externos',
       moisPrecedent: 'Mês anterior',
       moisSuivant: 'Mês seguinte',
@@ -2464,6 +2478,10 @@ export const TRADUCTIONS = {
       typeAbsence: 'Falta',
     },
     journal: {
+      toutReplier: 'Recolher tudo',
+      photoOptionnel: 'Foto (opcional)',
+      supprimer: 'Eliminar',
+      modifierTitre: 'Editar a memória',
       ajouterPhoto: 'Adicionar uma foto',
       supprimerTitre: 'Eliminar esta memória?',
       supprimerTexte: 'Esta ação é definitiva e não pode ser anulada.',
@@ -3310,6 +3328,7 @@ export const TRADUCTIONS = {
       transmissionPersonnaliser: 'Customise',
     },
     nav: {
+      espaceFamilial: 'Family space',
       accueil: 'Home',
       calendrier: 'Calendar',
       decisions: 'Decisions',
@@ -3317,6 +3336,7 @@ export const TRADUCTIONS = {
       journal: 'Journal',
     },
     calendrier: {
+      tousLesEnfants: 'All',
       calendriersExternes: 'External calendars',
       moisPrecedent: 'Previous month',
       moisSuivant: 'Next month',
@@ -3532,6 +3552,10 @@ export const TRADUCTIONS = {
       typeAbsence: 'Absence',
     },
     journal: {
+      toutReplier: 'Collapse all',
+      photoOptionnel: 'Photo (optional)',
+      supprimer: 'Delete',
+      modifierTitre: 'Edit memory',
       ajouterPhoto: 'Add a photo',
       supprimerTitre: 'Delete this memory?',
       supprimerTexte: 'This cannot be undone.',

@@ -166,6 +166,24 @@ const PARENTS: Record<ParentRole, Parent> = {
   B: { id: 'B', nom: 'Parent 2', email: '', couleur: COLORS.terracotta },
 };
 
+// Nom affiché tant qu'un parent n'a pas saisi le sien (souvent le co-parent
+// pas encore invité). Il suit la langue de l'app : un testeur en portugais
+// voyait « Parent 2 » dans l'agenda.
+const NOMS_PARENT_PAR_DEFAUT: Record<Langue, Record<ParentRole, string>> = {
+  fr: { A: 'Parent 1', B: 'Parent 2' },
+  pt: { A: 'Progenitor 1', B: 'Progenitor 2' },
+  es: { A: 'Progenitor 1', B: 'Progenitor 2' },
+  en: { A: 'Parent 1', B: 'Parent 2' },
+};
+
+const estNomParDefaut = (role: ParentRole, nom: string) =>
+  Object.values(NOMS_PARENT_PAR_DEFAUT).some((noms) => noms[role] === nom);
+
+const parentsParDefaut = (langue: Langue): Record<ParentRole, Parent> => ({
+  A: { ...PARENTS.A, nom: NOMS_PARENT_PAR_DEFAUT[langue]?.A ?? PARENTS.A.nom },
+  B: { ...PARENTS.B, nom: NOMS_PARENT_PAR_DEFAUT[langue]?.B ?? PARENTS.B.nom },
+});
+
 const regleVersDB = (regle: ReglePartage, cadreFamilialId: string) => ({
   cadre_familial_id: cadreFamilialId,
   categorie: regle.categorie,
@@ -1905,7 +1923,7 @@ export const useStore = create<DualiaStore>()(
       // temps du rechargement, a un compte sans espace — et declencherait la
       // redirection vers la creation d'un nouvel espace.
       rattachement: 'inconnu' as Rattachement,
-      parents: { ...PARENTS },
+      parents: parentsParDefaut(etat.langue),
       parentActif: 'A',
       decisions: [],
       messages: [],
@@ -2562,7 +2580,15 @@ export const useStore = create<DualiaStore>()(
   // traduits via TRADUCTIONS, jamais via le contenu du store.
   setLangue: (langue) => {
     const cartes = { fr: FAMILY_CARD_FR, pt: FAMILY_CARD_PT, es: FAMILY_CARD_ES, en: FAMILY_CARD_EN };
-    set({ langue, familyCard: cartes[langue] ?? FAMILY_CARD_FR });
+    const parentsActuels = get().parents;
+    const parentsTraduits = { ...parentsActuels };
+    (['A', 'B'] as ParentRole[]).forEach((role) => {
+      const p = parentsActuels[role];
+      if (p && estNomParDefaut(role, p.nom)) {
+        parentsTraduits[role] = { ...p, nom: NOMS_PARENT_PAR_DEFAUT[langue]?.[role] ?? p.nom };
+      }
+    });
+    set({ langue, familyCard: cartes[langue] ?? FAMILY_CARD_FR, parents: parentsTraduits });
     // La langue etait memorisee dans le navigateur seulement : un parent qui
     // se connectait sur un autre appareil, ou apres quelqu'un d'autre sur le
     // meme navigateur, retrouvait une langue qui n'etait pas la sienne. On
@@ -3521,7 +3547,7 @@ export const useStore = create<DualiaStore>()(
       tousLesParents = essaiAvecGenre.data;
     }
 
-    const parentsMap: Record<ParentRole, Parent> = { ...PARENTS };
+    const parentsMap: Record<ParentRole, Parent> = parentsParDefaut(get().langue);
     (tousLesParents ?? []).forEach((p: any) => {
       const role = p.role as ParentRole;
       parentsMap[role] = {
@@ -3531,7 +3557,7 @@ export const useStore = create<DualiaStore>()(
         // prenom : `.split` sur null leve pendant le rendu, donc ecran
         // blanc. La valeur de repli existait deja dans PARENTS, elle
         // n'etait simplement pas utilisee ici.
-        nom: p.nom || PARENTS[role].nom,
+        nom: p.nom || parentsMap[role].nom,
         email: '',
         couleur: p.couleur ?? PARENTS[role].couleur,
         uuid: p.id,

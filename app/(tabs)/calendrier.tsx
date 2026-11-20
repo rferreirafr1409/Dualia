@@ -674,7 +674,7 @@ export default function CalendrierScreen() {
                       style={[styles.parentChoix, formEnfantId === null && { backgroundColor: COLORS.vertProfond, borderColor: COLORS.vertProfond }]}
                       onPress={() => setFormEnfantId(null)}
                     >
-                      <Text style={[styles.parentChoixTxt, formEnfantId === null && { color: COLORS.blanc }]}>Tous</Text>
+                      <Text style={[styles.parentChoixTxt, formEnfantId === null && { color: COLORS.blanc }]}>{t.tousLesEnfants}</Text>
                     </TouchableOpacity>
                     {enfants.map((e) => (
                       <TouchableOpacity

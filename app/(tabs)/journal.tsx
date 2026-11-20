@@ -228,7 +228,7 @@ export default function JournalScreen() {
           </ScrollView>
           {expandedId ? (
             <Pressable style={styles.collapseAllBtn} onPress={() => setExpandedId(null)}>
-              <Text style={styles.collapseAllBtnText}>Tout replier</Text>
+              <Text style={styles.collapseAllBtnText}>{t.toutReplier}</Text>
             </Pressable>
           ) : null}
         </View>
@@ -385,9 +385,9 @@ export default function JournalScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>{editId ? 'Modifier le souvenir' : t.modalTitre}</Text>
+              <Text style={styles.modalTitle}>{editId ? t.modifierTitre : t.modalTitre}</Text>
 
-              <Text style={styles.fieldLabel}>Photo (optionnel)</Text>
+              <Text style={styles.fieldLabel}>{t.photoOptionnel}</Text>
               {formPhotoUri || formPhotoUrlExistante ? (
                 <View style={styles.photoWrap}>
                   <JournalMemoryImage uri={formPhotoUri ?? formPhotoUrlExistante!} maxHeight={260} />
@@ -446,7 +446,7 @@ export default function JournalScreen() {
                   const active = formEnfant === tag;
                   return (
                     <Pressable key={tag} onPress={() => setFormEnfant(tag)} style={[styles.pill, active && styles.pillActive]}>
-                      <Text style={[styles.pillText, active && styles.pillTextActive]}>{tag}</Text>
+                      <Text style={[styles.pillText, active && styles.pillTextActive]}>{tag === TOUS ? t.filtreTous : tag}</Text>
                     </Pressable>
                   );
                 })}
@@ -512,7 +512,7 @@ export default function JournalScreen() {
                 <Text style={styles.modalBtnCancelText}>{t.annuler}</Text>
               </Pressable>
               <Pressable style={[styles.modalBtn, styles.modalBtnDelete]} onPress={confirmerSuppression}>
-                <Text style={styles.modalBtnSubmitText}>Supprimer</Text>
+                <Text style={styles.modalBtnSubmitText}>{t.supprimer}</Text>
               </Pressable>
             </View>
           </View>
