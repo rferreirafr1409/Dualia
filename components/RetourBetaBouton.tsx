@@ -25,6 +25,8 @@ const TEXTES = {
     placeholder: 'Dites-nous ce que vous en pensez...',
     envoyer: 'Envoyer',
     annuler: 'Annuler',
+    sujetApplication: "L'application en général",
+    sujetEcran: 'Cet écran',
     merci: 'Merci pour votre retour !',
   },
   pt: {
@@ -33,6 +35,8 @@ const TEXTES = {
     placeholder: 'Diga-nos o que pensa...',
     envoyer: 'Enviar',
     annuler: 'Cancelar',
+    sujetApplication: 'A aplicação em geral',
+    sujetEcran: 'Este ecrã',
     merci: 'Obrigado pelo seu retorno!',
   },
   es: {
@@ -41,6 +45,8 @@ const TEXTES = {
     placeholder: 'Cuéntanos qué piensas...',
     envoyer: 'Enviar',
     annuler: 'Cancelar',
+    sujetApplication: 'La aplicación en general',
+    sujetEcran: 'Esta pantalla',
     merci: '¡Gracias por tu comentario!',
   },
   en: {
@@ -49,6 +55,8 @@ const TEXTES = {
     placeholder: 'Tell us what you think...',
     envoyer: 'Send',
     annuler: 'Cancel',
+    sujetApplication: 'The app in general',
+    sujetEcran: 'This screen',
     merci: 'Thanks for your feedback!',
   },
 };
@@ -64,6 +72,10 @@ export default function RetourBetaBouton() {
   const [note, setNote] = useState<number | null>(null);
   const [envoi, setEnvoi] = useState(false);
   const [succes, setSucces] = useState(false);
+  // Un avis sur l'application dans son ensemble, ou sur l'écran ouvert.
+  // Par défaut l'application : c'est ce que la plupart des testeurs veulent
+  // dire. L'écran d'où part l'avis reste noté dans les deux cas.
+  const [surApplication, setSurApplication] = useState(true);
 
   const masquee = ECRANS_SANS_BULLE.some((ecran) => pathname?.startsWith(ecran));
 
@@ -75,13 +87,14 @@ export default function RetourBetaBouton() {
       user_id: user?.id,
       message: message.trim(),
       note,
-      ecran: pathname,
+      ecran: surApplication ? `Application en général (depuis ${pathname})` : pathname,
     });
     setEnvoi(false);
     if (!error) {
       setSucces(true);
       setMessage('');
       setNote(null);
+      setSurApplication(true);
       setTimeout(() => {
         setSucces(false);
         setVisible(false);
@@ -116,6 +129,22 @@ export default function RetourBetaBouton() {
               <>
                 <Text style={styles.titre}>{t.titre}</Text>
                 <Text style={styles.sousTitre}>{t.sousTitre}</Text>
+
+                <View style={styles.sujets}>
+                  {[true, false].map((app) => (
+                    <TouchableOpacity
+                      key={String(app)}
+                      style={[styles.sujet, surApplication === app && styles.sujetActif]}
+                      onPress={() => setSurApplication(app)}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: surApplication === app }}
+                    >
+                      <Text style={[styles.sujetTexte, surApplication === app && styles.sujetTexteActif]}>
+                        {app ? t.sujetApplication : t.sujetEcran}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
 
                 <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 6, marginVertical: 16 }}>
                   {[1, 2, 3, 4, 5].map((n) => (
@@ -182,6 +211,14 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   carte: { backgroundColor: COLORS.ivoire, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24 },
   titre: { fontSize: TYPOGRAPHY.lg, fontWeight: TYPOGRAPHY.semibold, color: COLORS.vertProfond, textAlign: 'center' },
+  sujets: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 14, flexWrap: 'wrap' },
+  sujet: {
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999,
+    borderWidth: 1, borderColor: COLORS.bordure, backgroundColor: COLORS.blanc,
+  },
+  sujetActif: { backgroundColor: COLORS.vertProfond, borderColor: COLORS.vertProfond },
+  sujetTexte: { fontSize: TYPOGRAPHY.sm, color: COLORS.vertProfond },
+  sujetTexteActif: { color: COLORS.blanc, fontWeight: TYPOGRAPHY.semibold },
   sousTitre: { fontSize: TYPOGRAPHY.xs, color: COLORS.ardoise, textAlign: 'center', marginTop: 4 },
   input: {
     backgroundColor: COLORS.blanc,
