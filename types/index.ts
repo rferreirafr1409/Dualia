@@ -126,6 +126,10 @@ export interface Depense {
   photoUri?: string;
   commercant?: string;
   lignesDetail?: { libelle: string; montant: number }[];
+  // DUA-148 : enfant concerne par la depense (optionnel). On garde le prenom
+  // en plus de l'id pour l'affichage, comme pour les evenements du calendrier.
+  enfant?: string;
+  enfantId?: string;
 }
 export type CategorieDocument = 'administratif' | 'sante' | 'ecole' | 'juridique';
 

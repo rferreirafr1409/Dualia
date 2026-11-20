@@ -399,6 +399,8 @@ export const TRADUCTIONS = {
       descriptionPlaceholder: 'Ex. Fournitures scolaires',
       commercant: 'Commerçant',
       commercantPlaceholder: 'Ex. Décathlon',
+      enfantConcerne: 'Enfant concerné',
+      tousLesEnfants: 'Toute la famille',
       date: 'Date',
       categorie: 'Catégorie',
       categories: {
@@ -1473,6 +1475,8 @@ export const TRADUCTIONS = {
       descriptionPlaceholder: 'Ej. Material escolar',
       commercant: 'Comercio',
       commercantPlaceholder: 'Ej. Decathlon',
+      enfantConcerne: 'Hijo afectado',
+      tousLesEnfants: 'Toda la familia',
       date: 'Fecha',
       categorie: 'Categoría',
       categories: {
@@ -2547,6 +2551,8 @@ export const TRADUCTIONS = {
       descriptionPlaceholder: 'Ex. Material escolar',
       commercant: 'Comerciante',
       commercantPlaceholder: 'Ex. Decathlon',
+      enfantConcerne: 'Criança em causa',
+      tousLesEnfants: 'Toda a família',
       date: 'Data',
       categorie: 'Categoria',
       categories: {
@@ -3621,6 +3627,8 @@ export const TRADUCTIONS = {
       descriptionPlaceholder: 'E.g. School supplies',
       commercant: 'Merchant',
       commercantPlaceholder: 'E.g. Boots',
+      enfantConcerne: 'Child concerned',
+      tousLesEnfants: 'Whole family',
       date: 'Date',
       categorie: 'Category',
       categories: {
