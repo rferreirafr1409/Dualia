@@ -42,6 +42,7 @@ import { BACKEND_URL } from '../../constants/environnement';
 import { lireErreurBackend } from '../../lib/erreursBackend';
 import { decouperTicket } from '../../lib/tuilesTicket';
 import InformationIA from '../../components/InformationIA';
+import { preparerTicketMobile } from '../../lib/tuilesTicketMobile';
 
 const URL_SCAN_TICKET = `${BACKEND_URL}/api/scan-ticket`;
 
@@ -607,10 +608,22 @@ function FinancesScreenInner() {
     setScanLoading(true);
 
     try {
+      // La photo d'origine (jusqu'a 48 mpx sur iPhone) depassait la taille
+      // acceptee par le serveur : elle est reduite et, si le ticket est long,
+      // decoupee en morceaux avant l'envoi (DUA-153). Si la preparation
+      // echoue, on envoie la photo telle quelle comme avant.
+      let corps: string;
+      try {
+        const tuiles = await preparerTicketMobile(asset.uri);
+        corps = JSON.stringify({ images: tuiles.map((tu) => ({ data: tu.base64, mediaType: tu.mediaType })) });
+      } catch (e) {
+        console.error('[Dualia] Préparation du ticket impossible, photo entière envoyée :', e);
+        corps = JSON.stringify({ image: asset.base64, mediaType: 'image/jpeg' });
+      }
       const response = await fetchAvecRetry(URL_SCAN_TICKET, {
         method: 'POST',
         headers: await entetesBackend(),
-        body: JSON.stringify({ image: asset.base64, mediaType: asset.mimeType || 'image/jpeg' }),
+        body: corps,
       });
 
       if (!response.ok) {
@@ -639,8 +652,14 @@ function FinancesScreenInner() {
       setModalVisible(false);      setScanRecapVisible(true);
     }
 
-      if (!(Array.isArray(data.lignes) && data.lignes.length > 1)) { alertCompat(t.scanReussi, t.scanReussiMsg); }
+      if (!(Array.isArray(data.lignes) && data.lignes.length > 1)) {
+        // Rien de lu : le dire, au lieu d'annoncer un pré-remplissage qui
+        // n'a pas eu lieu (DUA-153).
+        if (!data.montant && !data.commercant) alertCompat(t.scanEchec, t.scanRienLu);
+        else alertCompat(t.scanReussi, t.scanReussiMsg);
+      }
     } catch (e) {
+      console.error('[Dualia] Échec du scan de ticket :', e);
       alertCompat(t.scanEchec, t.scanEchecMsg);
     } finally {
       setScanLoading(false);
@@ -699,7 +718,10 @@ function FinancesScreenInner() {
           setScanDate(data.date ? depuisJourLocal(data.date) : new Date());
           setModalVisible(false);          setScanRecapVisible(true);
         }
-        if (!(Array.isArray(data.lignes) && data.lignes.length > 1)) { alertCompat(t.scanReussi, t.scanReussiMsg); }
+        if (!(Array.isArray(data.lignes) && data.lignes.length > 1)) {
+          if (!data.montant && !data.commercant) alertCompat(t.scanEchec, t.scanRienLu);
+          else alertCompat(t.scanReussi, t.scanReussiMsg);
+        }
       } catch (e) {
         alertCompat(t.scanEchec, t.scanEchecMsg);
       } finally {
